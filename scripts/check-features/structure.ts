@@ -1,4 +1,5 @@
 import { validateFeatureId } from "../new-feature/templates";
+import { declaresATest, isE2eFixture, isVitest } from "./test-calls";
 
 export type FeatureFile = {
   readonly path: string;
@@ -20,7 +21,6 @@ export type FeaturesListing = {
 const REQUIRED_FILES = ["feature.manifest.ts", "index.ts", "README.md"] as const;
 const UNIT_TEST = /^tests\/.+\.test\.ts$/;
 const E2E_TEST = /^tests\/.+\.e2e\.ts$/;
-const DECLARES_A_TEST = /\b(?:test|it)(?:\.each\([^)]*\))?\s*\(/;
 
 function folderProblems(folder: FeatureFolder): string[] {
   const where = `src/features/${folder.name}`;
@@ -35,10 +35,14 @@ function folderProblems(folder: FeatureFolder): string[] {
     else if (file.content.trim() === "") problems.push(`${where}: ${required} is empty`);
   }
 
-  const unitTests = folder.files.filter((file) => UNIT_TEST.test(file.path) && DECLARES_A_TEST.test(file.content));
-  const e2eTests = folder.files.filter((file) => E2E_TEST.test(file.path) && DECLARES_A_TEST.test(file.content));
-  if (unitTests.length === 0) problems.push(`${where}: needs at least one unit test in tests/*.test.ts`);
-  if (e2eTests.length === 0) problems.push(`${where}: needs at least one e2e test in tests/*.e2e.ts`);
+  const unitTests = folder.files.filter((file) => UNIT_TEST.test(file.path) && declaresATest(file.content, isVitest));
+  const e2eTests = folder.files.filter((file) => E2E_TEST.test(file.path) && declaresATest(file.content, isE2eFixture));
+  if (unitTests.length === 0) {
+    problems.push(`${where}: needs at least one unit test in tests/*.test.ts (a test() or it() imported from vitest)`);
+  }
+  if (e2eTests.length === 0) {
+    problems.push(`${where}: needs at least one e2e test in tests/*.e2e.ts (a test() imported from the e2e fixture)`);
+  }
 
   if (byPath.has("feature.manifest.ts")) {
     if (folder.manifestIds.length !== 1) {

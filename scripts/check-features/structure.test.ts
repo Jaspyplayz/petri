@@ -39,10 +39,10 @@ describe("checkFeatures", () => {
       ),
     };
     expect(checkFeatures({ folders: [noUnit], strayFiles: [], registryIds: ["sparkles"] })).toEqual([
-      "src/features/sparkles: needs at least one unit test in tests/*.test.ts",
+      "src/features/sparkles: needs at least one unit test in tests/*.test.ts (a test() or it() imported from vitest)",
     ]);
     expect(checkFeatures({ folders: [emptyE2e], strayFiles: [], registryIds: ["sparkles"] })).toEqual([
-      "src/features/sparkles: needs at least one e2e test in tests/*.e2e.ts",
+      "src/features/sparkles: needs at least one e2e test in tests/*.e2e.ts (a test() imported from the e2e fixture)",
     ]);
   });
 
@@ -50,7 +50,9 @@ describe("checkFeatures", () => {
     const folder: FeatureFolder = {
       ...generatedFolder("sparkles"),
       files: generatedFolder("sparkles").files.map((file) =>
-        file.path.endsWith(".test.ts") ? { ...file, content: 'it.each([[1]])("x %s", () => {});\n' } : file,
+        file.path.endsWith(".test.ts")
+          ? { ...file, content: 'import { it } from "vitest";\nit.each([[1]])("x %s", () => {});\n' }
+          : file,
       ),
     };
     expect(checkFeatures({ folders: [folder], strayFiles: [], registryIds: ["sparkles"] })).toEqual([]);

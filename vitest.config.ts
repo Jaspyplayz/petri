@@ -13,8 +13,8 @@ export default defineConfig({
     environment: "node",
     coverage: {
       provider: "v8",
-      include: ["src/features/*/lib/**/*.ts"],
-      exclude: ["**/*.test.ts"],
+      include: ["src/features/*/lib/**/*.{ts,tsx}"],
+      exclude: ["**/*.test.{ts,tsx}"],
       reporter: ["text", "json-summary"],
       thresholds: { lines: 80, statements: 80, functions: 80, branches: 80 },
     },
