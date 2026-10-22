@@ -1,7 +1,7 @@
 # Installed by `pnpm install` (lefthook's postinstall runs `lefthook install`; it skips CI).
 # gitleaks must be on PATH: winget install Gitleaks.Gitleaks · brew install gitleaks
+# Jobs run in order: typecheck's `next typegen` writes the route types that lint needs.
 pre-commit:
-  parallel: true
   jobs:
     - name: secrets
       run: gitleaks git --pre-commit --staged --redact --no-banner --verbose

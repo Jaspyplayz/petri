@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -37,6 +37,10 @@ async function check(name: string, args: readonly string[]): Promise<string | un
     const shown = lines.slice(0, maxLines).join("\n");
     return `${name}:\n${shown}${lines.length > maxLines ? `\n… ${String(lines.length - maxLines)} more lines` : ""}`;
   }
+}
+
+if (!existsSync(join(root, ".next/types/routes.d.ts"))) {
+  await run(process.execPath, [binOf("next", "next"), "typegen"], { cwd: root });
 }
 
 const failures = (
