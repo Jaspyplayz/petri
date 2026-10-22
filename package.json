@@ -13,6 +13,7 @@
     "start": "next start",
     "lint": "eslint --max-warnings=0",
     "boundaries": "node scripts/check-boundaries.ts",
+    "features": "tsx scripts/check-features.ts",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
