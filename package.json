@@ -18,6 +18,7 @@
     "pr-size": "node scripts/check-pr-size.ts",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "e2e": "playwright test",
     "new:feature": "tsx scripts/new-feature.ts",

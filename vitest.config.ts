@@ -16,6 +16,7 @@ export default defineConfig({
       include: ["src/features/*/lib/**/*.ts"],
       exclude: ["**/*.test.ts"],
       reporter: ["text", "json-summary"],
+      thresholds: { lines: 80, statements: 80, functions: 80, branches: 80 },
     },
   },
 });

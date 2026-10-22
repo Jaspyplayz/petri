@@ -1,5 +1,5 @@
 import { ESLint } from "eslint";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const eslint = new ESLint({ cwd: process.cwd() });
 
@@ -21,7 +21,11 @@ async function problems(filePath: string, code: string): Promise<string[]> {
   return (result?.messages ?? []).map((message) => message.ruleId ?? `inline-config: ${message.message}`);
 }
 
-describe("lint config bans", () => {
+beforeAll(async () => {
+  await problems(files.lib, "export const warmUp = 1;\n");
+}, 120_000);
+
+describe("lint config bans", { timeout: 30_000 }, () => {
   it.each([
     ["any", files.lib, "export const value: any = 1;\n", "@typescript-eslint/no-explicit-any"],
     ["as unknown as", files.lib, "export const value = 1 as unknown as string;\n", "no-restricted-syntax"],
@@ -81,6 +85,30 @@ describe("lint config bans", () => {
       "@typescript-eslint/switch-exhaustiveness-check",
     ],
     [
+      "a skipped unit test",
+      "scripts/check-pr/glob.test.ts",
+      'import { it } from "vitest";\nit.skip("x", () => {});\n',
+      "no-restricted-syntax",
+    ],
+    [
+      "a focused e2e describe",
+      files.e2e,
+      'import { test } from "@/shared/testing/e2e-fixture";\ntest.describe.only("x", () => {});\n',
+      "no-restricted-syntax",
+    ],
+    [
+      "an e2e test touching the console-error fixture",
+      files.e2e,
+      'import { test } from "@/shared/testing/e2e-fixture";\ntest("x", ({ problems }) => {\n  problems.splice(0);\n});\n',
+      "no-restricted-syntax",
+    ],
+    [
+      "a conditionally skipped e2e test",
+      files.e2e,
+      'import { test } from "@/shared/testing/e2e-fixture";\ntest("x", () => {\n  test.skip(true, "flaky");\n});\n',
+      "no-restricted-syntax",
+    ],
+    [
       "non-interactive element with a click handler",
       files.component,
       "export function Thing({ onPick }: { readonly onPick: () => void }) {\n  return <div onClick={onPick}>pick</div>;\n}\n",
@@ -97,7 +125,7 @@ describe("lint config bans", () => {
   });
 });
 
-describe("lint config allow-list", () => {
+describe("lint config allow-list", { timeout: 30_000 }, () => {
   it.each([
     [
       "effects in src/shared/ui/effects",

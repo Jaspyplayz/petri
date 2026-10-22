@@ -5,10 +5,21 @@ import jsxA11y from "eslint-plugin-jsx-a11y";
 import tseslint from "typescript-eslint";
 import { petriPlugin } from "./lint-rules/index.mjs";
 
-const typeEscapeHatches = [
+const skippedTestMessage = "Do not skip or focus tests. Fix the test or the code: a skipped test is a weakened guardrail.";
+
+const alwaysBanned = [
   {
     selector: "TSAsExpression[expression.type='TSAsExpression'][expression.typeAnnotation.type='TSUnknownKeyword']",
     message: "`as unknown as` bypasses the type checker. Narrow the value (Zod, a type guard) instead.",
+  },
+  {
+    selector:
+      "MemberExpression[object.name=/^(test|it|describe|suite)$/][property.name=/^(only|skip|skipIf|runIf|fixme|todo)$/]",
+    message: skippedTestMessage,
+  },
+  {
+    selector: "MemberExpression[object.property.name='describe'][property.name=/^(only|skip|fixme)$/]",
+    message: skippedTestMessage,
   },
 ];
 
@@ -41,7 +52,19 @@ const defaultExports = [
   { selector: "ExportAllDeclaration[exported.name='default']", message: defaultExportMessage },
 ];
 
-function srcBans({ allowEffects = false, allowDefaultExport = false, allowPlaywrightTest = false } = {}) {
+const problemsFixtureAccess = [
+  {
+    selector: "ObjectPattern > Property[key.name='problems']",
+    message: "The console-error fixture belongs to the harness. Fix the error instead of reading or clearing `problems`.",
+  },
+];
+
+function srcBans({
+  allowEffects = false,
+  allowDefaultExport = false,
+  allowPlaywrightTest = false,
+  banProblemsFixture = false,
+} = {}) {
   return {
     "no-restricted-imports": [
       "error",
@@ -55,9 +78,10 @@ function srcBans({ allowEffects = false, allowDefaultExport = false, allowPlaywr
     ],
     "no-restricted-syntax": [
       "error",
-      ...typeEscapeHatches,
+      ...alwaysBanned,
       ...(allowEffects ? [] : effectHookMembers),
       ...(allowDefaultExport ? [] : defaultExports),
+      ...(banProblemsFixture ? problemsFixtureAccess : []),
     ],
   };
 }
@@ -104,7 +128,7 @@ export default defineConfig([
       ],
       "@typescript-eslint/no-unused-vars": "error",
       "@typescript-eslint/no-unused-expressions": "error",
-      "no-restricted-syntax": ["error", ...typeEscapeHatches],
+      "no-restricted-syntax": ["error", ...alwaysBanned],
     },
   },
   {
@@ -140,6 +164,12 @@ export default defineConfig([
     name: "petri/src/effects-allow-list",
     files: ["src/shared/ui/effects/**/*.{ts,tsx}"],
     rules: srcBans({ allowEffects: true }),
+  },
+  {
+    name: "petri/src/e2e-tests",
+    files: ["src/**/*.e2e.ts"],
+    ignores: ["src/shared/testing/**"],
+    rules: srcBans({ banProblemsFixture: true }),
   },
   {
     name: "petri/src/e2e-fixture",
