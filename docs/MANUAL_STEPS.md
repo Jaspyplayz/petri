@@ -13,21 +13,12 @@ Status key: ⬜ todo · ✅ done
 3. ✅ **Claude Code restarted** with the new PATH.
 4. ✅ **Supabase project** `petri` (ref `ejwwwasbkxqnyrjzlvll`, us-east-1, Free plan, so it can't be charged). Keys are in `.env.setup` and the 5 migrations are applied (2026-10-22). Future migrations go through `pnpm db:push:prod` until CI takes over.
 5. ✅ **Sentry** project `petri` in org `jaspys-team` (free Developer plan). DSN, org, project and auth token are in `.env.setup`, and the token was verified with org, project, release and issue reads all returning 200 (2026-10-22).
+6. ✅ **Claude GitHub App + Vercel token.** `/install-github-app` installed the app (workflows merged in PR #4) and stored `CLAUDE_CODE_OAUTH_TOKEN` directly as a repo secret, so `.env.setup` doesn't need it. Claude created the empty Vercel project `petri` in Jaspy's Team so the token could be limited to it. `VERCEL_TOKEN` (`petri-guardian`, Jaspy's Team, petri only, no expiry) is in `.env.setup`, and reading the project and its deployments returned 200 (2026-10-22).
 
 ## To do
 
-6. ⬜ **Claude in GitHub Actions + Vercel token.** In a terminal in the `petri` folder:
-
-   ```powershell
-   claude /install-github-app
-   claude setup-token
-   ```
-
-   Paste the `setup-token` output as `CLAUDE_CODE_OAUTH_TOKEN` in `.env.setup`. Then create a token at vercel.com/account/tokens (name `petri-guardian`, scope: your account) and paste it as `VERCEL_TOKEN` (the guardian uses it for instant rollback).
-   `EVOLUTION_BOT_TOKEN` stays blank for now. In Phase 6 Claude checks whether the App token can trigger CI on PRs it opens, and adds a step here only if it can't.
-
 7. ⬜ **Reply "link and push".** Claude then runs, in this order:
-   - `vercel link` (creates the Vercel project `petri`) and connects it to the GitHub repo, which fills `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` automatically
+   - `vercel link` (to the existing project `petri`) and connects it to the GitHub repo, which fills `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` automatically
    - `supabase link --project-ref <ref>`
    - `pnpm setup:secrets --apply`, which pushes every `.env.setup` value to GitHub secrets/variables and Vercel env (values are never printed; the service-role key and salt go to Vercel *production* only, never to PR previews), generates `RATE_LIMIT_SALT`, and creates the repo variable `EVOLUTION_ENABLED=false`
    - Phase 6: branch protection on `main` (requires `ci-ok` + `evolution-verify`, up to date, no force pushes, 0 approvals) and "Allow auto-merge", via `gh api` / `gh repo edit --enable-auto-merge`. You only check them in Settings → Branches.
