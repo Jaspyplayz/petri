@@ -9,7 +9,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.ts", "scripts/**/*.test.ts", "lint-rules/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "scripts/**/*.test.ts", "lint-rules/**/*.test.ts", ".claude/hooks/**/*.test.ts"],
     environment: "node",
     coverage: {
       provider: "v8",
