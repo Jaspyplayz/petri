@@ -1,0 +1,13 @@
+# Installed by `pnpm install` (lefthook's postinstall runs `lefthook install`; it skips CI).
+# gitleaks must be on PATH: winget install Gitleaks.Gitleaks · brew install gitleaks
+pre-commit:
+  parallel: true
+  jobs:
+    - name: secrets
+      run: gitleaks git --pre-commit --staged --redact --no-banner --verbose
+    - name: typecheck
+      glob: "*.{ts,tsx,mts,cts}"
+      run: pnpm -s typecheck
+    - name: lint
+      glob: "*.{ts,tsx,mts,cts,js,mjs,cjs}"
+      run: pnpm exec eslint --max-warnings=0 --no-warn-ignored {staged_files}
