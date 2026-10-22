@@ -3,26 +3,14 @@ import { defineFeature } from "@/shared/lib/feature-manifest";
 export const analyticsManifest = defineFeature({
   id: "analytics",
   title: "Analytics",
-  summary: "One sentence on what Analytics does for visitors.",
-  routes: ["/analytics"],
-  uiLocation: "Describe where Analytics appears on screen in plain English.",
-  howToReach: ["Open /analytics"],
+  summary: "Records anonymous page views and feature interactions (feature id + action + path, no personal data) so triage can see what people use.",
+  routes: [],
+  uiLocation: "Invisible. Each page renders a PageView tracker, and features call shared/lib/track on interactions. Events are POSTed to /api/events.",
+  howToReach: ["Open any page; a 'view' event is sent once per page show"],
   keyboardShortcuts: [],
-  selectors: {
-    panel: "analytics-panel",
-    heading: "analytics-heading",
-  },
-  flows: {
-    smoke: {
-      description: "Analytics renders its panel.",
-      steps: [
-        { action: "goto", path: "/analytics" },
-        { action: "expectVisible", target: "panel" },
-        { action: "screenshot", name: "analytics-panel" },
-      ],
-    },
-  },
-  dataTables: [],
+  selectors: {},
+  flows: {},
+  dataTables: ["events"],
   owners: "agents",
-  riskLevel: "low",
+  riskLevel: "medium",
 });

@@ -1,2 +1,3 @@
 export { analyticsManifest } from "./feature.manifest";
-export { AnalyticsPanel } from "./components/analytics-panel";
+export { PageView } from "./components/page-view";
+export { handleEventRequest } from "./server/handle-event-request";

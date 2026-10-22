@@ -1,0 +1,35 @@
+.creature {
+  transform-origin: 50% 85%;
+  transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.wobble {
+  animation: wobble 650ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  transform-origin: 50% 85%;
+}
+
+.breathe {
+  animation: breathe 3.2s ease-in-out infinite;
+  transform-origin: 50% 85%;
+}
+
+@keyframes wobble {
+  0% { transform: scale(1, 1); }
+  20% { transform: scale(1.18, 0.82); }
+  40% { transform: scale(0.88, 1.12); }
+  60% { transform: scale(1.07, 0.94); }
+  80% { transform: scale(0.97, 1.03); }
+  100% { transform: scale(1, 1); }
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.02, 0.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wobble,
+  .breathe {
+    animation: none;
+  }
+}

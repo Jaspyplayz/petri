@@ -1,2 +1,2 @@
 export { timelineManifest } from "./feature.manifest";
-export { TimelinePanel } from "./components/timeline-panel";
+export { TimelineScreen } from "./components/timeline-screen";

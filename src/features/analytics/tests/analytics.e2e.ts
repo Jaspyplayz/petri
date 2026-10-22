@@ -1,7 +1,19 @@
 import { expect, test } from "@/shared/testing/e2e-fixture";
 
-test("analytics: panel renders", async ({ page }) => {
-  await page.goto("/analytics");
-  await expect(page.getByTestId("analytics-panel")).toBeVisible();
-  await expect(page.getByTestId("analytics-heading")).toHaveText("Analytics");
+test.describe("analytics", () => {
+  test("a page view is recorded when the home page opens", async ({ page }) => {
+    const recorded = page.waitForResponse(
+      (response) => response.url().endsWith("/api/events") && response.request().method() === "POST",
+    );
+    await page.goto("/");
+    const response = await recorded;
+    expect(response.status()).toBe(202);
+  });
+
+  test("invalid events are rejected without being stored", async ({ request }) => {
+    const response = await request.post("/api/events", {
+      data: { featureId: "blob", action: "view", path: "https://evil.example" },
+    });
+    expect(response.status()).toBe(400);
+  });
 });

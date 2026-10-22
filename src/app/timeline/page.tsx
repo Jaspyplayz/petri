@@ -1,5 +1,14 @@
-import { TimelinePanel } from "@/features/timeline";
+import type { Metadata } from "next";
+import { PageView } from "@/features/analytics";
+import { TimelineScreen } from "@/features/timeline";
+
+export const metadata: Metadata = { title: "Timeline" };
 
 export default function TimelinePage() {
-  return <TimelinePanel />;
+  return (
+    <>
+      <PageView featureId="timeline" />
+      <TimelineScreen />
+    </>
+  );
 }

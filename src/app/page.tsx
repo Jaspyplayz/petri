@@ -1,5 +1,11 @@
-import { BlobPanel } from "@/features/blob";
+import { PageView } from "@/features/analytics";
+import { BlobCreature } from "@/features/blob";
 
-export default function BlobPage() {
-  return <BlobPanel />;
+export default function HomePage() {
+  return (
+    <>
+      <PageView featureId="blob" />
+      <BlobCreature />
+    </>
+  );
 }

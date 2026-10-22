@@ -1,18 +1,23 @@
 # Analytics
 
-Feature id: `analytics` · Route: `/analytics`
+Feature id: `analytics` · Route: none (API: `POST /api/events`)
 
 ## What it does
 
-Describe the user-facing behaviour in a few sentences.
+Records anonymous usage so triage can see which features people actually use:
+
+- `PageView` (client component) sends one `view` event each time a page is shown. Pages compose it with their feature id.
+- Features call `track(featureId, action)` from `shared/lib/track` on interactions (for example `blob` + `poke`). That is the shared contract, so features never import this feature.
+- `POST /api/events` validates the payload and inserts a row into `events` with the service role.
 
 ## Invariants
 
-- List the rules that must stay true (limits, privacy, data ownership).
+- No personal data: only `feature_id`, `action`, `path` (no query string or hash) and a timestamp. Unknown keys are stripped. No IP, user agent or cookie is stored.
+- Bodies over 1 KB get 413; invalid payloads get 400. The DB also enforces the slug formats with CHECK constraints.
+- The anon key cannot read or write `events`; only server code with the service role can insert.
 
 ## Structure
 
-- `feature.manifest.ts`: id, routes, selectors and verification flows (source of FEATURE_MAP.md)
-- `index.ts`: the only public entry point; `src/app` imports from here
-- `components/`: UI, `server/`: server-only code (`import "server-only"`), `lib/`: pure logic
-- `tests/`: `*.test.ts` (Vitest) and `*.e2e.ts` (Playwright)
+- `lib/event-payload.ts`: Zod schema and body parsing (pure, unit-tested)
+- `server/handle-event-request.ts`: the route handler logic (server-only)
+- `components/page-view.tsx`: page-view tracker (uses the allow-listed `useMountEffect`)

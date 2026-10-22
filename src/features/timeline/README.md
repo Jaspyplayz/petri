@@ -4,15 +4,17 @@ Feature id: `timeline` · Route: `/timeline`
 
 ## What it does
 
-Describe the user-facing behaviour in a few sentences.
+The public changelog. Newest first, each entry shows its title, a plain-English summary, the feedback items behind it, the PR link, the short commit SHA, the trust level at merge time, before/after screenshots and the merge time. Reverts appear too, with a red "Reverted" badge. A counter at the top reads "N changes shipped, 0 written by humans".
 
 ## Invariants
 
-- List the rules that must stay true (limits, privacy, data ownership).
+- Read-only for the public: the page reads `changelog` and `feedback` with the anon key. Only CI writes `changelog`, using the service role.
+- Data is fetched at request time inside a `<Suspense>` boundary (Cache Components), so new entries appear without a redeploy.
+- Times are formatted in UTC so server output is deterministic.
+- The counter counts `change` entries; reverts are listed but not counted.
 
 ## Structure
 
-- `feature.manifest.ts`: id, routes, selectors and verification flows (source of FEATURE_MAP.md)
-- `index.ts`: the only public entry point; `src/app` imports from here
-- `components/`: UI, `server/`: server-only code (`import "server-only"`), `lib/`: pure logic
-- `tests/`: `*.test.ts` (Vitest) and `*.e2e.ts` (Playwright)
+- `server/list-timeline.ts`: loads changelog rows plus their linked feedback (server-only)
+- `lib/timeline-format.ts`: pure formatting (counter text, short SHA, dates)
+- `components/`: `timeline-screen` (heading + Suspense), `timeline-feed` (async data), `timeline-entry` (card)
