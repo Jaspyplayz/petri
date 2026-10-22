@@ -18,11 +18,17 @@ const gitValueOptions = new Set(["-C", "-c", "--config-env", "--git-dir", "--wor
 const patchPrograms = new Set(["patch", "gpatch"]);
 const forceOptions = ["--force", "--force-with-lease", "--force-if-includes", "--mirror"];
 const harmlessGitConfig = /^(user\.(name|email)|color\..+|advice\..+|core\.(quotepath|autocrlf|safecrlf)|init\.defaultbranch|pull\.rebase|push\.autosetupremote)$/i;
-const gitConfigValueOptions = new Set(["-f", "--file", "--blob", "--type", "--default", "--comment", "--value"]);
-const gitConfigWriteFlags = new Set(["--add", "--replace-all", "--unset", "--unset-all"]);
-const gitConfigSectionActions = new Set(["edit", "rename-section", "remove-section", "--edit", "-e", "--rename-section", "--remove-section"]);
+const gitConfigValueOptions = new Set(["--file", "--blob", "--type", "--default", "--comment", "--value", "--url"]);
+const gitConfigWriteFlags = new Set(["--add", "--replace-all", "--unset", "--unset-all", "--append"]);
+const gitConfigSectionActions = new Set(["edit", "rename-section", "remove-section", "--edit", "--rename-section", "--remove-section"]);
 const gitConfigSubcommands = new Set(["get", "set", "unset", "list", "edit", "rename-section", "remove-section"]);
-const gitConfigReadFlags = /^(--get(-all|-regexp|-urlmatch|-color|colorbool)?|--list|-l)$/;
+const gitConfigReadFlags = new Set(["--get", "--get-all", "--get-regexp", "--get-urlmatch", "--get-color", "--get-colorbool", "--list"]);
+const gitConfigOtherFlags = [
+  "--global", "--system", "--local", "--worktree", "--show-origin", "--show-scope", "--name-only", "--null", "--bool", "--int",
+  "--bool-or-int", "--bool-or-str", "--path", "--expiry-date", "--no-type", "--fixed-value", "--includes", "--no-includes", "--all", "--regexp",
+];
+const gitConfigLongOptions = [...gitConfigValueOptions, ...gitConfigWriteFlags, ...gitConfigSectionActions, ...gitConfigReadFlags, ...gitConfigOtherFlags].filter((option) => option.startsWith("--"));
+const gitConfigShortOptions: Readonly<Record<string, string>> = { e: "--edit", l: "--list", z: "--null", f: "--file", t: "--type" };
 const configHomes = "(HOME|HOMEDRIVE|HOMEPATH|USERPROFILE|XDG_CONFIG_HOME|CLAUDE_CONFIG_DIR)";
 const envSetters = "(SetEnvironmentVariable|putenv|setenv)";
 const configHomeOverrides = [
@@ -51,7 +57,12 @@ const movers = new Set(["mv", "move-item", "mi", "ln", "mkdir", "touch", "new-it
 const inPlaceEditors = new Set(["sed", "perl"]);
 const secretName = /(SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|PRIVATE|CREDENTIAL|SALT|COOKIE|SESSION|APIKEY|(^|_)O?AUTH($|_)|(^|_)KEYS?($|_))/i;
 const variableReference = /\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%/gi;
-const interpreters = /^(node(js)?|deno|bun|python[\d.]*|py|pypy[\d.]*|ruby|perl|php|lua)$/;
+const interpreters = /(^|[\s;&|(`'"/\\])(node(js)?|deno|bun|tsx|ts-node(-esm)?|python[\d.]*w?|py|pypy[\d.]*|ruby|perl|php|lua|rscript|julia|osascript)(\.exe)?(?=$|[\s;&|)`'"])/i;
+const dynamicPrograms = [
+  /(^|[;&|({\n]\s*)(&\s*[($]|\$\{?\w+\}?\s+(?![-+*/.]?=|-)[\w"'./]|\$\([^)]*\)\s+[\w"'./-]|`[^`]*`\s+[\w"'./-])/,
+  /\b(iex|Invoke-Expression|Invoke-Command|icm|Start-Process|saps)\b/i,
+  /\beval\b[^;&|\n]*\$\{?\w/,
+];
 const spawnsProcess = /child_process|subprocess|os\.(system|popen|exec|spawn)|Popen|Deno\.Command|Bun\.spawn|\b(spawn|exec|execFile)(Sync)?\s*\(|\bsystem\s*\(/;
 const maxNesting = 3;
 
@@ -63,6 +74,7 @@ const messages = {
   secretFile: "Blocked: env and credential files hold secrets and stay unread. Scripts such as `pnpm setup:secrets` and `pnpm env:local` read them for you.",
   evolutionHuman: "Blocked: EVOLUTION_HUMAN is set by a human when they start Claude Code, never by a command.",
   patchTool: "Blocked: patch, git apply and git am are off for agents, because the guard can't reliably tell which files a patch writes. Use the Edit/Write tools; a human can run them with EVOLUTION_HUMAN=1.",
+  dynamicProgram: "Blocked: the guard can't see which program a variable, substitution, eval or PowerShell call operator (& $x, iex, Start-Process) will run. Spell the command out.",
   spawnFromScript: "Blocked: inline interpreter code that starts other programs (child_process, subprocess, os.system, …) hides them from the guard. Run them directly in the shell.",
   gitAlias: "Blocked: agents set only a few harmless git config keys (user.name, user.email, color.*, advice.*, …). Others, such as git aliases, config includes, push refspecs, pagers, editors, diff and filter drivers, and GIT_CONFIG_* variables, change what a git command runs. Spell out the git command instead, or ask a human.",
   configHome: "Blocked: overriding HOME (or HOMEDRIVE/HOMEPATH), USERPROFILE, XDG_CONFIG_HOME or CLAUDE_CONFIG_DIR, or setting environment variables by a computed name or for a spawned process, can point git and other tools at a different config. Leave them as they are.",
@@ -138,18 +150,31 @@ function gitConfigWrites(rest: readonly Word[]): string[] {
   let positional = false;
   for (let index = 0; index < rest.length; index += 1) {
     const word = rest[index]?.text ?? "";
-    if (!positional && gitConfigValueOptions.has(word)) {
-      index += 1;
-    } else if (!positional && word.startsWith("-")) {
-      flags.push(word.split("=")[0] ?? "");
-    } else {
+    if (positional || !word.startsWith("-") || word === "-") {
       values.push(word);
       positional = values.length > 1 || !gitConfigSubcommands.has(word);
+    } else if (word.startsWith("--")) {
+      const [name = "", ...inline] = word.split("=");
+      const matches = gitConfigLongOptions.filter((option) => option === name || option.startsWith(name));
+      const option = matches.includes(name) ? name : matches.length === 1 ? (matches[0] ?? "") : "";
+      if (option === "") return [`an unknown option (${word})`];
+      flags.push(option);
+      if (gitConfigValueOptions.has(option) && inline.length === 0) index += 1;
+    } else {
+      for (let letter = 1; letter < word.length; letter += 1) {
+        const option = gitConfigShortOptions[word.charAt(letter)];
+        if (option === undefined) return [`an unknown option (${word})`];
+        flags.push(option);
+        if (gitConfigValueOptions.has(option)) {
+          if (letter === word.length - 1) index += 1;
+          break;
+        }
+      }
     }
   }
   const [first = "", ...others] = values;
   if ([first, ...flags].some((action) => gitConfigSectionActions.has(action))) return [`a whole section (${first})`];
-  if (first === "get" || first === "list" || flags.some((flag) => gitConfigReadFlags.test(flag))) return [];
+  if (first === "get" || first === "list" || flags.some((flag) => gitConfigReadFlags.has(flag))) return [];
   if (first === "set" || first === "unset") return [others[0] ?? ""];
   if (flags.some((flag) => gitConfigWriteFlags.has(flag))) return [first];
   return others.length > 0 ? [first] : [];
@@ -294,9 +319,7 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     const nested = commandProblem(substitution, guard, depth);
     if (nested) return nested;
   }
-  const inlineCode = program !== undefined && interpreters.test(programName(program.text)) ? [...args.map((word) => word.text), ...segment.heredocs] : [];
-  const startsPrograms = inlineCode.some((code) => spawnsProcess.test(code)) ? messages.spawnFromScript : undefined;
-  if (depth >= maxNesting) return startsPrograms;
+  if (depth >= maxNesting) return undefined;
   const inspectAll = program === undefined || !isDataSink(programName(program.text), all);
   const nestedCommands = [
     ...segment.quoted.filter((part) => inspectAll || part.includes("$(") || part.includes("`")),
@@ -306,7 +329,7 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     const nested = commandProblem(nestedCommand, guard, depth + 1);
     if (nested) return nested;
   }
-  return startsPrograms;
+  return undefined;
 }
 
 function scriptProblem(command: string): string | undefined {
@@ -329,9 +352,13 @@ export function commandProblem(command: string, guard: CommandGuard, depth = 0):
   if (configHomeOverrides.some((pattern) => pattern.test(command))) return messages.configHome;
   const script = scriptProblem(command);
   if (script) return script;
-  for (const segment of [...parseShell(command), ...parseShell(command, true)]) {
+  const segments = [...parseShell(command), ...parseShell(command, true)];
+  for (const segment of segments) {
     const problem = segmentProblem(segment, guard, depth);
     if (problem) return problem;
   }
-  return undefined;
+  if (interpreters.test(command) && spawnsProcess.test(command)) return messages.spawnFromScript;
+  if (depth > 0) return undefined;
+  const withoutHeredocs = segments.flatMap((segment) => segment.heredocs).reduce((text, body) => text.replace(body, ""), command);
+  return dynamicPrograms.some((pattern) => pattern.test(withoutHeredocs)) ? messages.dynamicProgram : undefined;
 }

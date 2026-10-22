@@ -197,6 +197,17 @@ describe("review findings stay closed", () => {
     ["node -e \"require('child_process').spawnSync('g' + 'it', ['push', '-' + 'f'])\"", "starts other programs"],
     ["python3 -c \"import os; os.system('g' + 'it push -f')\"", "starts other programs"],
     ["python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['ls'])\nEOF", "starts other programs"],
+    ["git config --rename-sec color.diff alias", "git aliases"],
+    ["git config -ze", "git aliases"],
+    ["git config --frobnicate color.x y", "git aliases"],
+    ["timeout 5 python3 -c \"import os; os.system('g' + 'it push -f')\"", "starts other programs"],
+    ["echo \"import os; os.system('x')\" | python3", "starts other programs"],
+    ["pnpm exec tsx -e \"require('child_process').execSync('x')\"", "starts other programs"],
+    ["g=git; $g push -f", "can't see which program"],
+    ["$(echo git) push -f", "can't see which program"],
+    ["& ('g' + 'it') push -f", "can't see which program"],
+    ["iex $cmd", "can't see which program"],
+    ['eval "$cmd"', "can't see which program"],
   ])("%s", (command, reason) => {
     expect(commandProblem(command, guard)).toContain(reason);
   });
@@ -220,6 +231,11 @@ describe("review findings stay closed", () => {
     "git remote add upstream https://github.com/example/petri.git && git config user.name Jasper",
     "git config user.email && git config --get remote.origin.url && git config get core.editor",
     "git config --global user.name 'Jasper' && git -c core.quotepath=off status",
+    "git config --glo user.email jasper@example.com && git config -l && git config --get-regexp '^color'",
+    "$files = Get-ChildItem src; $files | Select-Object -First 3",
+    "$x.Count; $s -replace 'a', 'b'",
+    "pnpm exec tsx scripts/new-feature.ts sparkles",
+    'cd "$(git rev-parse --show-toplevel)" && ls',
   ])("allows %s", (command) => {
     expect(commandProblem(command, guard)).toBeUndefined();
   });
