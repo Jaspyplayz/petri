@@ -14,15 +14,49 @@ export type ToolCall = {
 
 const readers = new Set(["Read", "Grep"]);
 const writers = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
-const secretSamples = [".env", ".env.local", ".env.setup", ".env.production", ".git-credentials", ".netrc", "_netrc", "id_rsa", "id_ed25519"];
+const secretSamples = [
+  ...[".env", ".env.local", ".env.setup", ".env.production", ".env.development", ".env.test", ".env.staging", ".env.production.local"],
+  ...[".git-credentials", ".netrc", "_netrc", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"],
+];
+const sampleDirectories = ["", "dir/", "a/b/"];
+const maxExpansions = 256;
 const secretMessage = "Blocked: env and credential files hold secrets, so agents neither read nor write them. Scripts such as `pnpm setup:secrets` and `pnpm env:local` handle them.";
 
+function expandBraces(glob: string): string[] | undefined {
+  const open = glob.indexOf("{");
+  if (open === -1) return glob.includes("}") ? undefined : [glob];
+  const bounds = [open];
+  let depth = 0;
+  for (let index = open; index < glob.length; index += 1) {
+    const char = glob.charAt(index);
+    if (char === "{") depth += 1;
+    if (char === "," && depth === 1) bounds.push(index);
+    if (char === "}") depth -= 1;
+    if (depth === 0) {
+      const expanded: string[] = [];
+      for (const [position, start] of bounds.entries()) {
+        const option = glob.slice(start + 1, bounds[position + 1] ?? index);
+        const rest = expandBraces(`${glob.slice(0, open)}${option}${glob.slice(index + 1)}`);
+        if (rest === undefined) return undefined;
+        expanded.push(...rest);
+        if (expanded.length > maxExpansions) return undefined;
+      }
+      return expanded;
+    }
+  }
+  return undefined;
+}
+
 function globReadsSecrets(glob: string): boolean {
-  const fragments = glob.replace(/\[[^\]]*\]/g, "?").split(/[{},]/).filter((fragment) => fragment !== "" && !fragment.startsWith("!"));
-  return fragments.some((fragment) => {
-    if (isSecretFile(fragment)) return true;
-    const pattern = globToRegExp(fragment.replace(/^\//, ""));
-    return secretSamples.some((name) => pattern.test(name) || pattern.test(`dir/${name}`));
+  const alternatives = expandBraces(glob.replace(/\\(.)/g, "$1").replace(/\[[^\]]*\]/g, "?"));
+  if (alternatives === undefined) return true;
+  return alternatives.some((alternative) => {
+    if (alternative.startsWith("!")) return false;
+    const plain = alternative.replace(/^\//, "");
+    if (isSecretFile(plain)) return true;
+    const pattern = globToRegExp(plain);
+    const literalPrefix = /^([^*?]*\/)?/.exec(plain)?.[1] ?? "";
+    return secretSamples.some((name) => [...sampleDirectories, literalPrefix].some((directory) => pattern.test(`${directory}${name}`)));
   });
 }
 

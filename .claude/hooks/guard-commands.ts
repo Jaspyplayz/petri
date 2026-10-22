@@ -4,15 +4,18 @@ import { block, type HookInput, parseHookInput, readStdin } from "./lib/hook-inp
 import { projectRoot, protectedRepoPath, secretTarget } from "./lib/paths.ts";
 
 const shellTools = new Set(["Bash", "PowerShell"]);
+const shellLanguages = new Set(["shell", "bash", "sh", "zsh", "powershell", "pwsh"]);
+const unguardableCode =
+  "Blocked: this tool runs code the guard can't check (it can write any file), so agents run only shell through it. Use Bash or the Edit/Write tools; a human can allow it with EVOLUTION_HUMAN=1.";
 
-function commandsOf(toolInput: HookInput["toolInput"]): string[] {
-  const batch = Array.isArray(toolInput.commands) ? toolInput.commands : [];
-  return [toolInput.command, toolInput.code, ...batch.map((entry) => asRecord(entry)?.command)].filter((value) => typeof value === "string");
+function stringsIn(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsIn);
+  const record = asRecord(value);
+  return record ? Object.values(record).flatMap(stringsIn) : [];
 }
 
 function problemFor(input: HookInput): string | undefined {
-  const commands = commandsOf(input.toolInput);
-  if (commands.length === 0 && shellTools.has(input.toolName)) return `Blocked: ${input.toolName} hook input has no command string.`;
   const cwd = input.cwd ?? projectRoot;
   const paths = { projectRoot, caseInsensitive: process.platform === "win32" };
   const guard = {
@@ -20,8 +23,15 @@ function problemFor(input: HookInput): string | undefined {
     protectedTarget: (path: string) => protectedRepoPath(path, cwd, paths),
     secretPath: (path: string) => secretTarget(path, cwd, paths.caseInsensitive),
   };
-  const path = input.toolInput.path;
-  return (typeof path === "string" ? pathProblem(path, guard) : undefined) ?? commands.map((command) => commandProblem(command, guard)).find((problem) => problem !== undefined);
+  if (shellTools.has(input.toolName)) {
+    const command = input.toolInput.command;
+    return typeof command === "string" ? commandProblem(command, guard) : `Blocked: ${input.toolName} hook input has no command string.`;
+  }
+  const language = input.toolInput.language;
+  if (typeof language === "string" && !shellLanguages.has(language.toLowerCase()) && !guard.evolutionHuman) return unguardableCode;
+  return stringsIn(input.toolInput)
+    .map((text) => pathProblem(text, guard) ?? commandProblem(text, guard))
+    .find((problem) => problem !== undefined);
 }
 
 let problem: string | undefined;

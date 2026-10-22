@@ -18,7 +18,7 @@ const gitValueOptions = new Set(["-C", "-c", "--config-env", "--git-dir", "--wor
 const patchPrograms = new Set(["patch", "gpatch"]);
 const forceOptions = ["--force", "--force-with-lease", "--force-if-includes", "--mirror"];
 const gitIndirection = /^(alias|include|includeif)\./i;
-const gitConfigVariable = /^(\$?env:)?GIT_CONFIG(_\w+)?(=|$)/i;
+const configHomeOverride = /^(\$?env:)?(HOME|XDG_CONFIG_HOME|USERPROFILE)(=|$)/i;
 const unresolvedPath = /[$`%]|^~/;
 const printers = new Set(["echo", "printf", "print", "cat", "write-output", "write-host", "write-information", "out-host"]);
 const envDrivers = new Set(["get-childitem", "gci", "ls", "dir", "get-item", "gi", "get-content", "gc", "cat", "type"]);
@@ -39,6 +39,7 @@ const messages = {
   evolutionHuman: "Blocked: EVOLUTION_HUMAN is set by a human when they start Claude Code, never by a command.",
   patchTool: "Blocked: patch, git apply and git am are off for agents, because the guard can't reliably tell which files a patch writes. Use the Edit/Write tools; a human can run them with EVOLUTION_HUMAN=1.",
   gitAlias: "Blocked: git aliases, config includes and GIT_CONFIG_* variables change what a git command runs, so agents don't set them. Spell out the git command instead.",
+  configHome: "Blocked: overriding HOME, USERPROFILE or XDG_CONFIG_HOME points git and other tools at a different config. Leave them as they are.",
   protectedWrite: (path: string) =>
     `Blocked: ${path} is a protected path (.github/guardrails.json, or a Claude Code settings file). Agents can't change their own guardrails; a human can by starting Claude Code with EVOLUTION_HUMAN=1.`,
 };
@@ -221,7 +222,7 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     return messages.skipHooks;
   }
   if (runsSubcommand(all.map((word) => word.text.toLowerCase()), "lefthook", "uninstall")) return messages.skipHooks;
-  if (segment.words.some((word) => gitConfigVariable.test(word.text))) return messages.gitAlias;
+  if (segment.words.some((word) => configHomeOverride.test(word.text))) return messages.configHome;
   if (segment.words.some((word) => guard.secretPath(word.text)) || segment.writeTargets.some(guard.secretPath)) return messages.secretFile;
   if (program) {
     const name = programName(program.text);
@@ -273,6 +274,7 @@ export function pathProblem(path: string, guard: CommandGuard): string | undefin
 
 export function commandProblem(command: string, guard: CommandGuard, depth = 0): string | undefined {
   if (/EVOLUTION_HUMAN/.test(command)) return messages.evolutionHuman;
+  if (/GIT_CONFIG/i.test(command)) return messages.gitAlias;
   const script = scriptProblem(command);
   if (script) return script;
   for (const segment of [...parseShell(command), ...parseShell(command, true)]) {

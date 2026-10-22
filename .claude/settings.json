@@ -16,7 +16,7 @@
         ]
       },
       {
-        "matcher": "^(Bash|PowerShell)$|^mcp__.*(execute|exec|shell|command)",
+        "matcher": "^(Bash|PowerShell)$|^mcp__.*(exec|shell|command|run|eval|script|terminal|bash|python|code)",
         "hooks": [
           {
             "type": "command",

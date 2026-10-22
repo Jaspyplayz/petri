@@ -11,7 +11,7 @@ export type PathGuard = {
 export const localOnlyProtectedPaths: readonly string[] = ["**/.git", "**/.git/**", ".claude/settings.local.json"];
 
 const secretFileNames = [/^\.env(\..+)?$/i, /^\.git-credentials$/i, /^[._]netrc$/i, /^id_(rsa|dsa|ecdsa|ed25519)$/i];
-const agentConfigFile = /(^|\/)(\.claude\/(settings(\.local)?\.json|CLAUDE\.md)|\.claude\.json|managed-settings\.json)$/i;
+const agentConfigFile = /(^|\/)(\.claude\/(settings(\.local)?\.json|CLAUDE\.md)|\.claude\.json|managed-settings\.json|\.gitconfig|\.config\/git\/config)$/i;
 const sampleSuffix = /\.(example|sample|template)$/i;
 
 export const projectRoot = join(import.meta.dirname, "..", "..", "..");

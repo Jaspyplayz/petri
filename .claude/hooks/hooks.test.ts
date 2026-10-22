@@ -50,6 +50,15 @@ describe("guard-commands hook", () => {
     expect(runHook("guard-commands.ts", toolCall("mcp__runner__ctx_execute", { language: "shell", code: "pnpm test" })).status).toBe(0);
     expect(runHook("guard-commands.ts", toolCall("mcp__db__execute_sql", { query: "select 1" })).status).toBe(0);
   });
+
+  it("lets agents run only shell through MCP code tools and scans every string field", () => {
+    const javascript = toolCall("mcp__runner__ctx_execute", { language: "javascript", code: "console.log(1)" });
+    const blocked = runHook("guard-commands.ts", javascript);
+    expect(blocked.status).toBe(2);
+    expect(blocked.stderr).toContain("runs code the guard can't check");
+    expect(runHook("guard-commands.ts", javascript, { EVOLUTION_HUMAN: "1" }).status).toBe(0);
+    expect(runHook("guard-commands.ts", toolCall("mcp__box__run_task", { spec: { steps: [{ cmd: "git push --force" }] } })).status).toBe(2);
+  });
 });
 
 describe("guard-files hook", () => {

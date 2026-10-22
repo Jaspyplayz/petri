@@ -142,6 +142,11 @@ describe("review findings stay closed", () => {
     ["cd / && rm -rf *", "recursive delete"],
     ["rm -rf .", "recursive delete"],
     ["rm -rf ../..", "recursive delete"],
+    ["[Environment]::SetEnvironmentVariable('GIT_CONFIG_COUNT', 1)", "GIT_CONFIG_* variables"],
+    ["${env:GIT_CONFIG_COUNT} = 1", "GIT_CONFIG_* variables"],
+    ["HOME=/tmp/evil git commit -m x", "overriding HOME"],
+    ["$env:USERPROFILE = 'C:\\evil'", "overriding HOME"],
+    ["export XDG_CONFIG_HOME=/tmp/evil", "overriding HOME"],
   ])("%s", (command, reason) => {
     expect(commandProblem(command, guard)).toContain(reason);
   });
@@ -161,17 +166,21 @@ describe("review findings stay closed", () => {
     const paths = { projectRoot, caseInsensitive };
     expect(protectedRepoPath(join(homedir(), ".claude", "settings.json"), projectRoot, paths)).toContain(".claude/settings.json");
     expect(protectedRepoPath(join(homedir(), ".claude", "CLAUDE.md"), projectRoot, paths)).toContain(".claude/CLAUDE.md");
+    expect(protectedRepoPath(join(homedir(), ".gitconfig"), projectRoot, paths)).toContain(".gitconfig");
+    expect(protectedRepoPath(join(homedir(), ".config", "git", "config"), projectRoot, paths)).toContain(".config/git/config");
     expect(protectedRepoPath(join(homedir(), "notes.md"), projectRoot, paths)).toBeUndefined();
   });
 
-  it.each([".env*", "*", "**/*", "{*.ts,.env.local}", ".en[v]*", "id_*"])("blocks Grep with glob %s", (glob) => {
+  it.each([".env*", "*", "**/*", "{*.ts,.env.local}", ".en[v]*", "id_*", "{.e,x}nv*", ".e\\nv*", "{a,{b,.env}}", ".env.st*", "secrets/**", "{unbalanced"])("blocks Grep with glob %s", (glob) => {
     const fileGuard = { evolutionHuman: false, protectedTarget: () => undefined, secretPath: () => false };
     expect(fileProblem({ toolName: "Grep", toolInput: { pattern: "KEY", path: projectRoot, glob } }, fileGuard)).toContain("secrets");
   });
 
   it("allows Grep with an ordinary glob", () => {
     const fileGuard = { evolutionHuman: false, protectedTarget: () => undefined, secretPath: () => false };
-    expect(fileProblem({ toolName: "Grep", toolInput: { pattern: "x", path: projectRoot, glob: "*.{ts,tsx}" } }, fileGuard)).toBeUndefined();
+    for (const glob of ["*.{ts,tsx}", "src/**/*.test.ts", "!*.md"]) {
+      expect(fileProblem({ toolName: "Grep", toolInput: { pattern: "x", path: projectRoot, glob } }, fileGuard)).toBeUndefined();
+    }
   });
 });
 
