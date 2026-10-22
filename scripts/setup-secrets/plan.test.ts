@@ -35,6 +35,20 @@ describe("planSetup", () => {
     expect(plan.missingRequired).toEqual([]);
   });
 
+  it("accepts a blank GitHub-only secret that already exists in GitHub, and leaves it untouched", () => {
+    const githubOnly: readonly SecretSpec[] = [
+      { key: "GH", required: true, how: "", github: "secret" },
+      { key: "BOTH", required: true, how: "", github: "secret", vercel: ["production"] },
+    ];
+    const plan = planSetup(new Map(), githubOnly, new Set(["GH", "BOTH"]));
+    expect(plan.keptExisting.map((spec) => spec.key)).toEqual(["GH"]);
+    expect(plan.missingRequired.map((spec) => spec.key)).toEqual(["BOTH"]);
+    expect(plan.actions).toEqual([]);
+    expect(planSetup(new Map([["GH", "new"]]), githubOnly, new Set(["GH"])).actions.map(describeAction)).toContain(
+      "GitHub secret    GH",
+    );
+  });
+
   it("generates blank generatable values and keeps provided ones", () => {
     expect(planSetup(new Map([["REQ", "r"]]), specs).generated.get("GEN")).toBe("generated-value");
     expect(planSetup(new Map([["REQ", "r"], ["GEN", "mine"]]), specs).generated.size).toBe(0);
@@ -67,6 +81,22 @@ describe("commandFor", () => {
       expect(command.args.join(" ")).not.toContain(value);
       for (const arg of command.args) expect(arg).toMatch(/^[A-Za-z0-9_-]+$|^--[a-z-]+$/);
     }
+  });
+
+  it("states the Vercel env type explicitly, so the CLI never stops to ask", () => {
+    const base = { kind: "vercel-env", key: "K", value: "v", environment: "preview" } as const;
+    expect(commandFor({ ...base, sensitive: true }).args).toEqual(["env", "add", "K", "--environment", "preview", "--sensitive", "--force", "--yes"]);
+    expect(commandFor({ ...base, sensitive: false }).args).toEqual([
+      "env",
+      "add",
+      "K",
+      "--environment",
+      "preview",
+      "--type",
+      "config",
+      "--force",
+      "--yes",
+    ]);
   });
 });
 

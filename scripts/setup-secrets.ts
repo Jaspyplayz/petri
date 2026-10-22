@@ -37,6 +37,12 @@ function readVercelIds(): Map<string, string> {
   return ids;
 }
 
+function existingGithubSecrets(): Set<string> {
+  const result = spawnSync("gh", ["secret", "list", "--json", "name", "--jq", ".[].name"], { cwd: root, encoding: "utf8" });
+  if (result.status !== 0) return new Set();
+  return new Set(result.stdout.split(/\r?\n/).filter((name) => name !== ""));
+}
+
 function apply(action: SetupAction): boolean {
   const { command, args, stdin } = commandFor(action);
   return run(command, args, stdin).ok;
@@ -64,7 +70,7 @@ function main(): void {
   const values = parseEnvFile(readFileSync(envSetupPath, "utf8"));
   for (const [key, value] of readVercelIds()) if (!values.get(key)) values.set(key, value);
 
-  const plan = planSetup(values);
+  const plan = planSetup(values, undefined, existingGithubSecrets());
   if (plan.missingRequired.length > 0) {
     out("Missing required values in .env.setup:");
     for (const spec of plan.missingRequired) out(`  ${spec.key}: ${spec.how}`);
@@ -73,6 +79,7 @@ function main(): void {
 
   out(flags.apply ? "Applying:" : "Dry run (pass --apply to push). Would set:");
   for (const action of plan.actions) out(`  ${describeAction(action)}`);
+  for (const spec of plan.keptExisting) out(`  kept (already set in GitHub) ${spec.key}`);
   for (const spec of plan.skippedOptional) out(`  skipped (blank, optional) ${spec.key}`);
   if (!flags.apply) return;
 

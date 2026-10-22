@@ -57,3 +57,6 @@ next-env.d.ts
 Thumbs.db
 .idea/
 .vscode/
+
+# vercel link
+.vercel
