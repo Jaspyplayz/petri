@@ -232,7 +232,6 @@ describe("review findings stay closed", () => {
     'while read -r line; do echo "$line"; done < notes.md',
     'export PATH="$HOME/bin:$PATH"; local x="$1" y=$2',
     'read -r sha <<< "$HOME" && source ./scripts/env.sh',
-    "$c = Get-Content notes.md; $c -replace 'a', 'b' | Set-Content out.md; $n += 1; $x.Trim()",
     "node -e \"console.log(process.env.NODE_ENV)\"",
     "python3 -c \"import json; print(json.dumps({'a': 1}))\"",
     'grep -rn "child_process" scripts && git log --oneline -3',
@@ -240,13 +239,26 @@ describe("review findings stay closed", () => {
     "git config user.email && git config --get remote.origin.url && git config get core.editor",
     "git config --global user.name 'Jasper' && git -c core.quotepath=off status",
     "git config --glo user.email jasper@example.com && git config -l && git config --get-regexp '^color'",
-    "$files = Get-ChildItem src; $files | Select-Object -First 3",
-    "$x.Count; $s -replace 'a', 'b'",
     "pnpm exec tsx scripts/new-feature.ts sparkles",
     'cd "$(git rev-parse --show-toplevel)" && ls',
   ])("allows %s", (command) => {
     expect(commandProblem(command, guard)).toBeUndefined();
   });
+
+  it.each([
+    "$c = Get-Content notes.md; $c -replace 'a', 'b' | Set-Content out.md; $n += 1; $x.Trim()",
+    "$files = Get-ChildItem src; $files | Select-Object -First 3",
+    "$x.Count; $s -replace 'a', 'b'; $env:PATH",
+  ])("allows PowerShell value statements in the PowerShell tool: %s", (command) => {
+    expect(commandProblem(command, { ...guard, powershell: true })).toBeUndefined();
+  });
+
+  it.each(["x=$(cat cmd.txt); $x", "$files = Get-ChildItem src", 'bash -c "$x"', "sh -c '$x' && zsh -c \"`cat cmd`\""])(
+    "treats a variable in the program position as dynamic in bash: %s",
+    (command) => {
+      expect(commandProblem(command, guard)).toContain("can't see which program");
+    },
+  );
 
   it("protects Claude Code settings outside the repo", () => {
     const paths = { projectRoot, caseInsensitive };

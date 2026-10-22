@@ -104,7 +104,7 @@ CI (the hard gate):
     - `hooks.test.ts` uses the real `blob-state.ts` as its clean sample, so `unit` fails whenever that file has a lint error (seen on throwaway #10).
     - Nits: `persist-credentials` and the unpinned checkout in `claude.yml`.
 
-Claude Code hooks (the speed bump). **11, 12, the check-file half of 9 and the `hooks.test.ts` item in 10 are closed in `fix/phase-2-review-findings` (cb73d98).** Each has a regression case in `bypass.test.ts` or `hooks.test.ts` (189 hook tests). It was verified live: the new matcher blocks a force push through Bash and through an MCP `ctx_execute` call.
+Claude Code hooks (the speed bump). **11, 12, the check-file half of 9 and the `hooks.test.ts` item in 10 are closed in `fix/phase-2-review-findings` (cb73d98).** Each has a regression case in `bypass.test.ts` or `hooks.test.ts`. Ten automated security-review rounds on the branch then closed more command-guard gaps (cb73d98 … round 10), each with a test, for 293 hook tests in total. decisions.md lists the classes the guard knowingly leaves open. It was verified live: the new matcher blocks a force push through Bash and through an MCP `ctx_execute` call.
 
 11. **(V) Regression from d387f54.** The `$(...)`/backtick scanner isn't quote- or escape-aware, so `echo $(echo ")") ; git push --force` passes. The drafted fix is quote-aware scanners that fail closed on unterminated input, plus an old-vs-new parse differential test.
 12. **(V) Gaps the guard misses:**

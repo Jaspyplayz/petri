@@ -3,6 +3,7 @@ import { parseShell, type Segment, type Word } from "./shell.ts";
 
 export type CommandGuard = {
   readonly evolutionHuman: boolean;
+  readonly powershell?: boolean;
   readonly protectedTarget: (path: string) => string | undefined;
   readonly secretPath: (path: string) => boolean;
 };
@@ -59,6 +60,7 @@ const secretName = /(SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|PRIVATE|CREDENTIAL|
 const variableReference = /\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%/gi;
 const interpreterNames = "(node(js)?|deno|bun|tsx|ts-node(-esm)?|python[\\d.]*w?|py|pypy[\\d.]*|ruby|perl|php|lua|rscript|julia|osascript)";
 const interpreterName = new RegExp(`^${interpreterNames}$`);
+const shellPrograms = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish", "busybox", "pwsh", "powershell", "cmd"]);
 const interpreters = new RegExp(`(^|[\\s;&|(\`'"/\\\\<>])${interpreterNames}(\\.exe)?(?=$|[\\s;&|)\`'"<>])`, "i");
 const powershellValueStatement = /^([-+*/%]?=|\?\?=|-(eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|replace|split|join|is|isnot|as|and|or|xor|not|band|bor|f)|[.[].*)$/i;
 const dynamicPrograms = [
@@ -325,7 +327,10 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
   if (program) {
     const name = programName(program.text);
     const [firstArgument] = args;
-    if (/[$`]/.test(program.text) && firstArgument !== undefined && !powershellValueStatement.test(firstArgument.text)) return messages.dynamicProgram;
+    const valueStatement =
+      guard.powershell === true ? firstArgument === undefined || powershellValueStatement.test(firstArgument.text) : depth > 0 && firstArgument === undefined;
+    if (/[$`]/.test(program.text) && !valueStatement) return messages.dynamicProgram;
+    if (shellPrograms.has(name) && args.some((word) => /^\s*[$`]/.test(word.text))) return messages.dynamicProgram;
     if ((name === "eval" || name === "source" || program.text === ".") && args.some((word) => /[$`]/.test(word.text))) return messages.dynamicProgram;
   }
   const startsPrograms =

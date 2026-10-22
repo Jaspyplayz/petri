@@ -22,6 +22,7 @@ function problemFor(input: HookInput): string | undefined {
   const paths = { projectRoot, caseInsensitive: process.platform === "win32" };
   const guard = {
     evolutionHuman: process.env.EVOLUTION_HUMAN === "1",
+    powershell: input.toolName === "PowerShell",
     protectedTarget: (path: string) => protectedRepoPath(path, cwd, paths),
     secretPath: (path: string) => secretTarget(path, cwd, paths.caseInsensitive),
   };
