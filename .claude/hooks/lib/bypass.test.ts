@@ -162,6 +162,25 @@ describe("review findings stay closed", () => {
     ["python3 -c \"import os; os.environ['HOME'] = '/tmp/evil'\"", "overriding HOME"],
     ["HOMEPATH=\\evil git commit -m x", "overriding HOME"],
     ["CLAUDE_CONFIG_DIR=/tmp/evil claude -p x", "overriding HOME"],
+    ["for HOME in /tmp/evil; do git commit -m x; done", "overriding HOME"],
+    ["foreach ($env:HOME in @('C:\\evil')) { git commit -m x }", "overriding HOME"],
+    ["setx HOME C:\\evil", "overriding HOME"],
+    ["Rename-Item -Path env:FOO -NewName HOME", "overriding HOME"],
+    ["export $n=/tmp/evil", "overriding HOME"],
+    ['declare "${x}ME=/tmp/evil"', "overriding HOME"],
+    ['eval "$n=/tmp/evil"', "overriding HOME"],
+    ['printf -v "$n" /tmp/evil', "overriding HOME"],
+    ['read -r "$n" <<< /tmp/evil', "overriding HOME"],
+    ["[Environment]::SetEnvironmentVariable('HO' + 'ME', 'C:\\evil')", "overriding HOME"],
+    ["python3 -c \"import os; os.putenv(name, '/tmp/evil')\"", "overriding HOME"],
+    ["python3 -c \"import subprocess; subprocess.run(['git', 'commit'], env={'HOME': '/tmp/evil'})\"", "overriding HOME"],
+    ["python3 -c \"import os; os.environ.update(e)\"", "overriding HOME"],
+    ["node -e \"process.env['HO' + 'ME'] = '/tmp/evil'\"", "overriding HOME"],
+    ["node -e \"require('child_process').execSync('git commit', { env: e })\"", "overriding HOME"],
+    ["git config remote.origin.push +refs/heads/main:refs/heads/main", "push refspecs"],
+    ["git -c remote.origin.mirror=true push", "push refspecs"],
+    ["git config core.fsmonitor ./watch.sh", "push refspecs"],
+    ["git remote add --mirror=push backup https://example.com/x.git", "force pushes"],
   ])("%s", (command, reason) => {
     expect(commandProblem(command, guard)).toContain(reason);
   });
@@ -177,6 +196,11 @@ describe("review findings stay closed", () => {
     'export PATH="$HOME/bin:$PATH" && printf "%s\\n" "$HOME"',
     "Get-ChildItem $env:USERPROFILE; cd ${env:HOME}",
     'while read -r line; do echo "$line"; done < notes.md',
+    'export PATH="$HOME/bin:$PATH"; local x="$1" y=$2',
+    'eval "$(ssh-agent -s)" && read -r sha <<< "$HOME"',
+    "node -e \"console.log(process.env.NODE_ENV)\"",
+    "python3 -c \"import subprocess; subprocess.run(['ls'])\"",
+    "git remote add upstream https://github.com/example/petri.git && git config user.name Jasper",
   ])("allows %s", (command) => {
     expect(commandProblem(command, guard)).toBeUndefined();
   });
