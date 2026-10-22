@@ -1,0 +1,81 @@
+name: Guardrails
+
+# pull_request_target runs this file and scripts/check-* from the BASE branch, so a PR
+# cannot edit the checks that judge it. The PR head is fetched as git data only: it is
+# never checked out, installed or executed. Do not add steps that run PR code here.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guardrails-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  protected-paths:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Fetch the PR head as data
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head"
+      - name: Agents may not change protected paths
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HUMAN_MAINTAINERS: ${{ vars.HUMAN_MAINTAINERS }}
+        run: node scripts/check-protected-paths.ts
+
+  pr-size:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Fetch the PR head as data
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head"
+      - name: Agent PRs stay small
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HUMAN_MAINTAINERS: ${{ vars.HUMAN_MAINTAINERS }}
+        run: node scripts/check-pr-size.ts
+
+  guardrails-ok:
+    if: always()
+    needs: [protected-paths, pr-size]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Every guardrail passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = "success" ] || exit 1
+          done

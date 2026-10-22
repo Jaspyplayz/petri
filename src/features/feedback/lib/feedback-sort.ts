@@ -5,7 +5,7 @@ export type FeedbackSort = (typeof FEEDBACK_SORTS)[number];
 export const DEFAULT_FEEDBACK_SORT: FeedbackSort = "top";
 
 export function parseFeedbackSort(value: string | readonly string[] | undefined): FeedbackSort {
-  const candidate = Array.isArray(value) ? value[0] : value;
+  const candidate = typeof value === "object" ? value[0] : value;
   return FEEDBACK_SORTS.find((sort) => sort === candidate) ?? DEFAULT_FEEDBACK_SORT;
 }
 

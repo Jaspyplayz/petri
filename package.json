@@ -2,6 +2,7 @@
   "name": "petri",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@12.15.0",
   "engines": {
     "node": "24.x"
@@ -10,9 +11,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "next typegen && eslint --max-warnings=0",
+    "boundaries": "node scripts/check-boundaries.ts",
+    "features": "tsx scripts/check-features.ts",
+    "protected-paths": "node scripts/check-protected-paths.ts",
+    "pr-size": "node scripts/check-pr-size.ts",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "e2e": "playwright test",
     "new:feature": "tsx scripts/new-feature.ts",
@@ -40,12 +46,16 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitest/coverage-v8": "5.0.5",
+    "dependency-cruiser": "18.5.0",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.2",
+    "eslint-plugin-jsx-a11y": "6.10.2",
+    "lefthook": "2.1.17",
     "supabase": "2.121.0",
     "tailwindcss": "4.3.3",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
     "vitest": "5.0.5"
   }
 }

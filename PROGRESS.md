@@ -1,8 +1,13 @@
 # PROGRESS
 
-**Current phase:** 1 ✅ merged (PR #1, 2026-10-22). Production Supabase is set up and verified (MANUAL_STEPS step 4 ✅).
+**Current phase:** 2 in progress. PR #8 (`chore/phase-2-guardrails`) is green in CI and the Claude Code hooks are live, but the review findings below are still open.
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action:** Phase 2 step 2.1 on `chore/phase-2-guardrails`. Phase 3 note: screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
+**Next action (needs a human):** merge PR #8 (squash), then start Claude Code with `EVOLUTION_HUMAN=1` (see MANUAL_STEPS step 8). Then:
+- Close the findings (2.11) in a follow-up PR.
+- Rerun the protected-path throwaway against `main`, so `guardrails.yml` runs for real.
+- Restart Claude Code without `EVOLUTION_HUMAN`.
+
+Phase 3 starts only after that. Phase 3 note: screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
@@ -26,8 +31,9 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 2 — Hard guardrails
 
-- [ ] 2.1 TS strict flags + bans · [ ] 2.2 ESLint flat config + custom rules (useEffect, no comments, no console, env, default exports) · [ ] 2.3 Import boundaries + server-only graph check · [ ] 2.4 `check-features.ts` · [ ] 2.5 `check-protected-paths.ts` · [ ] 2.6 PR size check · [ ] 2.7 gitleaks + pre-commit · [ ] 2.8 Vitest coverage floor + Playwright e2e w/ console-error fixture · [ ] 2.9 `ci.yml` + `ci-ok` · [ ] 2.10 `.claude/settings.json` hooks
-- [ ] Exit: a throwaway commit for each rule turns its CI job red
+- [x] 2.1 TS strict flags + bans · [x] 2.2 ESLint flat config + custom rules (useEffect, no comments, no console, env, default exports) · [x] 2.3 Import boundaries + server-only graph check · [x] 2.4 `check-features.ts` · [x] 2.5 `check-protected-paths.ts` · [x] 2.6 PR size check · [x] 2.7 gitleaks + pre-commit · [x] 2.8 Vitest coverage floor + Playwright e2e w/ console-error fixture · [x] 2.9 `ci.yml` + `ci-ok` (plus `guardrails.yml` + `guardrails-ok`) · [x] 2.10 `.claude/settings.json` hooks (live since f82cc71)
+- [ ] Exit: a throwaway commit for each rule turns its CI job red. Six of the seven are red in CI. The protected-path one is red when the check runs on its real event payload, and its CI run waits for `guardrails.yml` to reach `main` (evidence below).
+- [ ] 2.11 Close the open review findings (list below). They are all in protected files, so this needs a human-approved session (`EVOLUTION_HUMAN=1`).
 
 ## Phase 3 — Verification skill
 
@@ -66,6 +72,119 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 2: open review findings (2026-10-22)
+
+An independent fresh-context review of f82cc71 and the automated security reviews after f82cc71 found the gaps below. Every fix is in a protected path, so the live hooks block agent edits, which is the intended behaviour. They wait for a session started with `EVOLUTION_HUMAN=1`. "V" means the reviewer reproduced it.
+
+CI (the hard gate):
+
+1. **(V) PR code runs before the checks.** `next typegen` (in `lint`/`typecheck`) loads the unprotected `next.config.ts`, which can rewrite `eslint.config.mjs` on the runner while the git diff stays clean. `check-features.ts` imports agent-written manifests, `registry.ts` and `scripts/new-feature/templates.ts`, and a `process.exit(0)` in any of them passes. Fix: protect `next.config.*` and `scripts/**`, and read manifests statically.
+2. **(V) Lint and fixture side doors.**
+   - `const { useEffect } = React` and `globalThis.console` / `globalThis.process`.
+   - `it.fails` and `context.skip()`.
+   - A default import of `@playwright/test`, `fixtureTest.extend({ problems })` and `page.removeAllListeners`.
+   - The lint-ignored `database.types.ts`.
+3. **(V) A neutral folder bypasses the import boundaries.** For example, `src/bridge/` can re-export another feature. Fix: rules that list what's allowed, and only `app`, `features` and `shared` at the top of `src`.
+4. **(V) Repo files can hide secrets and diff size.** `.gitattributes` `-diff`, `.gitleaksignore` and `gitleaks:allow` hide secrets from gitleaks, and binary numstat hides lines from `pr-size`. Fix: protect both files, run gitleaks with `--ignore-gitleaks-allow`, use `numstat --text`, and fail on binaries that can't be measured.
+5. **Agent detection misses `claude/*` branches** and agent pushes to human PRs.
+6. **(V) Config and trust level come from the merge base, not the base tip.**
+7. **(V) Paths missing from the protected list:**
+   - `.claude/settings.local.json`, `.claude/CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json`
+   - `lefthook-local.yml`, `STARTER_PROMPT.md`
+   - `server-env-schema.ts`, `supabase/config.toml`, `seed.sql`
+   - Glob matching is also case-sensitive.
+8. **Retargeting a PR doesn't re-run `ci.yml`.** Fix: add the `edited` type and `branches: [main]`, and make Phase 6 rulesets require the trusted workflows.
+9. **Places that fail open.** A missing event payload counts as "not an agent PR", and a typegen crash in check-file is non-blocking.
+10. **Weak proofs.**
+    - The lint-config tests assert generic rule ids.
+    - `DECLARES_A_TEST` is a regex.
+    - Coverage measures only `lib/**/*.ts`.
+    - Playwright `retries: 1` can hide intermittent console errors.
+    - `hooks.test.ts` uses the real `blob-state.ts` as its clean sample, so `unit` fails whenever that file has a lint error (seen on throwaway #10).
+    - Nits: `persist-credentials` and the unpinned checkout in `claude.yml`.
+
+Claude Code hooks (the speed bump):
+
+11. **(V) Regression from d387f54.** The `$(...)`/backtick scanner isn't quote- or escape-aware, so `echo $(echo ")") ; git push --force` passes. The drafted fix is quote-aware scanners that fail closed on unterminated input, plus an old-vs-new parse differential test.
+12. **(V) Gaps the guard misses:**
+    - `GIT_CONFIG_COUNT/KEY_n/VALUE_n` and `include.path` set `core.hooksPath` or aliases.
+    - Abbreviated long options (`--no-verif`, `--mirr`).
+    - `lefthook uninstall`.
+    - Printing secrets: bare `$GITHUB_TOKEN` or `$env:X`, `/proc/self/environ`, `${!n}`, `os.getenv`.
+    - Root deletes: `rm -rf /usr/..` and `cd / && rm -rf *`.
+    - Glob write targets.
+    - `$(...)` in unquoted heredocs given to data sinks.
+    - Writes to `~/.claude/settings.json`, with no `disableAllHooks: false` pin.
+    - `Grep` with `glob: ".env*"` on a directory.
+    - MCP code-execution tools bypass the `Bash|PowerShell` matcher.
+
+### Phase 2 exit: throwaway PRs turn their CI job red (2026-10-22)
+
+Each throwaway is one commit on c2cbd66, made in a scratch clone without lefthook. Each went to a draft PR against `chore/phase-2-guardrails` (CI ran on the merge with f82cc71) and was closed and its branch deleted afterwards. The failure messages come from the GitHub check-run annotations.
+
+| PR | Breaks | Red job (other jobs green) | Failure |
+|---|---|---|---|
+| [#9](https://github.com/Jaspyplayz/petri/pull/9) ([run](https://github.com/Jaspyplayz/petri/actions/runs/39825930259)) | `useEffect` in `blob-creature.tsx` | `lint` → `ci-ok` | `'useEffect' import from 'react' is restricted. Effects live only in src/shared/ui/effects/.` |
+| [#10](https://github.com/Jaspyplayz/petri/pull/10) ([run](https://github.com/Jaspyplayz/petri/actions/runs/39825932831)) | a comment in `blob-state.ts` | `lint`, `unit` → `ci-ok` | `No comments in src/. Rename things so the code explains itself…`. `unit` is red because `hooks.test.ts` uses this same file as its "clean file" sample, so the check-file hook (correctly) reports the comment. |
+| [#11](https://github.com/Jaspyplayz/petri/pull/11) ([run](https://github.com/Jaspyplayz/petri/actions/runs/39825937961)) | `looseSort: any` in `feedback-sort.ts` | `lint` → `ci-ok` | `Unexpected any. Specify a different type` |
+| [#12](https://github.com/Jaspyplayz/petri/pull/12) ([run](https://github.com/Jaspyplayz/petri/actions/runs/39825945348)) | `feedback` imports from `blob` | `boundaries` → `ci-ok` | `✖ feature-imports-another-feature: src/features/feedback/lib/feedback-sort.ts → src/features/blob/lib/blob-state.ts` |
+| [#13](https://github.com/Jaspyplayz/petri/pull/13) ([run](https://github.com/Jaspyplayz/petri/actions/runs/39825952272)) | `timeline.e2e.ts` deleted | `features` → `ci-ok` | `✖ src/features/timeline: needs at least one e2e test in tests/*.e2e.ts` |
+| [#14](https://github.com/Jaspyplayz/petri/pull/14) ([run](https://github.com/Jaspyplayz/petri/actions/runs/39825951675)) | agent PR (label `evolution`) sets `no-console` to `"warn"` | `protected-paths`: exit 1 on its real payload (below). `ci.yml` is green, as expected, because `guardrails.yml` can't run before it's on `main`. | `✖ eslint.config.mjs: guardrail file: agents can't change their own guardrails` |
+| [#15](https://github.com/Jaspyplayz/petri/pull/15) ([run](https://github.com/Jaspyplayz/petri/actions/runs/39825957992)) | a random 40-char key in `docs/` | `secrets` → `ci-ok` | `leaks found: 1 · RuleID: generic-api-key` |
+
+Follow-up after PR #8 merges: open the protected-path throwaway against `main`, so `guardrails-ok` goes red in CI, and add the run link here.
+
+### Phase 2: protected-paths and pr-size on real PR payloads (2026-10-22)
+
+`guardrails.yml` can't run until it's on `main` (see decisions.md), so the check ran locally on each PR's real event payload (`gh api repos/Jaspyplayz/petri/pulls/N`), with the head fetched from `refs/pull/N/head`:
+
+```
+== PR #14 (labels: evolution, author: Jaspyplayz)
+protected-paths: PR #14 c2cbd66...0094a1a is an agent PR (label "evolution") and touches 1 protected path(s):
+- ✖ eslint.config.mjs: guardrail file: agents can't change their own guardrails
+exit 1
+== PR #8 (labels: , author: Jaspyplayz)
+protected-paths: PR #8 90f3788...f82cc71 is not an agent PR, so guardrail files may change here.
+exit 0
+pr-size: PR #8 90f3788...f82cc71 is not an agent PR; 3782 changed lines (limit 400; 1 generated file(s) not counted).
+pr-size: PR #14 c2cbd66...0094a1a has 2 changed lines (limit 400; 0 generated file(s) not counted).
+```
+
+### Phase 2: Claude Code hooks live in this session (2026-10-22, after f82cc71)
+
+```
+Bash  git push --force --dry-run nonexistent-remote main
+      → PreToolUse:Bash hook error: Blocked: force pushes (-f, --force, ...) rewrite shared history.
+Write .github/guardrails-probe.txt
+      → PreToolUse:Write hook error: Blocked: .github/guardrails-probe.txt is a protected path
+PowerShell  Write-Output "probe" | Out-File .github/guardrails-probe.txt
+      → PreToolUse:PowerShell hook error: Blocked: .github/guardrails-probe.txt is a protected path
+Read  .env.probe-does-not-exist
+      → PreToolUse:Read hook error: Blocked: env and credential files hold secrets
+Write src/features/blob/lib/zz-hook-probe.ts  (export const hookProbe: number = "not a number")
+      → PostToolUse:Write hook blocking error: tsc --noEmit: error TS2322: Type 'string' is not assignable to type 'number'.
+        (probe file deleted afterwards)
+Edit  .claude/hooks/lib/shell.ts  (a real fix, see the findings above)
+      → PreToolUse:Edit hook error: Blocked: .claude/hooks/lib/shell.ts is a protected path
+```
+
+Hook unit tests: `pnpm exec vitest run .claude/hooks` → 4 files, 145 tests passed.
+
+### Phase 2: local gates (2026-10-22, f82cc71)
+
+```
+$ pnpm typecheck   → exit 0
+$ pnpm lint        → exit 0
+$ pnpm boundaries  → boundaries: ok (93 modules; import rules and client→server-only reachability checked)
+$ pnpm features    → features: ok (analytics, blob, feedback, timeline)
+$ pnpm test:coverage
+ Test Files  24 passed (24)
+      Tests  427 passed (427)
+All files          |     100 |    97.56 |     100 |     100 |
+```
+
+PR #8 CI on f82cc71 ([run 39825875097](https://github.com/Jaspyplayz/petri/actions/runs/39825875097)): typecheck, lint, boundaries, features, unit, build, e2e (3m8s), secrets and `ci-ok` all passed, in 3m35s wall clock (17:48:22 → 17:51:57Z). The concurrency group cancelled the two superseded runs. On c2cbd66 ([run 39823622792](https://github.com/Jaspyplayz/petri/actions/runs/39823622792)) everything passed as well. The e2e job took 8m6s, 6m9s of it in `playwright install --with-deps` while the runner's apt mirror was slow (`Fetched 21.1 MB in 5min 58s (58.9 kB/s)`). The run before it finished e2e in 2m31s.
 
 ### Phase 1 — exit: `pnpm dev` against local Supabase, driven in a real browser (2026-10-22)
 
@@ -153,7 +272,7 @@ Advisors. Security: INFO only, `rls_enabled_no_policy` on agent_runs, events, fe
 
 ### Phase 1 — secret scan (2026-10-22)
 
-`gitleaks git --log-opts="main..HEAD"` found 2 `jwt` hits: the public Supabase CLI demo keys (`iss: supabase-demo`) in `.env.example` (commit 5a834cf). They were removed and replaced by `pnpm env:local`, which generates `.env.local` from `supabase status`. The PR is squash-merged, so `main` never contains them. Note: the branch was pushed in the same command chain as that scan (`;` rather than `&&`). Phase 2's pre-commit hook and CI `secrets` job make that ordering mistake impossible.
+`gitleaks git --log-opts="main..HEAD"` found 2 `jwt` hits: the public Supabase CLI demo keys (`iss: supabase-demo`) in `.env.example` (commit 5a834cf). They were removed and replaced by `pnpm env:local`, which generates `.env.local` from `supabase status`. Correction (Phase 2): PR #1 was merged with a merge commit, not squashed, so 5a834cf is in `main`'s history. They are the CLI's public demo keys, not secrets. CI's `secrets` job scans only the commits a PR adds (see `docs/agent-mistakes.md`). Note: the branch was pushed in the same command chain as that scan (`;` rather than `&&`). Phase 2's pre-commit hook and CI `secrets` job make that ordering mistake impossible.
 
 ### Phase 1 — RLS / grants probe with the anon key against local REST (2026-10-22)
 

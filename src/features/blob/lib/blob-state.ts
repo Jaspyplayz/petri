@@ -19,7 +19,7 @@ const blobNameSchema = z
   .string()
   .trim()
   .min(1, "Give your blob a name.")
-  .max(BLOB_NAME_MAX_LENGTH, `Names can be at most ${BLOB_NAME_MAX_LENGTH} characters.`);
+  .max(BLOB_NAME_MAX_LENGTH, `Names can be at most ${String(BLOB_NAME_MAX_LENGTH)} characters.`);
 
 const storedBlobSchema = z.object({
   name: blobNameSchema,
@@ -54,7 +54,7 @@ export function rename(state: BlobState, rawName: string): RenameResult {
 }
 
 export function formatSize(state: BlobState): string {
-  return `${Math.round(state.size * 100)}%`;
+  return `${String(Math.round(state.size * 100))}%`;
 }
 
 export function parseBlobState(raw: string | null): BlobState {

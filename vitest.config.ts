@@ -9,13 +9,14 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "scripts/**/*.test.ts", "lint-rules/**/*.test.ts", ".claude/hooks/**/*.test.ts"],
     environment: "node",
     coverage: {
       provider: "v8",
       include: ["src/features/*/lib/**/*.ts"],
       exclude: ["**/*.test.ts"],
       reporter: ["text", "json-summary"],
+      thresholds: { lines: 80, statements: 80, functions: 80, branches: 80 },
     },
   },
 });

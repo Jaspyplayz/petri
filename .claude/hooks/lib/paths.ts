@@ -1,0 +1,85 @@
+import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { GUARDRAILS_CONFIG_PATH, loadGuardrailsConfig } from "../../../scripts/check-pr/config.ts";
+import { globToRegExp, toRepoPath } from "../../../scripts/check-pr/glob.ts";
+
+export type PathGuard = {
+  readonly projectRoot: string;
+  readonly caseInsensitive: boolean;
+};
+
+export const localOnlyProtectedPaths: readonly string[] = ["**/.git", "**/.git/**", ".claude/settings.local.json"];
+
+const secretFileNames = [/^\.env(\..+)?$/i, /^\.git-credentials$/i, /^[._]netrc$/i, /^id_(rsa|dsa|ecdsa|ed25519)$/i];
+const sampleSuffix = /\.(example|sample|template)$/i;
+
+export const projectRoot = join(import.meta.dirname, "..", "..", "..");
+
+export function isSecretFile(path: string): boolean {
+  const name = basename(toRepoPath(path));
+  return !sampleSuffix.test(name) && secretFileNames.some((pattern) => pattern.test(name));
+}
+
+export function secretTarget(path: string, cwd: string, windows: boolean): boolean {
+  return isSecretFile(path) || isSecretFile(realPath(resolve(cwd, toNativePath(path, windows))));
+}
+
+export function toNativePath(path: string, windows: boolean): string {
+  const drive = /^\/([a-zA-Z])(\/|$)/.exec(path);
+  return windows && drive?.[1] ? `${drive[1].toUpperCase()}:/${path.slice(3)}` : path;
+}
+
+function repoRoots(start: string): string[] {
+  const roots: string[] = [];
+  let directory = start;
+  for (;;) {
+    if (existsSync(join(directory, ".git"))) roots.push(directory);
+    const parent = dirname(directory);
+    if (parent === directory) return roots;
+    directory = parent;
+  }
+}
+
+export function findRepoRoot(start: string): string | undefined {
+  return repoRoots(start)[0];
+}
+
+export function isTrustedRoot(root: string, trustedRoot: string): boolean {
+  if (relative(trustedRoot, root) === "") return true;
+  const marker = join(root, ".git");
+  if (!existsSync(marker) || lstatSync(marker).isDirectory()) return false;
+  const gitdir = /^gitdir:\s*(.+)$/m.exec(readFileSync(marker, "utf8"))?.[1]?.trim();
+  if (gitdir === undefined) return false;
+  const inside = relative(join(trustedRoot, ".git", "worktrees"), resolve(root, gitdir));
+  return inside !== "" && !inside.startsWith("..") && !isAbsolute(inside);
+}
+
+export function realPath(path: string, links = 0): string {
+  if (existsSync(path)) return realpathSync(path);
+  if (links < 16 && lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    return realPath(resolve(dirname(path), readlinkSync(path)), links + 1);
+  }
+  const parent = dirname(path);
+  return parent === path ? path : join(realPath(parent, links), basename(path));
+}
+
+function protectedGlobs(root: string, fallbackRoot: string): readonly string[] {
+  const configRoot = existsSync(join(root, GUARDRAILS_CONFIG_PATH)) ? root : fallbackRoot;
+  return [...loadGuardrailsConfig(configRoot).protectedPaths, ...localOnlyProtectedPaths];
+}
+
+function protectedWithin(absolute: string, guard: PathGuard): string | undefined {
+  const flags = guard.caseInsensitive ? "i" : "";
+  for (const root of [guard.projectRoot, ...repoRoots(dirname(absolute))]) {
+    const inside = relative(root, absolute);
+    if (inside === "" || inside.startsWith("..") || isAbsolute(inside)) continue;
+    const repoPath = toRepoPath(inside);
+    if (protectedGlobs(root, guard.projectRoot).some((glob) => new RegExp(globToRegExp(glob).source, flags).test(repoPath))) return repoPath;
+  }
+  return undefined;
+}
+
+export function protectedRepoPath(path: string, cwd: string, guard: PathGuard): string | undefined {
+  const absolute = resolve(cwd, toNativePath(path, guard.caseInsensitive));
+  return protectedWithin(absolute, guard) ?? protectedWithin(realPath(absolute), guard);
+}

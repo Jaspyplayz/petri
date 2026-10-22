@@ -1,0 +1,71 @@
+{
+  "protectedPaths": [
+    ".github/**",
+    ".evolution/**",
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".claude/settings.json",
+    ".claude/hooks/**",
+    "eslint.config.*",
+    "lint-rules/**",
+    "tsconfig*.json",
+    ".dependency-cruiser.cjs",
+    "scripts/check-*",
+    "scripts/check-*/**",
+    "lefthook.yml",
+    ".gitleaks.toml",
+    "vitest.config.*",
+    "playwright.config.*",
+    "package.json",
+    "pnpm-workspace.yaml",
+    "pnpm-lock.yaml",
+    ".pnpmfile.cjs",
+    ".pnpmfile.mjs",
+    "patches/**",
+    ".npmrc",
+    "vercel.json",
+    "supabase/migrations/**",
+    "src/shared/testing/**",
+    "src/shared/ui/effects/**",
+    "src/shared/env.ts",
+    "src/shared/lib/log.ts",
+    "src/shared/lib/sentry-options.ts",
+    "src/instrumentation.ts",
+    "src/instrumentation-client.ts"
+  ],
+  "agentPullRequests": {
+    "labels": [
+      "evolution"
+    ],
+    "branchPrefixes": [
+      "evo/"
+    ],
+    "authors": [
+      "claude[bot]",
+      "github-actions[bot]"
+    ]
+  },
+  "humanOnlyLabels": {
+    "protectedPaths": "protected-ok",
+    "prSize": "size-ok"
+  },
+  "prSize": {
+    "maxChangedLines": 400,
+    "ignoredPaths": [
+      "pnpm-lock.yaml",
+      "**/package-lock.json",
+      "**/yarn.lock",
+      "src/shared/supabase/database.types.ts",
+      "src/features/registry.ts",
+      "FEATURE_MAP.md"
+    ]
+  },
+  "migrations": {
+    "paths": [
+      "supabase/migrations/**"
+    ],
+    "allowedFromTrustLevel": 4
+  },
+  "trustConfigPath": ".evolution/config.json",
+  "pauseFilePath": ".evolution/PAUSED"
+}

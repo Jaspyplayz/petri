@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type AnimationEvent, type FormEvent } from "react";
+import { useMemo, useState, type AnimationEvent, type SubmitEvent } from "react";
 import { track } from "@/shared/lib/track";
 import { useLocalStorage } from "@/shared/lib/use-local-storage";
 import { Button } from "@/shared/ui/button";
@@ -49,7 +49,7 @@ export function BlobCreature() {
     track("blob", "feed");
   };
 
-  const handleRename = (event: FormEvent<HTMLFormElement>) => {
+  const handleRename = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const result = rename(state, draftName ?? state.name);
     if (!result.ok) {
