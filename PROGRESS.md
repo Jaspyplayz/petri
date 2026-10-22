@@ -116,6 +116,18 @@ A fresh-context subagent reviewed `git diff main...HEAD` against STARTER_PROMPT 
 - LOW, blob mood never resets → fixed via `animationend` (+ reduced-motion path), with e2e tests.
 - LOW, timeline counter capped at 100 rows and counting reverted changes → fixed with exact counts minus reverts.
 
+### First Vercel preview, verified in a real browser (2026-10-22)
+
+Preview `petri-hmvrozlx7-jaspy-s-team.vercel.app` (PR #6, commit 681b930), checked in Chrome, logged in through Vercel's preview protection:
+
+- `/`, `/feedback` and `/timeline` all render. Feedback and Timeline read the production Supabase project and show the empty state ("No feedback yet", "0 changes shipped, 0 written by humans").
+- In-app navigation is a soft navigation (a `window` marker survived), and every `_rsc` fetch returned 200 per Resource Timing.
+- Poke increments the counter (`pokes` = 1).
+- `POST /api/events` returns a quiet `503 {"error":"unavailable"}`. Previews get no service-role key by design.
+- Console: 0 messages from the app. The only entries came from one of the user's Chrome extensions.
+- Vercel runtime logs for this deployment have 0 error/warning lines. The previous preview (before `writesOffResponse`) had sent 7 `ZodError` events to Sentry (PETRI-1). That also proves server errors reach Sentry end to end.
+- Build fixes along the way: the project defaulted to framework "Other" (fixed with `vercel.json`), and Node is pinned to `24.x`.
+
 ### Production Supabase — migrations + anon probe (2026-10-22)
 
 `pnpm db:push:prod` applied 5 migrations, no seeds; `migration list` shows local = remote for all 5. `list_tables`: 8 tables, RLS on for all, 0 rows apart from the 2 `app_flags`. Anon-key probe against `https://ejwwwasbkxqnyrjzlvll.supabase.co/rest/v1`. Every write probe would also have failed a CHECK, so a wrong grant could not have written a row.
