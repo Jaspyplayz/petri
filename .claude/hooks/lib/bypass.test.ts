@@ -147,6 +147,10 @@ describe("review findings stay closed", () => {
     ["HOME=/tmp/evil git commit -m x", "overriding HOME"],
     ["$env:USERPROFILE = 'C:\\evil'", "overriding HOME"],
     ["export XDG_CONFIG_HOME=/tmp/evil", "overriding HOME"],
+    ["[Environment]::SetEnvironmentVariable('HOME', 'C:\\evil')", "overriding HOME"],
+    ["${env:HOME} = 'C:\\evil'", "overriding HOME"],
+    ["Set-Item -Path env:USERPROFILE -Value C:\\evil", "overriding HOME"],
+    ["env HOME=/tmp/evil git commit -m x", "overriding HOME"],
   ])("%s", (command, reason) => {
     expect(commandProblem(command, guard)).toContain(reason);
   });
@@ -158,6 +162,7 @@ describe("review findings stay closed", () => {
     "git commit --amend --no-edit",
     'echo "$(date)" && git log --oneline -5',
     "pnpm exec lefthook install",
+    'cd "$HOME/petri" && [ "$HOME" = "/root" ] || echo "$HOME"',
   ])("allows %s", (command) => {
     expect(commandProblem(command, guard)).toBeUndefined();
   });
@@ -171,7 +176,7 @@ describe("review findings stay closed", () => {
     expect(protectedRepoPath(join(homedir(), "notes.md"), projectRoot, paths)).toBeUndefined();
   });
 
-  it.each([".env*", "*", "**/*", "{*.ts,.env.local}", ".en[v]*", "id_*", "{.e,x}nv*", ".e\\nv*", "{a,{b,.env}}", ".env.st*", "secrets/**", "{unbalanced"])("blocks Grep with glob %s", (glob) => {
+  it.each([".env*", "*", "**/*", "{*.ts,.env.local}", ".en[v]*", "id_*", "{.e,x}nv*", ".e\\nv*", "{a,{b,.env}}", ".env.st*", "secrets/**", "{unbalanced", "*/*/*/*/.env*", "a/*/b/*/c/.env.local"])("blocks Grep with glob %s", (glob) => {
     const fileGuard = { evolutionHuman: false, protectedTarget: () => undefined, secretPath: () => false };
     expect(fileProblem({ toolName: "Grep", toolInput: { pattern: "KEY", path: projectRoot, glob } }, fileGuard)).toContain("secrets");
   });

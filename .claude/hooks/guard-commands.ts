@@ -5,6 +5,8 @@ import { projectRoot, protectedRepoPath, secretTarget } from "./lib/paths.ts";
 
 const shellTools = new Set(["Bash", "PowerShell"]);
 const shellLanguages = new Set(["shell", "bash", "sh", "zsh", "powershell", "pwsh"]);
+const languageKeys = ["language", "lang", "runtime", "interpreter"];
+const codeToolName = /python|eval|script|code|javascript|node|ruby|deno|repl/i;
 const unguardableCode =
   "Blocked: this tool runs code the guard can't check (it can write any file), so agents run only shell through it. Use Bash or the Edit/Write tools; a human can allow it with EVOLUTION_HUMAN=1.";
 
@@ -27,8 +29,10 @@ function problemFor(input: HookInput): string | undefined {
     const command = input.toolInput.command;
     return typeof command === "string" ? commandProblem(command, guard) : `Blocked: ${input.toolName} hook input has no command string.`;
   }
-  const language = input.toolInput.language;
-  if (typeof language === "string" && !shellLanguages.has(language.toLowerCase()) && !guard.evolutionHuman) return unguardableCode;
+  const declared = languageKeys.map((key) => input.toolInput[key]).filter((value) => typeof value === "string");
+  const runsShell = declared.length > 0 && declared.every((language) => shellLanguages.has(language.toLowerCase()));
+  const mayRunOtherCode = declared.length > 0 ? !runsShell : codeToolName.test(input.toolName);
+  if (mayRunOtherCode && !guard.evolutionHuman) return unguardableCode;
   return stringsIn(input.toolInput)
     .map((text) => pathProblem(text, guard) ?? commandProblem(text, guard))
     .find((problem) => problem !== undefined);

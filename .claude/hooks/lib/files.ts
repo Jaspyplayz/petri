@@ -18,7 +18,6 @@ const secretSamples = [
   ...[".env", ".env.local", ".env.setup", ".env.production", ".env.development", ".env.test", ".env.staging", ".env.production.local"],
   ...[".git-credentials", ".netrc", "_netrc", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"],
 ];
-const sampleDirectories = ["", "dir/", "a/b/"];
 const maxExpansions = 256;
 const secretMessage = "Blocked: env and credential files hold secrets, so agents neither read nor write them. Scripts such as `pnpm setup:secrets` and `pnpm env:local` handle them.";
 
@@ -54,9 +53,9 @@ function globReadsSecrets(glob: string): boolean {
     if (alternative.startsWith("!")) return false;
     const plain = alternative.replace(/^\//, "");
     if (isSecretFile(plain)) return true;
-    const pattern = globToRegExp(plain);
-    const literalPrefix = /^([^*?]*\/)?/.exec(plain)?.[1] ?? "";
-    return secretSamples.some((name) => [...sampleDirectories, literalPrefix].some((directory) => pattern.test(`${directory}${name}`)));
+    const lastSegment = plain.split("/").at(-1) ?? "";
+    const finalPattern = lastSegment === "" || lastSegment === "**" ? /.*/ : globToRegExp(lastSegment);
+    return secretSamples.some((name) => finalPattern.test(name));
   });
 }
 

@@ -58,6 +58,9 @@ describe("guard-commands hook", () => {
     expect(blocked.stderr).toContain("runs code the guard can't check");
     expect(runHook("guard-commands.ts", javascript, { EVOLUTION_HUMAN: "1" }).status).toBe(0);
     expect(runHook("guard-commands.ts", toolCall("mcp__box__run_task", { spec: { steps: [{ cmd: "git push --force" }] } })).status).toBe(2);
+    expect(runHook("guard-commands.ts", toolCall("mcp__box__python_exec", { source: "open('x','w')" })).status).toBe(2);
+    expect(runHook("guard-commands.ts", toolCall("mcp__box__run", { runtime: "node", src: "1" })).status).toBe(2);
+    expect(runHook("guard-commands.ts", toolCall("mcp__box__run", { runtime: "bash", src: "ls" })).status).toBe(0);
   });
 });
 

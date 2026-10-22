@@ -18,7 +18,11 @@ const gitValueOptions = new Set(["-C", "-c", "--config-env", "--git-dir", "--wor
 const patchPrograms = new Set(["patch", "gpatch"]);
 const forceOptions = ["--force", "--force-with-lease", "--force-if-includes", "--mirror"];
 const gitIndirection = /^(alias|include|includeif)\./i;
-const configHomeOverride = /^(\$?env:)?(HOME|XDG_CONFIG_HOME|USERPROFILE)(=|$)/i;
+const configHomeOverrides = [
+  /(^|[\s;&|({:'"`])(HOME|USERPROFILE|XDG_CONFIG_HOME)\}?['"]?\s*=(?!=)/i,
+  /SetEnvironmentVariable\s*\(\s*["'](HOME|USERPROFILE|XDG_CONFIG_HOME)["']/i,
+  /(set-item|new-item|\bsi\b|\bni\b)[^;|\n]*env:\\?(HOME|USERPROFILE|XDG_CONFIG_HOME)\b/i,
+];
 const unresolvedPath = /[$`%]|^~/;
 const printers = new Set(["echo", "printf", "print", "cat", "write-output", "write-host", "write-information", "out-host"]);
 const envDrivers = new Set(["get-childitem", "gci", "ls", "dir", "get-item", "gi", "get-content", "gc", "cat", "type"]);
@@ -222,7 +226,6 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     return messages.skipHooks;
   }
   if (runsSubcommand(all.map((word) => word.text.toLowerCase()), "lefthook", "uninstall")) return messages.skipHooks;
-  if (segment.words.some((word) => configHomeOverride.test(word.text))) return messages.configHome;
   if (segment.words.some((word) => guard.secretPath(word.text)) || segment.writeTargets.some(guard.secretPath)) return messages.secretFile;
   if (program) {
     const name = programName(program.text);
@@ -275,6 +278,7 @@ export function pathProblem(path: string, guard: CommandGuard): string | undefin
 export function commandProblem(command: string, guard: CommandGuard, depth = 0): string | undefined {
   if (/EVOLUTION_HUMAN/.test(command)) return messages.evolutionHuman;
   if (/GIT_CONFIG/i.test(command)) return messages.gitAlias;
+  if (configHomeOverrides.some((pattern) => pattern.test(command))) return messages.configHome;
   const script = scriptProblem(command);
   if (script) return script;
   for (const segment of [...parseShell(command), ...parseShell(command, true)]) {
