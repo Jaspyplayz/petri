@@ -15,12 +15,10 @@ Status key: ⬜ todo · ✅ done
 
 ## To do
 
-5. ⬜ **Sentry (2 minutes).** On sentry.io create a Next.js project named `petri` (Developer plan is free). Then paste into `.env.setup`:
-   - `NEXT_PUBLIC_SENTRY_DSN`: Project Settings → Client Keys (DSN)
-   - `SENTRY_ORG` and `SENTRY_PROJECT`: the slugs from the URL `sentry.io/organizations/<org>/projects/<project>/`
-   - `SENTRY_AUTH_TOKEN`: Settings → Auth Tokens → Create, scopes `project:read`, `event:read`, `project:releases`
-
-   (Running `npx @sentry/wizard -i nextjs` is not needed; Sentry is already wired up and is a no-op until the DSN exists.)
+5. ⬜ **Sentry: one token left.** Claude created the project `petri` in org `jaspys-team` (free Developer plan) and wrote `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG` and `SENTRY_PROJECT` into `.env.setup`. You still need to create the auth token, because Sentry doesn't let tools create tokens:
+   - Open https://jaspys-team.sentry.io/settings/account/api/auth-tokens/ and click **Create New Token**.
+   - Tick `project:read`, `event:read` and `project:releases`.
+   - Paste the token into `.env.setup` as `SENTRY_AUTH_TOKEN=`. Don't paste it into the chat.
 
 6. ⬜ **Claude in GitHub Actions + Vercel token.** In a terminal in the `petri` folder:
 
