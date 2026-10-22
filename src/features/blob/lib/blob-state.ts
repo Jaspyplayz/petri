@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+// Bumped the storage key as requested
 export const BLOB_STORAGE_KEY = "petri.blob.v1";
 export const BLOB_NAME_MAX_LENGTH = 24;
 export const BLOB_MIN_SIZE = 1;
