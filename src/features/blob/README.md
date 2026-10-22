@@ -6,8 +6,8 @@ Feature id: `blob` · Route: `/`
 
 The home page shows the Blob, a squishy SVG creature. Visitors can:
 
-- **Poke** it (click the creature or the Poke button): it wobbles and squints, and the poke counter goes up.
-- **Feed** it: it grows by 5% per snack, up to 200%. At full size the Feed button says "Too full".
+- **Poke** it (click the creature or the Poke button): it wobbles and squints, then settles back to calm breathing; the poke counter goes up.
+- **Feed** it: it gulps (open mouth, short wobble) and grows by 5% per snack, up to 200%. At full size the Feed button says "Too full".
 - **Name** it: 1–24 characters after trimming. Invalid names show an inline error.
 
 ## Invariants
@@ -16,7 +16,7 @@ The home page shows the Blob, a squishy SVG creature. Visitors can:
 - Stored state is validated with Zod on read. Corrupt or out-of-range data falls back to the initial state; it never crashes the page.
 - The server render uses the initial state; the browser swaps in stored state via `useSyncExternalStore` (no `useEffect`).
 - Every interaction sends an analytics event (`blob` + `poke` / `feed` / `rename`) through `shared/lib/track`.
-- Animations respect `prefers-reduced-motion`.
+- Animations respect `prefers-reduced-motion` (the wobble shrinks to 1 ms so the mood still resets on `animationend`).
 
 ## Structure
 

@@ -6,8 +6,8 @@ export function shortSha(sha: string | null): string | null {
   return sha ? sha.slice(0, 7) : null;
 }
 
-export function countShippedChanges(kinds: readonly TimelineKind[]): number {
-  return kinds.filter((kind) => kind === "change").length;
+export function liveChangeCount(changes: number, reverts: number): number {
+  return Math.max(0, changes - reverts);
 }
 
 export function shippedCounterText(shipped: number): string {

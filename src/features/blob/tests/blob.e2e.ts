@@ -19,6 +19,9 @@ test.describe("blob", () => {
     await expect.poll(animationNames).toContainEqual(expect.stringContaining("breathe"));
     await page.getByTestId("blob-poke-button").click();
     await expect.poll(animationNames).toContainEqual(expect.stringContaining("wobble"));
+    await expect(page.getByTestId("blob-body")).toHaveAttribute("data-mood", "poked");
+    await expect(page.getByTestId("blob-body")).toHaveAttribute("data-mood", "calm");
+    await expect.poll(animationNames).toContainEqual(expect.stringContaining("breathe"));
 
     const gap = await creature.locator("svg").evaluate((svg) => {
       const body = svg.querySelector("path")?.getBoundingClientRect();
@@ -26,6 +29,13 @@ test.describe("blob", () => {
       return body && shadow ? shadow.top - body.bottom : Number.POSITIVE_INFINITY;
     });
     expect(gap).toBeLessThan(12);
+  });
+
+  test("motion-sensitive visitors still see the mood reset", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    await page.getByTestId("blob-feed-button").click();
+    await expect(page.getByTestId("blob-body")).toHaveAttribute("data-mood", "calm");
   });
 
   test("feeding grows the blob", async ({ page }) => {

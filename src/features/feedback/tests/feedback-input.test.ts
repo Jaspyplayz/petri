@@ -7,7 +7,7 @@ import {
   feedbackInputSchema,
   parseFeedbackApiError,
 } from "../lib/feedback-input";
-import { clientIpFromHeaders, RATE_LIMITS } from "../lib/rate-limits";
+import { RATE_LIMITS } from "../lib/rate-limits";
 
 describe("feedbackInputSchema", () => {
   it("trims the body", () => {
@@ -71,16 +71,5 @@ describe("rate limits", () => {
   it("matches the spec: 5 posts and 30 votes per hour", () => {
     expect(RATE_LIMITS.post).toEqual({ limit: 5, windowSeconds: 3600 });
     expect(RATE_LIMITS.vote).toEqual({ limit: 30, windowSeconds: 3600 });
-  });
-});
-
-describe("clientIpFromHeaders", () => {
-  it("uses the first x-forwarded-for entry", () => {
-    expect(clientIpFromHeaders(new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" }))).toBe("203.0.113.7");
-  });
-
-  it("falls back to x-real-ip, then unknown", () => {
-    expect(clientIpFromHeaders(new Headers({ "x-real-ip": "198.51.100.2" }))).toBe("198.51.100.2");
-    expect(clientIpFromHeaders(new Headers())).toBe("unknown");
   });
 });

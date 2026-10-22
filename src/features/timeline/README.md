@@ -11,7 +11,7 @@ The public changelog. Newest first, each entry shows its title, a plain-English 
 - Read-only for the public: the page reads `changelog` and `feedback` with the anon key. Only CI writes `changelog`, using the service role.
 - Data is fetched at request time inside a `<Suspense>` boundary (Cache Components), so new entries appear without a redeploy.
 - Times are formatted in UTC so server output is deterministic.
-- The counter counts `change` entries; reverts are listed but not counted.
+- The counter is exact (DB `count`, not limited to the 100 rows shown): `change` entries minus `revert` entries, so a reverted change no longer counts as shipped.
 
 ## Structure
 

@@ -12,6 +12,7 @@ export const blobManifest = defineFeature({
     panel: "blob-panel",
     name: "blob-name",
     creature: "blob-creature",
+    body: "blob-body",
     size: "blob-size",
     pokes: "blob-pokes",
     feeds: "blob-feeds",

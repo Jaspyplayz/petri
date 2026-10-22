@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { describeAction, envSetupTemplate, parseEnvFile, planSetup, type SetupAction } from "./setup-secrets/plan";
+import { commandFor, describeAction, envSetupTemplate, parseEnvFile, planSetup, type SetupAction } from "./setup-secrets/plan";
 
 const root = join(import.meta.dirname, "..");
 const envSetupPath = join(root, ".env.setup");
@@ -19,7 +19,7 @@ function run(command: string, args: readonly string[], input?: string): { ok: bo
     cwd: root,
     input: input ?? "",
     encoding: "utf8",
-    shell: isWindows,
+    shell: isWindows && command === "vercel",
     stdio: ["pipe", "pipe", "pipe"],
   });
   return { ok: result.status === 0, stderr: result.stderr.trim() };
@@ -38,17 +38,8 @@ function readVercelIds(): Map<string, string> {
 }
 
 function apply(action: SetupAction): boolean {
-  switch (action.kind) {
-    case "github-secret":
-      return run("gh", ["secret", "set", action.key], action.value).ok;
-    case "github-variable":
-      return run("gh", ["variable", "set", action.key, "--body", action.value]).ok;
-    case "vercel-env": {
-      const args = ["env", "add", action.key, action.environment, "--force", "--yes"];
-      if (action.sensitive) args.push("--sensitive");
-      return run("vercel", args, action.value).ok;
-    }
-  }
+  const { command, args, stdin } = commandFor(action);
+  return run(command, args, stdin).ok;
 }
 
 function main(): void {
@@ -94,7 +85,7 @@ function main(): void {
   const failures = plan.actions.filter((action) => !apply(action));
 
   if (!run("gh", ["variable", "get", "EVOLUTION_ENABLED"]).ok) {
-    run("gh", ["variable", "set", "EVOLUTION_ENABLED", "--body", "false"]);
+    run("gh", ["variable", "set", "EVOLUTION_ENABLED"], "false");
     out("  GitHub variable  EVOLUTION_ENABLED=false (the loop stays off until go-live)");
   }
 

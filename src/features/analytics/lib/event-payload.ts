@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const MAX_EVENT_BODY_BYTES = 1024;
+export const EVENT_RATE_LIMIT = { limit: 300, windowSeconds: 60 * 60 } as const;
 
 const slug = z.string().regex(/^[a-z][a-z0-9_-]{0,39}$/);
 

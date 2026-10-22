@@ -27,7 +27,10 @@ function writeFile(file: GeneratedFile): void {
 
 function listFeatureIds(): string[] {
   if (!existsSync(featuresDir)) return [];
-  return readdirSync(featuresDir).filter((name) => statSync(join(featuresDir, name)).isDirectory());
+  return readdirSync(featuresDir).filter(
+    (name) =>
+      statSync(join(featuresDir, name)).isDirectory() && existsSync(join(featuresDir, name, "feature.manifest.ts")),
+  );
 }
 
 function main(): void {

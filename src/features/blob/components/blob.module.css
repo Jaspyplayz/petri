@@ -28,7 +28,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wobble,
+  .wobble {
+    animation-duration: 1ms;
+  }
+
   .breathe {
     animation: none;
   }

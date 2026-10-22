@@ -13,6 +13,7 @@ export type SecretSpec = {
 };
 
 const deployed: readonly VercelEnvironment[] = ["production", "preview"];
+const productionOnly: readonly VercelEnvironment[] = ["production"];
 
 export const SECRET_SPECS: readonly SecretSpec[] = [
   {
@@ -33,14 +34,14 @@ export const SECRET_SPECS: readonly SecretSpec[] = [
     required: true,
     how: "Supabase dashboard → Project Settings → API Keys → service_role / secret key",
     github: "secret",
-    vercel: deployed,
+    vercel: productionOnly,
     vercelSensitive: true,
   },
   {
     key: "RATE_LIMIT_SALT",
     required: true,
     how: "Leave blank: generated for you",
-    vercel: deployed,
+    vercel: productionOnly,
     vercelSensitive: true,
     generate: () => randomBytes(32).toString("hex"),
   },
@@ -171,6 +172,27 @@ export function describeAction(action: SetupAction): string {
       return `GitHub variable  ${action.key}`;
     case "vercel-env":
       return `Vercel env       ${action.key} (${action.environment}${action.sensitive ? ", sensitive" : ""})`;
+  }
+}
+
+export type ShellCommand = {
+  readonly command: "gh" | "vercel";
+  readonly args: readonly string[];
+  readonly stdin: string;
+};
+
+export function commandFor(action: SetupAction): ShellCommand {
+  switch (action.kind) {
+    case "github-secret":
+      return { command: "gh", args: ["secret", "set", action.key], stdin: action.value };
+    case "github-variable":
+      return { command: "gh", args: ["variable", "set", action.key], stdin: action.value };
+    case "vercel-env":
+      return {
+        command: "vercel",
+        args: ["env", "add", action.key, action.environment, "--force", "--yes", ...(action.sensitive ? ["--sensitive"] : [])],
+        stdin: action.value,
+      };
   }
 }
 

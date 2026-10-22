@@ -1,11 +1,11 @@
 import "server-only";
-import { countShippedChanges, shippedCounterText } from "../lib/timeline-format";
-import { listTimeline } from "../server/list-timeline";
+import { liveChangeCount, shippedCounterText } from "../lib/timeline-format";
+import { countChanges, listTimeline } from "../server/list-timeline";
 import { TimelineEntry } from "./timeline-entry";
 
 export async function TimelineFeed() {
-  const entries = await listTimeline();
-  const shipped = countShippedChanges(entries.map((entry) => entry.kind));
+  const [entries, counts] = await Promise.all([listTimeline(), countChanges()]);
+  const shipped = liveChangeCount(counts.changes, counts.reverts);
   return (
     <div className="space-y-6">
       <p data-testid="timeline-counter" className="text-lg font-semibold text-culture-deep">

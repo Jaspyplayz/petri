@@ -41,17 +41,32 @@ test.describe("feedback writes", () => {
     expect(badCategory.status()).toBe(400);
     const huge = await request.post("/api/feedback", { data: { body: "x".repeat(10_000), category: "idea" } });
     expect(huge.status()).toBe(413);
-    const unknownVote = await request.post("/api/feedback/00000000-0000-4000-8000-00000000ffff/vote");
+    const unknownVote = await request.post("/api/feedback/00000000-0000-4000-8000-00000000ffff/vote", { data: {} });
     expect(unknownVote.status()).toBe(404);
-    const badId = await request.post("/api/feedback/not-a-uuid/vote");
+    const badId = await request.post("/api/feedback/not-a-uuid/vote", { data: {} });
     expect(badId.status()).toBe(404);
+  });
+
+  test("cross-site and non-JSON writes are refused", async ({ request }) => {
+    const crossSite = await request.post("/api/feedback/00000000-0000-4000-8000-000000000003/vote", {
+      data: {},
+      headers: { origin: "https://evil.example", "sec-fetch-site": "cross-site" },
+    });
+    expect(crossSite.status()).toBe(403);
+    const plainText = await request.post("/api/feedback", {
+      data: JSON.stringify({ body: "csrf attempt", category: "idea" }),
+      headers: { "content-type": "text/plain" },
+    });
+    expect(plainText.status()).toBe(415);
+    const noBodyVote = await request.post("/api/feedback/00000000-0000-4000-8000-000000000003/vote");
+    expect(noBodyVote.status()).toBe(415);
   });
 
   test("a repeat vote is idempotent", async ({ request }) => {
     const id = "00000000-0000-4000-8000-000000000003";
-    const first = await request.post(`/api/feedback/${id}/vote`);
+    const first = await request.post(`/api/feedback/${id}/vote`, { data: {} });
     expect(first.status()).toBe(201);
-    const again = await request.post(`/api/feedback/${id}/vote`);
+    const again = await request.post(`/api/feedback/${id}/vote`, { data: {} });
     expect(again.status()).toBe(200);
     expect(await again.json()).toEqual({ alreadyVoted: true });
   });

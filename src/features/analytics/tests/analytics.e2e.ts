@@ -16,4 +16,12 @@ test.describe("analytics", () => {
     });
     expect(response.status()).toBe(400);
   });
+
+  test("cross-site events are refused", async ({ request }) => {
+    const response = await request.post("/api/events", {
+      data: { featureId: "blob", action: "view", path: "/" },
+      headers: { origin: "https://evil.example" },
+    });
+    expect(response.status()).toBe(403);
+  });
 });

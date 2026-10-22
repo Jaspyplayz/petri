@@ -38,3 +38,17 @@ export async function listTimeline(): Promise<readonly TimelineEntry[]> {
     }),
   }));
 }
+
+async function countKind(kind: "change" | "revert"): Promise<number> {
+  const { count, error } = await publicSupabase()
+    .from("changelog")
+    .select("id", { count: "exact", head: true })
+    .eq("kind", kind);
+  if (error) throw new Error(`timeline: failed to count ${kind} entries: ${error.message}`);
+  return count ?? 0;
+}
+
+export async function countChanges(): Promise<{ readonly changes: number; readonly reverts: number }> {
+  const [changes, reverts] = await Promise.all([countKind("change"), countKind("revert")]);
+  return { changes, reverts };
+}

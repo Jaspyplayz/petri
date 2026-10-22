@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type AnimationEvent, type FormEvent } from "react";
 import { track } from "@/shared/lib/track";
 import { useLocalStorage } from "@/shared/lib/use-local-storage";
 import { Button } from "@/shared/ui/button";
@@ -24,6 +24,7 @@ export function BlobCreature() {
   const [stored, setStored] = useLocalStorage(BLOB_STORAGE_KEY);
   const state = useMemo(() => parseBlobState(stored), [stored]);
   const [wobbles, setWobbles] = useState(0);
+  const [wobbling, setWobbling] = useState(false);
   const [mood, setMood] = useState<Mood>("calm");
   const [draftName, setDraftName] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
@@ -35,12 +36,15 @@ export function BlobCreature() {
   const handlePoke = () => {
     save(poke(state));
     setWobbles((count) => count + 1);
+    setWobbling(true);
     setMood("poked");
     track("blob", "poke");
   };
 
   const handleFeed = () => {
     save(feed(state));
+    setWobbles((count) => count + 1);
+    setWobbling(true);
     setMood("fed");
     track("blob", "feed");
   };
@@ -56,6 +60,12 @@ export function BlobCreature() {
     setDraftName(null);
     setNameError(null);
     track("blob", "rename");
+  };
+
+  const handleAnimationEnd = (event: AnimationEvent<SVGGElement>) => {
+    if (event.target !== event.currentTarget) return;
+    setWobbling(false);
+    setMood("calm");
   };
 
   const full = isFullyGrown(state);
@@ -76,7 +86,13 @@ export function BlobCreature() {
         <svg viewBox="0 0 200 200" width="240" height="240" aria-hidden="true">
           <ellipse cx="100" cy="182" rx={46 * state.size} ry="8" className="fill-ink/10" />
           <g className={styles.creature} style={{ transform: `scale(${String(state.size * 0.8)})` }}>
-            <g key={wobbles} className={wobbles > 0 ? styles.wobble : styles.breathe}>
+            <g
+              key={wobbles}
+              className={wobbling ? styles.wobble : styles.breathe}
+              data-mood={mood}
+              data-testid="blob-body"
+              onAnimationEnd={handleAnimationEnd}
+            >
               <path
                 d="M100 38c34 0 64 22 68 62 4 38-18 78-68 78s-74-36-70-76c4-40 36-64 70-64z"
                 className="fill-culture stroke-culture-deep"

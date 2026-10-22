@@ -16,7 +16,11 @@ export function VoteButton({ feedbackId, count }: { readonly feedbackId: string;
   const handleVote = () => {
     if (voted || pending) return;
     startTransition(async () => {
-      const response = await fetch(`/api/feedback/${feedbackId}/vote`, { method: "POST" });
+      const response = await fetch(`/api/feedback/${feedbackId}/vote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
       if (response.ok) {
         setState({ kind: "voted" });
         if (response.status === 201) {

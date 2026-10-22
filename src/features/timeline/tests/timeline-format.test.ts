@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  countShippedChanges,
   formatMergedAt,
+  liveChangeCount,
   shippedCounterText,
   shortSha,
   trustLevelLabel,
@@ -17,10 +17,11 @@ describe("shortSha", () => {
   });
 });
 
-describe("countShippedChanges", () => {
-  it("counts changes and ignores reverts", () => {
-    expect(countShippedChanges(["change", "revert", "change"])).toBe(2);
-    expect(countShippedChanges([])).toBe(0);
+describe("liveChangeCount", () => {
+  it("subtracts reverted changes and never goes negative", () => {
+    expect(liveChangeCount(2, 1)).toBe(1);
+    expect(liveChangeCount(0, 0)).toBe(0);
+    expect(liveChangeCount(1, 3)).toBe(0);
   });
 });
 

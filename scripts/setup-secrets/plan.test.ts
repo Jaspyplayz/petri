@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeAction, envSetupTemplate, parseEnvFile, planSetup, SECRET_SPECS, type SecretSpec } from "./plan";
+import { commandFor, describeAction, envSetupTemplate, parseEnvFile, planSetup, SECRET_SPECS, type SecretSpec } from "./plan";
 
 describe("parseEnvFile", () => {
   it("parses keys, quotes, comments and export prefixes", () => {
@@ -53,6 +53,32 @@ describe("planSetup", () => {
         expect(spec.key).not.toMatch(/SERVICE|SECRET|TOKEN/);
       }
     }
+  });
+});
+
+describe("commandFor", () => {
+  it("passes every value through stdin, never on the command line", () => {
+    const value = 'evil" & calc.exe | echo "pwned';
+    const plan = planSetup(new Map(SECRET_SPECS.map((spec) => [spec.key, value])));
+    expect(plan.actions.length).toBeGreaterThan(0);
+    for (const action of plan.actions) {
+      const command = commandFor(action);
+      expect(command.stdin).toBe(value);
+      expect(command.args.join(" ")).not.toContain(value);
+      for (const arg of command.args) expect(arg).toMatch(/^[A-Za-z0-9_-]+$|^--[a-z-]+$/);
+    }
+  });
+});
+
+describe("preview deployments", () => {
+  it("never receive the service-role key or the rate-limit salt", () => {
+    const plan = planSetup(new Map(SECRET_SPECS.map((spec) => [spec.key, "x"])));
+    const previewKeys = plan.actions.flatMap((action) =>
+      action.kind === "vercel-env" && action.environment === "preview" ? [action.key] : [],
+    );
+    expect(previewKeys).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(previewKeys).not.toContain("RATE_LIMIT_SALT");
+    expect(previewKeys).toContain("NEXT_PUBLIC_SUPABASE_URL");
   });
 });
 
