@@ -74,11 +74,16 @@ export function loadCheckContext(argv: readonly string[], env: Env): CheckContex
     humanLabel: async (label) => {
       if (!pullRequest?.labels.includes(label) || !token || !repository) return false;
       if (pullRequest.headRepository !== repository) return false;
-      const [events, lastHeadUpdate] = await Promise.all([
-        fetchLabelEvents(repository, pullRequest.number, token),
-        fetchLastHeadUpdate(repository, pullRequest.headRef, token),
-      ]);
-      return labelAddedByHuman(label, pullRequest, events, humans, lastHeadUpdate);
+      try {
+        const [events, lastHeadUpdate] = await Promise.all([
+          fetchLabelEvents(repository, pullRequest.number, token),
+          fetchLastHeadUpdate(repository, pullRequest.headRef, token),
+        ]);
+        return labelAddedByHuman(label, pullRequest, events, humans, lastHeadUpdate);
+      } catch (error) {
+        process.stderr.write(`can't verify the "${label}" label, so it doesn't count: ${String(error)}\n`);
+        return false;
+      }
     },
     summary: (markdown) => {
       if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${markdown}\n`);

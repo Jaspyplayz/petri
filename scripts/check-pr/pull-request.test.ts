@@ -6,6 +6,7 @@ import {
   fetchLabelEvents,
   fetchLastHeadUpdate,
   humanMaintainers,
+  type HeadUpdate,
   type LabelEvent,
   labelAddedByHuman,
   type PullRequest,
@@ -81,6 +82,8 @@ describe("humanMaintainers", () => {
 
 describe("labelAddedByHuman", () => {
   const pushedAt = "2026-10-22T10:00:00Z";
+  const headSha = "b".repeat(40);
+  const pushed = (at: string, sha = headSha): HeadUpdate => ({ at, sha });
   const labeled = (actor: string, actorType = "User", label = "protected-ok", createdAt = "2026-10-22T11:00:00Z"): LabelEvent => ({
     event: "labeled",
     label,
@@ -89,7 +92,7 @@ describe("labelAddedByHuman", () => {
     createdAt,
   });
   const pr = pullRequest({ labels: ["evolution", "protected-ok"] });
-  const approved = (events: readonly LabelEvent[], lastHeadUpdate: string | undefined = pushedAt) =>
+  const approved = (events: readonly LabelEvent[], lastHeadUpdate: HeadUpdate = pushed(pushedAt)) =>
     labelAddedByHuman("protected-ok", pr, events, ["Jaspyplayz"], lastHeadUpdate);
 
   it("accepts the label when a maintainer added it last, after the latest push", () => {
@@ -108,12 +111,12 @@ describe("labelAddedByHuman", () => {
   });
 
   it("voids the approval when new commits are pushed", () => {
-    const pushed = pullRequest({ labels: ["evolution", "protected-ok"], action: "synchronize" });
-    expect(labelAddedByHuman("protected-ok", pushed, [labeled("Jaspyplayz")], ["Jaspyplayz"], pushedAt)).toBe(false);
+    const synchronized = pullRequest({ labels: ["evolution", "protected-ok"], action: "synchronize" });
+    expect(labelAddedByHuman("protected-ok", synchronized, [labeled("Jaspyplayz")], ["Jaspyplayz"], pushed(pushedAt))).toBe(false);
   });
 
   it("voids a label added before the latest push, whatever event re-runs the check", () => {
-    expect(approved([labeled("Jaspyplayz")], "2026-10-22T12:00:00Z")).toBe(false);
+    expect(approved([labeled("Jaspyplayz")], pushed("2026-10-22T12:00:00Z"))).toBe(false);
     expect(approved([labeled("Jaspyplayz", "User", "protected-ok", pushedAt)])).toBe(false);
   });
 
@@ -123,13 +126,15 @@ describe("labelAddedByHuman", () => {
     expect(approved([retargeted, labeled("Jaspyplayz", "User", "protected-ok", "2026-10-22T13:00:00Z")])).toBe(true);
   });
 
-  it("fails closed when the latest push time is unknown", () => {
+  it("fails closed when the latest push is unknown or is not the head being checked", () => {
     expect(labelAddedByHuman("protected-ok", pr, [labeled("Jaspyplayz")], ["Jaspyplayz"], undefined)).toBe(false);
+    expect(approved([labeled("Jaspyplayz")], { at: undefined, sha: headSha })).toBe(false);
+    expect(approved([labeled("Jaspyplayz")], pushed(pushedAt, "c".repeat(40)))).toBe(false);
   });
 
   it("rejects a label that is no longer on the PR", () => {
     const unlabeled = pullRequest({ labels: ["evolution"] });
-    expect(labelAddedByHuman("protected-ok", unlabeled, [labeled("Jaspyplayz")], ["Jaspyplayz"], pushedAt)).toBe(false);
+    expect(labelAddedByHuman("protected-ok", unlabeled, [labeled("Jaspyplayz")], ["Jaspyplayz"], pushed(pushedAt))).toBe(false);
   });
 });
 
@@ -155,6 +160,12 @@ describe("fetchLabelEvents", () => {
     const failing: typeof fetch = () => Promise.resolve(new Response("nope", { status: 403 }));
     await expect(fetchLabelEvents("o/r", 1, "t", failing)).rejects.toThrow("GitHub API 403");
   });
+
+  it("fails closed when there are too many events to read the newest ones", async () => {
+    const fullPage = Array.from({ length: 100 }, () => ({ event: "commented", actor: { login: "x", type: "User" } }));
+    const endless: typeof fetch = () => Promise.resolve(Response.json(fullPage));
+    await expect(fetchLabelEvents("o/r", 1, "t", endless)).rejects.toThrow("no approval counts");
+  });
 });
 
 describe("fetchLastHeadUpdate", () => {
@@ -162,9 +173,12 @@ describe("fetchLastHeadUpdate", () => {
     const urls: string[] = [];
     const fakeFetch: typeof fetch = (input) => {
       urls.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
-      return Promise.resolve(Response.json([{ activity_type: "push", timestamp: "2026-10-22T10:00:00Z" }]));
+      return Promise.resolve(Response.json([{ activity_type: "push", timestamp: "2026-10-22T10:00:00Z", after: "b".repeat(40) }]));
     };
-    expect(await fetchLastHeadUpdate("Jaspyplayz/petri", "evo/12-blob", "token", fakeFetch)).toBe("2026-10-22T10:00:00Z");
+    expect(await fetchLastHeadUpdate("Jaspyplayz/petri", "evo/12-blob", "token", fakeFetch)).toEqual({
+      at: "2026-10-22T10:00:00Z",
+      sha: "b".repeat(40),
+    });
     expect(urls).toEqual([
       "https://api.github.com/repos/Jaspyplayz/petri/activity?ref=refs%2Fheads%2Fevo%2F12-blob&direction=desc&per_page=1",
     ]);

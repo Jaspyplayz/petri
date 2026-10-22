@@ -21,7 +21,14 @@ export type LabelEvent = {
   readonly createdAt: string | undefined;
 };
 
+export type HeadUpdate = {
+  readonly at: string | undefined;
+  readonly sha: string | undefined;
+};
+
 type FetchPage = typeof fetch;
+
+const maxEventPages = 50;
 
 const approvalVoidingEvents = new Set(["base_ref_changed", "head_ref_force_pushed", "head_ref_restored"]);
 
@@ -88,15 +95,16 @@ export function labelAddedByHuman(
   pullRequest: PullRequest,
   events: readonly LabelEvent[],
   humans: readonly string[],
-  lastHeadUpdate: string | undefined,
+  lastHeadUpdate: HeadUpdate | undefined,
 ): boolean {
   if (pullRequest.action === "synchronize" || !pullRequest.labels.includes(label)) return false;
+  if (lastHeadUpdate?.sha !== pullRequest.headSha) return false;
   const lastLabeled = events.filter((event) => event.event === "labeled" && event.label === label).at(-1);
   if (!lastLabeled?.actor || lastLabeled.actorType !== "User") return false;
   const actor = lastLabeled.actor.toLowerCase();
   if (!humans.some((human) => human.toLowerCase() === actor)) return false;
   const labeledAt = Date.parse(lastLabeled.createdAt ?? "");
-  const voidedAt = [lastHeadUpdate, ...events.filter((event) => approvalVoidingEvents.has(event.event)).map((event) => event.createdAt)].map(
+  const voidedAt = [lastHeadUpdate.at, ...events.filter((event) => approvalVoidingEvents.has(event.event)).map((event) => event.createdAt)].map(
     (time) => Date.parse(time ?? ""),
   );
   if (Number.isNaN(labeledAt) || voidedAt.some((time) => Number.isNaN(time))) return false;
@@ -141,7 +149,7 @@ export async function fetchLabelEvents(
   fetchPage: FetchPage = fetch,
 ): Promise<LabelEvent[]> {
   const events: LabelEvent[] = [];
-  for (let page = 1; page <= 20; page += 1) {
+  for (let page = 1; page <= maxEventPages; page += 1) {
     const body = await githubGet(
       `https://api.github.com/repos/${repository}/issues/${String(pullNumber)}/events?per_page=100&page=${String(page)}`,
       token,
@@ -149,9 +157,9 @@ export async function fetchLabelEvents(
       fetchPage,
     );
     events.push(...labelEventsFromApi(body));
-    if (!Array.isArray(body) || body.length < 100) break;
+    if (!Array.isArray(body) || body.length < 100) return events;
   }
-  return events;
+  throw new Error(`more than ${String(maxEventPages * 100)} issue events: can't see the newest label events, so no approval counts`);
 }
 
 export async function fetchLastHeadUpdate(
@@ -159,7 +167,7 @@ export async function fetchLastHeadUpdate(
   headRef: string,
   token: string,
   fetchPage: FetchPage = fetch,
-): Promise<string | undefined> {
+): Promise<HeadUpdate | undefined> {
   const ref = encodeURIComponent(`refs/heads/${headRef}`);
   const body = await githubGet(
     `https://api.github.com/repos/${repository}/activity?ref=${ref}&direction=desc&per_page=1`,
@@ -167,6 +175,7 @@ export async function fetchLastHeadUpdate(
     "repository activity",
     fetchPage,
   );
-  const latest: unknown = Array.isArray(body) ? body[0] : undefined;
-  return stringAt(asRecord(latest), "timestamp");
+  const latest = asRecord(Array.isArray(body) ? body[0] : undefined);
+  if (!latest) return undefined;
+  return { at: stringAt(latest, "timestamp"), sha: stringAt(latest, "after") };
 }
