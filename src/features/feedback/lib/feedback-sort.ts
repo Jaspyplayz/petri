@@ -1,4 +1,8 @@
+import { BLOB_MAX_SIZE } from "@/features/blob/lib/blob-state";
+
 export const FEEDBACK_SORTS = ["top", "new"] as const;
+
+export const crossFeatureLimit = BLOB_MAX_SIZE;
 
 export type FeedbackSort = (typeof FEEDBACK_SORTS)[number];
 
