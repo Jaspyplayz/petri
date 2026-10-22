@@ -61,7 +61,7 @@ const variableReference = /\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-
 const interpreterNames = "(node(js)?|deno|bun|tsx|ts-node(-esm)?|python[\\d.]*w?|py|pypy[\\d.]*|ruby|perl|php|lua|rscript|julia|osascript)";
 const interpreterName = new RegExp(`^${interpreterNames}$`);
 const shellPrograms = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish", "busybox", "pwsh", "powershell", "cmd"]);
-const expansion = /\$[\w{('"@*#?$!-]|`/;
+const expansion = /\$(?!\/|$)|`/;
 const interpreters = new RegExp(`(^|[\\s;&|(\`'"/\\\\<>])${interpreterNames}(\\.exe)?(?=$|[\\s;&|)\`'"<>])`, "i");
 const powershellValueStatement = /^([-+*/%]?=|\?\?=|-(eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|replace|split|join|is|isnot|as|and|or|xor|not|band|bor|f)|[.[].*)$/i;
 const dynamicPrograms = [

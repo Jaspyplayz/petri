@@ -265,6 +265,10 @@ describe("review findings stay closed", () => {
     'timeout 5 bash -c "cd app && $x"',
     "cmd /c %x%",
     'watch -n 5 "date; $x"',
+    "$'\\x67it' push --force",
+    "bash -c $'\\x72m -rf /'",
+    "x=$(cat cmd.txt); $=x",
+    "$~x origin main",
   ])(
     "treats a variable in the program position as dynamic in bash: %s",
     (command) => {
