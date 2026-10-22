@@ -38,7 +38,7 @@ Status key: ⬜ todo · ✅ done
 7. ⬜ **Reply "link and push".** Claude then runs, in this order:
    - `vercel link` (creates the Vercel project `petri`) and connects it to the GitHub repo, which fills `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` automatically
    - `supabase link --project-ref <ref>`
-   - `pnpm setup:secrets --apply`, which pushes every `.env.setup` value to GitHub secrets/variables and Vercel env (values are never printed), generates `RATE_LIMIT_SALT`, and creates the repo variable `EVOLUTION_ENABLED=false`
+   - `pnpm setup:secrets --apply`, which pushes every `.env.setup` value to GitHub secrets/variables and Vercel env (values are never printed; the service-role key and salt go to Vercel *production* only, never to PR previews), generates `RATE_LIMIT_SALT`, and creates the repo variable `EVOLUTION_ENABLED=false`
    - Phase 6: branch protection on `main` (requires `ci-ok` + `evolution-verify`, up to date, no force pushes, 0 approvals) and "Allow auto-merge", via `gh api` / `gh repo edit --enable-auto-merge`. You only check them in Settings → Branches.
 
 8. ⬜ **Go live (Phase 9, after everything above).** Open the Vercel production URL and check the three pages load, then run `pnpm evolution:resume` (or set the repo variable `EVOLUTION_ENABLED=true` in the GitHub app).
