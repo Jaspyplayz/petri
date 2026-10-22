@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { type ServerEnv, serverSchema } from "./server-env-schema";
 
 const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.url(),
@@ -7,15 +8,9 @@ const publicSchema = z.object({
   NEXT_PUBLIC_COMMIT_SHA: z.string().optional(),
 });
 
-const serverSchema = z.object({
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  RATE_LIMIT_SALT: z.string().min(16),
-});
-
 const emptyToUndefined = (value: string | undefined) => (value === "" ? undefined : value);
 
 export type PublicEnv = z.infer<typeof publicSchema>;
-export type ServerEnv = z.infer<typeof serverSchema>;
 
 export const publicEnv: PublicEnv = publicSchema.parse({
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,

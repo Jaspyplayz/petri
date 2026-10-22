@@ -18,3 +18,18 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** Playwright hides the text caret by writing an inline style on inputs. If that happens before React hydrates, React sees an attribute the server didn't render.
 - **Category:** verification tooling false positive
 - **Fix rung:** (c) skill/tooling: `verify:flow` and `verify:script` (Phase 3) must take screenshots with `caret: "initial"`. A hard check for that goes in the verify CLI's own tests.
+
+## 2026-10-22 · Chrome-extension network panel reported 503s that never happened
+
+- **What happened:** While checking the first Vercel preview, the Claude-in-Chrome network panel listed `GET /feedback?_rsc=…`, `GET /timeline?_rsc=…`, `OPTIONS /` and `HEAD /feedback` as 503.
+- **Evidence:** In the same tab, `performance.getEntriesByType("resource")` shows every `_rsc` fetch with `responseStatus` 200, a soft navigation kept a `window` marker (no reload), direct `HEAD`/`OPTIONS` returned 200/204, and Vercel runtime logs had no matching requests. The only real 503 was `/api/events` (see below).
+- **Root cause:** The extension's network capture attributes statuses unreliably. The OPTIONS and HEAD requests come from the Vercel preview toolbar.
+- **Category:** verification tooling false positive
+- **Fix rung:** (c) skill/tooling: the Phase 3 verify skill takes HTTP statuses from Playwright's `response.status()` or the Resource Timing API, never from the extension's network panel.
+
+## 2026-10-22 · Every preview page view would have sent an error to Sentry
+
+- **What happened:** Previews deliberately get no service-role key, so `/api/events` failed `serverEnv()` and called `log.error` on every page view.
+- **Root cause:** The write handlers treated "secrets intentionally absent on preview" the same as "secrets missing in production".
+- **Category:** observability noise / design gap
+- **Fix rung:** (a) design: `writesOffResponse()` (shared) returns a quiet `503 unavailable` when `VERCEL_ENV=preview` lacks the secrets, and stays loud (`log.error` → Sentry) anywhere else. `writeAvailability` is unit-tested for all three cases.

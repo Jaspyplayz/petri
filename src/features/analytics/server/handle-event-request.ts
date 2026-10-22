@@ -2,6 +2,7 @@ import "server-only";
 import { log } from "@/shared/lib/log";
 import { readBodyWithLimit } from "@/shared/lib/read-body";
 import { guardJsonWrite } from "@/shared/lib/request-guards";
+import { writesOffResponse } from "@/shared/lib/writes-off-response";
 import { consumeRateLimit, hashClientIp, rateLimitedResponse } from "@/shared/supabase/rate-limit";
 import { serviceSupabase } from "@/shared/supabase/service-client";
 import { EVENT_RATE_LIMIT, MAX_EVENT_BODY_BYTES, parseEventBody } from "../lib/event-payload";
@@ -17,6 +18,9 @@ export async function handleEventRequest(request: Request): Promise<Response> {
   if (!parsed.ok) {
     return Response.json({ error: parsed.reason }, { status: parsed.reason === "too_large" ? 413 : 400 });
   }
+
+  const writesOff = writesOffResponse();
+  if (writesOff) return writesOff;
 
   const { featureId, action, path } = parsed.event;
   try {
