@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --color-agar: #f6f3e7;
+  --color-agar-deep: #ebe5cf;
+  --color-ink: #1f2a24;
+  --color-ink-soft: #55625a;
+  --color-culture: #2f8f6b;
+  --color-culture-deep: #1f6b4f;
+  --color-spore: #e8a33d;
+  --color-warning: #b4462f;
+  --font-sans: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-agar: #141a17;
+    --color-agar-deep: #1d2621;
+    --color-ink: #eef2ea;
+    --color-ink-soft: #a7b3aa;
+    --color-culture: #5cc49a;
+    --color-culture-deep: #8fdcbb;
+    --color-spore: #f2b85c;
+    --color-warning: #f08a6f;
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--color-agar);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-spore);
+  outline-offset: 2px;
+}
