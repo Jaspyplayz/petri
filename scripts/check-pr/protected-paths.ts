@@ -1,8 +1,7 @@
 import type { GuardrailsConfig } from "./config.ts";
 import type { ChangedFile } from "./git.ts";
 import { matchesAny } from "./glob.ts";
-import { asRecord, canonicalJson, type JsonRecord, parseJsonRecord } from "./json.ts";
-import { lockfileReason } from "./lockfile.ts";
+import { canonicalJson, type JsonRecord, parseJsonRecord } from "./json.ts";
 
 export type Side = "base" | "head";
 export type FileReader = (side: Side, path: string) => string | undefined;
@@ -12,39 +11,11 @@ export type Violation = {
   readonly reason: string;
 };
 
-const DEPENDENCY_FIELDS = new Set(["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]);
+const DEPENDENCY_MANIFESTS = new Set(["package.json", "pnpm-lock.yaml"]);
 
 function sameExcept(before: JsonRecord, after: JsonRecord, allowed: (key: string) => boolean): boolean {
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   return [...keys].every((key) => allowed(key) || canonicalJson(before[key]) === canonicalJson(after[key]));
-}
-
-const REGISTRY_VERSION = /^(?:[~^<>=*xX\d]|v\d)[\w.*^~<>=| -]*$/;
-
-function changedDependencies(before: JsonRecord, after: JsonRecord): { name: string; spec: unknown }[] {
-  return [...DEPENDENCY_FIELDS].flatMap((field) => {
-    const from = asRecord(before[field]) ?? {};
-    const to = asRecord(after[field]) ?? {};
-    const names = new Set([...Object.keys(from), ...Object.keys(to)]);
-    return [...names]
-      .filter((name) => canonicalJson(from[name]) !== canonicalJson(to[name]))
-      .map((name) => ({ name, spec: to[name] }));
-  });
-}
-
-function packageJsonReason(base: string | undefined, head: string | undefined, guardrailPackages: readonly string[]): string | undefined {
-  const before = parseJsonRecord(base);
-  const after = parseJsonRecord(head);
-  if (!before || !after || !sameExcept(before, after, (key) => DEPENDENCY_FIELDS.has(key))) {
-    return "only dependency fields may change in package.json (scripts, engines and config are guardrails)";
-  }
-  for (const { name, spec } of changedDependencies(before, after)) {
-    if (matchesAny(name, guardrailPackages)) return `${name} is part of the guardrail toolchain`;
-    if (spec !== undefined && (typeof spec !== "string" || !REGISTRY_VERSION.test(spec))) {
-      return `${name} must be a plain npm registry version, not ${JSON.stringify(spec)}`;
-    }
-  }
-  return undefined;
 }
 
 function trustLevelOf(record: JsonRecord | undefined): number | undefined {
@@ -91,13 +62,8 @@ function violationReason(change: ChangedFile, config: GuardrailsConfig, read: Fi
     }
     return status === "added" ? undefined : "migrations are append-only: add a new migration instead of editing one";
   }
-  if (path === "package.json") {
-    return status === "modified"
-      ? packageJsonReason(read("base", path), read("head", path), config.guardrailPackages)
-      : "package.json can't be added or removed by an agent";
-  }
-  if (path === "pnpm-lock.yaml") {
-    return lockfileReason(read("base", path), read("head", path), config.guardrailPackages);
+  if (DEPENDENCY_MANIFESTS.has(path)) {
+    return "dependencies, scripts and the lockfile are guardrails: dependency changes need a human";
   }
   if (path === config.trustConfigPath) {
     return status === "modified" && onlyTrustLowered(read("base", path), read("head", path))

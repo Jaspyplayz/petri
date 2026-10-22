@@ -6,7 +6,6 @@ export const GUARDRAILS_CONFIG_PATH = ".github/guardrails.json";
 
 export type GuardrailsConfig = {
   readonly protectedPaths: readonly string[];
-  readonly guardrailPackages: readonly string[];
   readonly agentPullRequests: {
     readonly labels: readonly string[];
     readonly branchPrefixes: readonly string[];
@@ -38,7 +37,6 @@ export function parseGuardrailsConfig(json: string): GuardrailsConfig {
   const migrations = requireRecord(root, "migrations", where);
   return {
     protectedPaths: requireStringArray(root, "protectedPaths", where),
-    guardrailPackages: requireStringArray(root, "guardrailPackages", where),
     agentPullRequests: {
       labels: requireStringArray(agent, "labels", `${where}.agentPullRequests`),
       branchPrefixes: requireStringArray(agent, "branchPrefixes", `${where}.agentPullRequests`),

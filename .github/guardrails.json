@@ -33,26 +33,6 @@
     "src/instrumentation.ts",
     "src/instrumentation-client.ts"
   ],
-  "guardrailPackages": [
-    "eslint",
-    "eslint-*",
-    "@eslint/*",
-    "@next/eslint-plugin-next",
-    "typescript",
-    "typescript-eslint",
-    "@typescript-eslint/*",
-    "vitest",
-    "@vitest/*",
-    "@playwright/test",
-    "playwright",
-    "playwright-core",
-    "@axe-core/playwright",
-    "dependency-cruiser",
-    "lefthook",
-    "tsx",
-    "supabase",
-    "server-only"
-  ],
   "agentPullRequests": {
     "labels": [
       "evolution"

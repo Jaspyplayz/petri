@@ -59,47 +59,10 @@ describe("protectedPathViolations", () => {
     expect(violations([{ path: "scripts/check-features.ts", status: "deleted" }])).toEqual(["scripts/check-features.ts"]);
   });
 
-  describe("package.json", () => {
-    const base = JSON.stringify({ name: "petri", scripts: { lint: "eslint" }, dependencies: { zod: "4.0.0" } });
-
-    it("allows dependency-only changes", () => {
-      const head = JSON.stringify({ name: "petri", scripts: { lint: "eslint" }, dependencies: { zod: "4.1.0", ms: "2.0.0" } });
-      expect(violations([{ path: "package.json", status: "modified" }], reader({ base: { "package.json": base }, head: { "package.json": head } }))).toEqual([]);
-    });
-
-    it("blocks script changes", () => {
-      const head = JSON.stringify({ name: "petri", scripts: { lint: "echo ok" }, dependencies: { zod: "4.0.0" } });
-      expect(
-        violations([{ path: "package.json", status: "modified" }], reader({ base: { "package.json": base }, head: { "package.json": head } })),
-      ).toEqual(["package.json"]);
-    });
-
-    it.each([
-      ["a guardrail toolchain package", { zod: "4.0.0", eslint: "8.0.0" }],
-      ["a scoped toolchain package", { zod: "4.0.0", "@typescript-eslint/parser": "1.0.0" }],
-      ["an npm: alias", { zod: "npm:not-zod@1.0.0" }],
-      ["a git dependency", { zod: "github:someone/zod" }],
-      ["a local file", { zod: "file:../zod" }],
-      ["a tarball URL", { zod: "https://example.com/zod.tgz" }],
-      ["a parent directory", { zod: ".." }],
-      ["a dist-tag", { zod: "latest" }],
-    ])("blocks %s", (_name, dependencies) => {
-      const head = JSON.stringify({ name: "petri", scripts: { lint: "eslint" }, dependencies });
-      expect(
-        violations([{ path: "package.json", status: "modified" }], reader({ base: { "package.json": base }, head: { "package.json": head } })),
-      ).toEqual(["package.json"]);
-    });
-
-    it("allows registry ranges and removing a dependency", () => {
-      const head = JSON.stringify({ name: "petri", scripts: { lint: "eslint" }, dependencies: { ms: "^2.1.0 || 3.x", clsx: ">=2 <3" } });
-      expect(violations([{ path: "package.json", status: "modified" }], reader({ base: { "package.json": base }, head: { "package.json": head } }))).toEqual([]);
-    });
-
-    it("blocks unparseable package.json", () => {
-      expect(
-        violations([{ path: "package.json", status: "modified" }], reader({ base: { "package.json": base }, head: { "package.json": "{" } })),
-      ).toEqual(["package.json"]);
-    });
+  it.each(["package.json", "pnpm-lock.yaml"])("blocks even dependency-only changes to %s", (path) => {
+    const base = JSON.stringify({ name: "petri", dependencies: { zod: "4.0.0" } });
+    const head = JSON.stringify({ name: "petri", dependencies: { zod: "4.1.0" } });
+    expect(violations([{ path, status: "modified" }], reader({ base: { [path]: base }, head: { [path]: head } }))).toEqual([path]);
   });
 
   describe("trust config", () => {
