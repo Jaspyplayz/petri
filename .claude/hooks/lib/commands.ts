@@ -5,17 +5,15 @@ export type CommandGuard = {
   readonly evolutionHuman: boolean;
   readonly protectedTarget: (path: string) => string | undefined;
   readonly secretPath: (path: string) => boolean;
-  readonly readPatch: (path: string) => string | undefined;
 };
 
 const assignment = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const wrappers = new Set(["sudo", "doas", "command", "builtin", "exec", "nohup", "nice", "time", "xargs", "!", "{", "}", "if", "then", "elif", "else", "while", "until", "do"]);
 const dataSinks = new Set([
   ...["cat", "tee", "echo", "printf", "print", "write-output", "write-host", "grep", "egrep", "fgrep", "rg", "wc", "head", "tail"],
-  ...["sort", "uniq", "less", "more", "jq", "diff", "read", "gh", "gitleaks", "test", "[", "[["],
+  ...["uniq", "less", "more", "jq", "diff", "read", "gh", "gitleaks", "test", "[", "[["],
 ]);
 const gitDataSubcommands = new Set(["commit", "tag", "notes", "hash-object", "log", "show", "grep", "diff", "status"]);
-const patchHeader = /^(?:(?:\+\+\+|---)\s+|diff --git\s+|(?:rename|copy) (?:from|to)\s+)(.+)$/gm;
 const printers = new Set(["echo", "printf", "print", "cat", "write-output", "write-host", "write-information", "out-host"]);
 const envDrivers = new Set(["get-childitem", "gci", "ls", "dir", "get-item", "gi", "get-content", "gc", "cat", "type"]);
 const removers = new Set(["rm", "unlink", "truncate", "remove-item", "ri", "del", "erase", "rd", "rmdir", "clear-content", "set-content", "add-content", "out-file", "new-item", "tee"]);
@@ -33,7 +31,7 @@ const messages = {
   printSecret: "Blocked: this would print a secret or the whole environment. Check that a variable is set with [ -n \"$NAME\" ] instead of printing it.",
   secretFile: "Blocked: env and credential files hold secrets and stay unread. Scripts such as `pnpm setup:secrets` and `pnpm env:local` read them for you.",
   evolutionHuman: "Blocked: EVOLUTION_HUMAN is set by a human when they start Claude Code, never by a command.",
-  unreadablePatch: "Blocked: patch / git apply / git am with a patch the guard can't read (stdin or pipe). Write the patch to a file and pass its path, so protected paths in it can be checked.",
+  patchTool: "Blocked: patch, git apply and git am are off for agents, because the guard can't reliably tell which files a patch writes. Use the Edit/Write tools; a human can run them with EVOLUTION_HUMAN=1.",
   protectedWrite: (path: string) =>
     `Blocked: ${path} is a protected path (.github/guardrails.json). Agents can't change their own guardrails; a human can by starting Claude Code with EVOLUTION_HUMAN=1.`,
 };
@@ -72,18 +70,28 @@ function operands(words: readonly Word[]): string[] {
   return words.filter((word) => !word.text.startsWith("-")).map((word) => word.text);
 }
 
-function gitInvocation(words: readonly Word[]): { readonly subcommand: string; readonly rest: readonly Word[]; readonly config: readonly string[] } | undefined {
+type GitInvocation = {
+  readonly subcommand: string;
+  readonly rest: readonly Word[];
+  readonly config: readonly string[];
+  readonly directory: string;
+};
+
+function gitInvocation(words: readonly Word[]): GitInvocation | undefined {
   const config: string[] = [];
+  let directory = "";
   let index = 1;
   while (index < words.length) {
     const word = words[index]?.text ?? "";
     if (word === "-C" || word === "-c") {
-      if (word === "-c") config.push(words[index + 1]?.text ?? "");
+      const value = words[index + 1]?.text ?? "";
+      if (word === "-c") config.push(value);
+      else directory = directory === "" || /^([A-Za-z]:)?[\\/]/.test(value) ? value : `${directory}/${value}`;
       index += 2;
     } else if (word.startsWith("-")) {
       index += 1;
     } else {
-      return { subcommand: word, rest: words.slice(index + 1), config };
+      return { subcommand: word, rest: words.slice(index + 1), config, directory };
     }
   }
   return undefined;
@@ -150,49 +158,21 @@ function isDataSink(name: string, all: readonly Word[]): boolean {
   const texts = all.map((word) => word.text);
   if (name === "gh") return !["alias", "extension", "ext"].includes(texts[1] ?? "");
   if (name === "rg") return !texts.some((text) => text.startsWith("--pre"));
-  if (name === "sort") return !texts.some((text) => text.startsWith("--compress-program"));
   if (name !== "git") return dataSinks.has(name);
   const git = gitInvocation(all);
   return git !== undefined && git.config.length === 0 && gitDataSubcommands.has(git.subcommand);
 }
 
-function patchSources(name: string, args: readonly Word[], segment: Segment, all: readonly Word[], guard: CommandGuard): string[] | undefined {
-  const gitSubcommand = name === "git" ? gitInvocation(all)?.subcommand : undefined;
-  if (name !== "patch" && gitSubcommand !== "apply" && gitSubcommand !== "am") return undefined;
-  return [...segment.heredocs, ...operands(args).flatMap((path) => guard.readPatch(path) ?? [])];
-}
-
-function patchDirectories(args: readonly Word[]): string[] {
-  const directories: string[] = [];
-  args.forEach((word, index) => {
-    const inline = /^--directory=(.+)$/.exec(word.text)?.[1];
-    if (inline !== undefined) directories.push(inline);
-    if (word.text === "-d" || word.text === "--directory") directories.push(args[index + 1]?.text ?? "");
-  });
-  return directories.filter((directory) => directory !== "");
-}
-
-function patchTargets(patch: string, directories: readonly string[]): string[] {
-  const paths = [...patch.matchAll(patchHeader)].flatMap((match) =>
-    (match[1] ?? "")
-      .split(/\s+/)
-      .map((path) => path.replace(/^"|"$/g, ""))
-      .filter((path) => path !== "" && path !== "/dev/null"),
-  );
-  const suffixes = paths.flatMap((path) => path.split("/").map((_part, index, parts) => parts.slice(index).join("/")));
-  return [...suffixes, ...directories.flatMap((directory) => suffixes.map((suffix) => `${directory}/${suffix}`))];
-}
-
-function writeTargets(name: string, args: readonly Word[], segment: Segment, all: readonly Word[], guard: CommandGuard): string[] {
+function writeTargets(name: string, args: readonly Word[], segment: Segment, all: readonly Word[]): string[] {
   const targets = [...segment.writeTargets];
-  const patches = patchSources(name, args, segment, all, guard);
-  if (patches) targets.push(...patches.flatMap((patch) => patchTargets(patch, patchDirectories(args))));
   if (removers.has(name) || movers.has(name)) targets.push(...operands(args));
   if (copiers.has(name)) targets.push(...operands(args).slice(-1));
   if (inPlaceEditors.has(name) && options(args).some((flag) => flag.startsWith("-i") || shortCluster(flag, "i") || flag.startsWith("--in-place"))) targets.push(...operands(args));
   if (name === "git") {
     const git = gitInvocation(all);
-    if (git && (git.subcommand === "rm" || git.subcommand === "mv")) targets.push(...operands(git.rest));
+    if (git && (git.subcommand === "rm" || git.subcommand === "mv")) {
+      targets.push(...operands(git.rest).map((path) => (git.directory === "" ? path : `${git.directory}/${path}`)));
+    }
   }
   return targets;
 }
@@ -212,8 +192,9 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
       (printsSecret(name, args, all) ? messages.printSecret : undefined);
     if (problem) return problem;
     if (!guard.evolutionHuman) {
-      if (patchSources(name, args, segment, all, guard)?.length === 0) return messages.unreadablePatch;
-      const target = writeTargets(name, args, segment, all, guard).map(guard.protectedTarget).find((path) => path !== undefined);
+      const gitSubcommand = name === "git" ? gitInvocation(all)?.subcommand : undefined;
+      if (name === "patch" || gitSubcommand === "apply" || gitSubcommand === "am") return messages.patchTool;
+      const target = writeTargets(name, args, segment, all).map(guard.protectedTarget).find((path) => path !== undefined);
       if (target !== undefined) return messages.protectedWrite(target);
     }
   } else if (!guard.evolutionHuman) {

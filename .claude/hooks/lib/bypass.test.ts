@@ -60,22 +60,17 @@ describe("heredocs fed to an interpreter are checked", () => {
     evolutionHuman: false,
     protectedTarget: (path) => protectedRepoPath(path, projectRoot, { projectRoot, caseInsensitive }),
     secretPath: (path) => secretTarget(path, projectRoot, caseInsensitive),
-    readPatch: (path) =>
-      ({
-        "fix.patch": "--- a/vitest.config.ts\n+++ b/vitest.config.ts\n@@ -1 +1 @@\n",
-        "deep.patch": "--- one/two/eslint.config.mjs\t2026-10-22\n+++ one/two/eslint.config.mjs\t2026-10-22\n",
-        "lib.patch": "--- a/src/features/blob/lib/blob-state.ts\n+++ b/src/features/blob/lib/blob-state.ts\n",
-      })[path],
   };
 
   it.each([
     ["bash <<'EOF'\ngit push --force\nEOF", "force pushes"],
     ["python3.12 - <<'EOF'\nimport os\nprint(os.environ)\nEOF", "print a secret"],
     ["nodejs -e \"require('child_process').execSync('git push --force')\"", "force pushes"],
-    ["git apply <<'EOF'\ndiff --git a/eslint.config.mjs b/eslint.config.mjs\n--- a/eslint.config.mjs\n+++ b/eslint.config.mjs\nEOF", "eslint.config.mjs is a protected path"],
-    ["patch -p1 < fix.patch", "vitest.config.ts is a protected path"],
-    ["patch -p2 < deep.patch", "eslint.config.mjs is a protected path"],
-    ["git diff main | git apply -R", "can't read"],
+    ["git apply <<'EOF'\n--- a/eslint.config.mjs\n+++ b/eslint.config.mjs\nEOF", "patch, git apply and git am are off"],
+    ["patch -p1 < fix.patch", "patch, git apply and git am are off"],
+    ["git diff main | git -C sub apply -R", "patch, git apply and git am are off"],
+    ["git -C .github rm workflows/ci.yml", ".github/workflows/ci.yml is a protected path"],
+    ["sort --compress-prog=sh -c 'git push -f' x", "force pushes"],
     ["gh alias set p '!git push --force'", "force pushes"],
     ["rg --pre 'sh -c \"git push -f\"' pattern", "force pushes"],
     ["cat <<'EOF' | sh\nrm -rf /\nEOF", "recursive delete"],
@@ -89,8 +84,6 @@ describe("heredocs fed to an interpreter are checked", () => {
     expect(commandProblem("cat > notes.md <<'EOF'\nnever run git push --force\nEOF", guard)).toBeUndefined();
     expect(commandProblem("git commit -F - <<'EOF'\nfix: block rm -rf / and git push --force\nEOF", guard)).toBeUndefined();
     expect(commandProblem('gh pr comment 8 --body "blocks git push --force"', guard)).toBeUndefined();
-    expect(commandProblem("git apply <<'EOF'\n--- a/src/features/blob/lib/blob-state.ts\n+++ b/src/features/blob/lib/blob-state.ts\nEOF", guard)).toBeUndefined();
-    expect(commandProblem("git apply lib.patch", guard)).toBeUndefined();
   });
 });
 
