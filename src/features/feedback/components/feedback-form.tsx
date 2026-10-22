@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition, type FormEvent } from "react";
+import { useState, useTransition, type SubmitEvent } from "react";
 import { track } from "@/shared/lib/track";
 import { Button } from "@/shared/ui/button";
 import {
@@ -28,7 +28,7 @@ export function FeedbackForm() {
   const left = charactersLeft(body);
   const empty = body.trim().length === 0;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (empty || pending) return;
     startTransition(async () => {

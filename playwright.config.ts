@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.E2E_PORT ?? 3100);
-const baseURL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`;
+const baseURL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${String(port)}`;
 
 export default defineConfig({
   testDir: "./src/features",
@@ -20,7 +20,7 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
-          command: `pnpm build && pnpm start -p ${port}`,
+          command: `pnpm build && pnpm start -p ${String(port)}`,
           url: baseURL,
           reuseExistingServer: !process.env.CI,
           timeout: 240_000,
