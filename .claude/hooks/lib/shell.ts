@@ -7,6 +7,7 @@ export type Segment = {
   readonly words: readonly Word[];
   readonly writeTargets: readonly string[];
   readonly quoted: readonly string[];
+  readonly substitutions: readonly string[];
   readonly heredocs: readonly string[];
 };
 
@@ -17,12 +18,28 @@ type Heredoc = { readonly delimiter: string; readonly stripTabs: boolean };
 const doubleQuoteEscapes = new Set(["$", "`", '"', "\\", "\n"]);
 const delimiterEnd = /[\s;&|<>()]/;
 
+function substitutionEnd(command: string, start: number): number {
+  if (command.charAt(start) === "`") {
+    const end = command.indexOf("`", start + 1);
+    return end === -1 ? command.length : end + 1;
+  }
+  let depth = 0;
+  for (let cursor = start + 1; cursor < command.length; cursor += 1) {
+    const char = command.charAt(cursor);
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+    if (depth === 0) return cursor + 1;
+  }
+  return command.length;
+}
+
 export function parseShell(command: string): Segment[] {
   const segments: OpenSegment[] = [];
   let lineStart = 0;
   let words: Word[] = [];
   let writeTargets: string[] = [];
   let quoted: string[] = [];
+  let substitutions: string[] = [];
   let text = "";
   let expandable = "";
   let inWord = false;
@@ -41,10 +58,11 @@ export function parseShell(command: string): Segment[] {
   };
   const flushSegment = (): void => {
     flushWord();
-    if (words.length > 0 || quoted.length > 0) segments.push({ words, writeTargets, quoted, heredocs: [] });
+    if (words.length > 0 || quoted.length > 0 || substitutions.length > 0) segments.push({ words, writeTargets, quoted, substitutions, heredocs: [] });
     words = [];
     writeTargets = [];
     quoted = [];
+    substitutions = [];
     nextIsWriteTarget = false;
   };
   const readHeredocBodies = (): void => {
@@ -143,7 +161,15 @@ export function parseShell(command: string): Segment[] {
       } else {
         nextIsWriteTarget = true;
       }
-    } else if (char === "&" || char === ";" || char === "|" || char === "(" || char === ")" || char === "`") {
+    } else if (char === "`" || (char === "$" && next === "(")) {
+      const end = substitutionEnd(command, index);
+      const substitution = command.slice(index, end);
+      text += substitution;
+      expandable += substitution;
+      substitutions.push(substitution.replace(/^(`|\$\()/, "").replace(/(`|\))$/, ""));
+      inWord = true;
+      index = end;
+    } else if (char === "&" || char === ";" || char === "|" || char === "(" || char === ")") {
       flushSegment();
       index += 1;
     } else if (char === " " || char === "\t" || char === "\r") {

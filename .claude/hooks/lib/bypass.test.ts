@@ -70,6 +70,22 @@ describe("heredocs fed to an interpreter are checked", () => {
     ["patch -p1 < fix.patch", "patch, git apply and git am are off"],
     ["git diff main | git -C sub apply -R", "patch, git apply and git am are off"],
     ["git -C .github rm workflows/ci.yml", ".github/workflows/ci.yml is a protected path"],
+    ["git -C ~/petri/.github rm workflows/ci.yml", ".github/workflows/ci.yml is a protected path"],
+    ['git -C "$HOME/petri" rm .github/workflows/ci.yml', ".github/workflows/ci.yml is a protected path"],
+    ['rm "$PWD/.github/workflows/ci.yml"', ".github/workflows/ci.yml is a protected path"],
+    ["echo x > `pwd`/eslint.config.mjs", "eslint.config.mjs is a protected path"],
+    ["echo x > $(pwd)/eslint.config.mjs", "eslint.config.mjs is a protected path"],
+    ["echo $(git push --force)", "force pushes"],
+    ["echo $(echo $(echo $(echo $(echo $(git push -f)))))", "force pushes"],
+    ["cat `echo .env.setup`", "env and credential files"],
+    ["git --git-dir .git push --force", "force pushes"],
+    ["git --work-tree . --git-dir .git apply x.patch", "patch, git apply and git am are off"],
+    ["git --git-dir status -c core.hooksPath=/dev/null commit -m x", "git hooks are guardrails"],
+    ["git --config-env=core.hooksPath=EMPTY commit -m x", "git hooks are guardrails"],
+    ["git -c alias.p=push p --force", "git aliases"],
+    ["git config --global alias.p 'push --force'", "git aliases"],
+    ["busybox patch -p1 < fix.patch", "patch, git apply and git am are off"],
+    ["gpatch -p1 < fix.patch", "patch, git apply and git am are off"],
     ["sort --compress-prog=sh -c 'git push -f' x", "force pushes"],
     ["gh alias set p '!git push --force'", "force pushes"],
     ["rg --pre 'sh -c \"git push -f\"' pattern", "force pushes"],
@@ -84,6 +100,7 @@ describe("heredocs fed to an interpreter are checked", () => {
     expect(commandProblem("cat > notes.md <<'EOF'\nnever run git push --force\nEOF", guard)).toBeUndefined();
     expect(commandProblem("git commit -F - <<'EOF'\nfix: block rm -rf / and git push --force\nEOF", guard)).toBeUndefined();
     expect(commandProblem('gh pr comment 8 --body "blocks git push --force"', guard)).toBeUndefined();
+    expect(commandProblem('git commit -m "$(cat msg.txt)" && echo "$(date)" > notes.md', guard)).toBeUndefined();
   });
 });
 
