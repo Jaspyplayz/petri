@@ -12,13 +12,9 @@ Status key: ⬜ todo · ✅ done
 2. ✅ **CLI logins:** `gh` (Jaspyplayz), `vercel` (jaspyplayz-5179), `supabase` (org "Jaspy's Team").
 3. ✅ **Claude Code restarted** with the new PATH.
 4. ✅ **Supabase project** `petri` (ref `ejwwwasbkxqnyrjzlvll`, us-east-1, Free plan, so it can't be charged). Keys are in `.env.setup` and the 5 migrations are applied (2026-10-22). Future migrations go through `pnpm db:push:prod` until CI takes over.
+5. ✅ **Sentry** project `petri` in org `jaspys-team` (free Developer plan). DSN, org, project and auth token are in `.env.setup`, and the token was verified with org, project, release and issue reads all returning 200 (2026-10-22).
 
 ## To do
-
-5. ⬜ **Sentry: one token left.** Claude created the project `petri` in org `jaspys-team` (free Developer plan) and wrote `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG` and `SENTRY_PROJECT` into `.env.setup`. You still need to create the auth token, because Sentry doesn't let tools create tokens:
-   - Open https://jaspys-team.sentry.io/settings/account/api/auth-tokens/ and click **Create New Token**.
-   - Name: `petri`. Permissions: **Project: Read**, **Release: Admin**, **Issue & Event: Read**, **Organization: Read**. Leave everything else at No Access.
-   - Paste the token into `.env.setup` as `SENTRY_AUTH_TOKEN=`. Don't paste it into the chat.
 
 6. ⬜ **Claude in GitHub Actions + Vercel token.** In a terminal in the `petri` folder:
 
