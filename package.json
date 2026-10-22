@@ -2,6 +2,7 @@
   "name": "petri",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@12.15.0",
   "engines": {
     "node": "24.x"
@@ -11,6 +12,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint --max-warnings=0",
+    "boundaries": "node scripts/check-boundaries.ts",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
