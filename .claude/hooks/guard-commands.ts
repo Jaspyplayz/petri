@@ -31,7 +31,7 @@ function problemFor(input: HookInput): string | undefined {
   }
   const declared = languageKeys.map((key) => input.toolInput[key]).filter((value) => typeof value === "string");
   const runsShell = declared.length > 0 && declared.every((language) => shellLanguages.has(language.toLowerCase()));
-  const mayRunOtherCode = declared.length > 0 ? !runsShell : codeToolName.test(input.toolName);
+  const mayRunOtherCode = codeToolName.test(input.toolName) || (declared.length > 0 && !runsShell);
   if (mayRunOtherCode && !guard.evolutionHuman) return unguardableCode;
   return stringsIn(input.toolInput)
     .map((text) => pathProblem(text, guard) ?? commandProblem(text, guard))

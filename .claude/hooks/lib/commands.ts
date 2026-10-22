@@ -18,10 +18,12 @@ const gitValueOptions = new Set(["-C", "-c", "--config-env", "--git-dir", "--wor
 const patchPrograms = new Set(["patch", "gpatch"]);
 const forceOptions = ["--force", "--force-with-lease", "--force-if-includes", "--mirror"];
 const gitIndirection = /^(alias|include|includeif)\./i;
+const configHomes = "(HOME|HOMEDRIVE|HOMEPATH|USERPROFILE|XDG_CONFIG_HOME|CLAUDE_CONFIG_DIR)";
 const configHomeOverrides = [
-  /(^|[\s;&|({:'"`])(HOME|USERPROFILE|XDG_CONFIG_HOME)\}?['"]?\s*=(?!=)/i,
-  /SetEnvironmentVariable\s*\(\s*["'](HOME|USERPROFILE|XDG_CONFIG_HOME)["']/i,
-  /(set-item|new-item|\bsi\b|\bni\b)[^;|\n]*env:\\?(HOME|USERPROFILE|XDG_CONFIG_HOME)\b/i,
+  new RegExp(`(^|[^\\w$])${configHomes}['"\\]}]*\\s*[-+.?*/|&]*=(?!=)`, "i"),
+  new RegExp(`\\b(read|printf|declare|typeset|local|export|readonly|mapfile|readarray|getopts)\\b[^;&|\\n]*?[\\s'"=]${configHomes}(?!\\w)`, "i"),
+  new RegExp(`(SetEnvironmentVariable|putenv|setenv)\\s*\\(\\s*(?!["']\\w)|(SetEnvironmentVariable|putenv|setenv)\\s*\\(\\s*["']${configHomes}["']`, "i"),
+  new RegExp(`(^|[^\\w$\\{])env:\\\\?${configHomes}(?!\\w)`, "i"),
 ];
 const unresolvedPath = /[$`%]|^~/;
 const printers = new Set(["echo", "printf", "print", "cat", "write-output", "write-host", "write-information", "out-host"]);
@@ -43,7 +45,7 @@ const messages = {
   evolutionHuman: "Blocked: EVOLUTION_HUMAN is set by a human when they start Claude Code, never by a command.",
   patchTool: "Blocked: patch, git apply and git am are off for agents, because the guard can't reliably tell which files a patch writes. Use the Edit/Write tools; a human can run them with EVOLUTION_HUMAN=1.",
   gitAlias: "Blocked: git aliases, config includes and GIT_CONFIG_* variables change what a git command runs, so agents don't set them. Spell out the git command instead.",
-  configHome: "Blocked: overriding HOME, USERPROFILE or XDG_CONFIG_HOME points git and other tools at a different config. Leave them as they are.",
+  configHome: "Blocked: overriding HOME (or HOMEDRIVE/HOMEPATH), USERPROFILE, XDG_CONFIG_HOME or CLAUDE_CONFIG_DIR points git and other tools at a different config. Leave them as they are.",
   protectedWrite: (path: string) =>
     `Blocked: ${path} is a protected path (.github/guardrails.json, or a Claude Code settings file). Agents can't change their own guardrails; a human can by starting Claude Code with EVOLUTION_HUMAN=1.`,
 };

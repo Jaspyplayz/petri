@@ -151,6 +151,17 @@ describe("review findings stay closed", () => {
     ["${env:HOME} = 'C:\\evil'", "overriding HOME"],
     ["Set-Item -Path env:USERPROFILE -Value C:\\evil", "overriding HOME"],
     ["env HOME=/tmp/evil git commit -m x", "overriding HOME"],
+    ["HOME+=/../../tmp/evil git commit -m x", "overriding HOME"],
+    ["read -r HOME <<< /tmp/evil", "overriding HOME"],
+    ["printf -v HOME /tmp/evil", "overriding HOME"],
+    ["declare -n ref=HOME", "overriding HOME"],
+    ["$env:HOME += '\\..\\evil'", "overriding HOME"],
+    ["Set-Content -Path env:HOME -Value C:\\evil", "overriding HOME"],
+    ["[Environment]::SetEnvironmentVariable($name, 'C:\\evil')", "overriding HOME"],
+    ["node -e \"process.env.HOME='/tmp/evil'\"", "overriding HOME"],
+    ["python3 -c \"import os; os.environ['HOME'] = '/tmp/evil'\"", "overriding HOME"],
+    ["HOMEPATH=\\evil git commit -m x", "overriding HOME"],
+    ["CLAUDE_CONFIG_DIR=/tmp/evil claude -p x", "overriding HOME"],
   ])("%s", (command, reason) => {
     expect(commandProblem(command, guard)).toContain(reason);
   });
@@ -163,6 +174,9 @@ describe("review findings stay closed", () => {
     'echo "$(date)" && git log --oneline -5',
     "pnpm exec lefthook install",
     'cd "$HOME/petri" && [ "$HOME" = "/root" ] || echo "$HOME"',
+    'export PATH="$HOME/bin:$PATH" && printf "%s\\n" "$HOME"',
+    "Get-ChildItem $env:USERPROFILE; cd ${env:HOME}",
+    'while read -r line; do echo "$line"; done < notes.md',
   ])("allows %s", (command) => {
     expect(commandProblem(command, guard)).toBeUndefined();
   });
