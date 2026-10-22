@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "new:feature": "tsx scripts/new-feature.ts",
+    "setup:secrets": "tsx scripts/setup-secrets.ts",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
