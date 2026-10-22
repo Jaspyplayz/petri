@@ -2,6 +2,7 @@ import type { GuardrailsConfig } from "./config.ts";
 import type { ChangedFile } from "./git.ts";
 import { matchesAny } from "./glob.ts";
 import { asRecord, canonicalJson, type JsonRecord, parseJsonRecord } from "./json.ts";
+import { lockfileReason } from "./lockfile.ts";
 
 export type Side = "base" | "head";
 export type FileReader = (side: Side, path: string) => string | undefined;
@@ -18,7 +19,7 @@ function sameExcept(before: JsonRecord, after: JsonRecord, allowed: (key: string
   return [...keys].every((key) => allowed(key) || canonicalJson(before[key]) === canonicalJson(after[key]));
 }
 
-const REGISTRY_VERSION = /^[\w.*^~<>=| -]+$/;
+const REGISTRY_VERSION = /^(?:[~^<>=*xX\d]|v\d)[\w.*^~<>=| -]*$/;
 
 function changedDependencies(before: JsonRecord, after: JsonRecord): { name: string; spec: unknown }[] {
   return [...DEPENDENCY_FIELDS].flatMap((field) => {
@@ -94,6 +95,9 @@ function violationReason(change: ChangedFile, config: GuardrailsConfig, read: Fi
     return status === "modified"
       ? packageJsonReason(read("base", path), read("head", path), config.guardrailPackages)
       : "package.json can't be added or removed by an agent";
+  }
+  if (path === "pnpm-lock.yaml") {
+    return lockfileReason(read("base", path), read("head", path), config.guardrailPackages);
   }
   if (path === config.trustConfigPath) {
     return status === "modified" && onlyTrustLowered(read("base", path), read("head", path))

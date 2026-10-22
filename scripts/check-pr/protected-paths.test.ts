@@ -41,12 +41,14 @@ describe("protectedPathViolations", () => {
     "src/shared/lib/log.ts",
     "src/instrumentation.ts",
     "pnpm-workspace.yaml",
+    ".pnpmfile.cjs",
+    "patches/eslint.patch",
     "vercel.json",
   ])("blocks agent edits to %s", (path) => {
     expect(violations([{ path, status: "modified" }])).toEqual([path]);
   });
 
-  it.each(["src/features/blob/components/blob-creature.tsx", "src/shared/ui/button.tsx", "docs/decisions.md", "scripts/new-feature.ts", "pnpm-lock.yaml"])(
+  it.each(["src/features/blob/components/blob-creature.tsx", "src/shared/ui/button.tsx", "docs/decisions.md", "scripts/new-feature.ts"])(
     "allows %s",
     (path) => {
       expect(violations([{ path, status: "modified" }])).toEqual([]);
@@ -79,6 +81,8 @@ describe("protectedPathViolations", () => {
       ["a git dependency", { zod: "github:someone/zod" }],
       ["a local file", { zod: "file:../zod" }],
       ["a tarball URL", { zod: "https://example.com/zod.tgz" }],
+      ["a parent directory", { zod: ".." }],
+      ["a dist-tag", { zod: "latest" }],
     ])("blocks %s", (_name, dependencies) => {
       const head = JSON.stringify({ name: "petri", scripts: { lint: "eslint" }, dependencies });
       expect(
