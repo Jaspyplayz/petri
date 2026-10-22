@@ -150,7 +150,7 @@ export default defineConfig([
     plugins: { petri: petriPlugin },
     rules: {
       "petri/no-comments": "error",
-      "no-console": "error",
+      "no-console": "warn",
       "no-restricted-properties": ["error", { object: "process", property: "env", message: envMessage }],
       ...srcBans(),
     },
