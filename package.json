@@ -22,6 +22,7 @@
     "db:types": "supabase gen types typescript --local --schema public > src/shared/supabase/database.types.ts"
   },
   "dependencies": {
+    "@sentry/nextjs": "11.8.0",
     "@supabase/supabase-js": "2.118.0",
     "next": "16.4.2",
     "react": "19.3.1",

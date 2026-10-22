@@ -24,6 +24,14 @@ export const publicEnv: PublicEnv = publicSchema.parse({
   NEXT_PUBLIC_COMMIT_SHA: emptyToUndefined(process.env.NEXT_PUBLIC_COMMIT_SHA),
 });
 
+export function runtimeEnvironment(): string {
+  return process.env.NEXT_PUBLIC_VERCEL_ENV ?? process.env.NODE_ENV;
+}
+
+export function serverRuntime(): string | undefined {
+  return process.env.NEXT_RUNTIME;
+}
+
 let cachedServerEnv: ServerEnv | undefined;
 
 export function serverEnv(): ServerEnv {
