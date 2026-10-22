@@ -7,6 +7,7 @@ const agent: CommandGuard = {
   evolutionHuman: false,
   protectedTarget: (path) => protectedRepoPath(path, projectRoot, pathGuard),
   secretPath: (path) => secretTarget(path, projectRoot, pathGuard.caseInsensitive),
+  readPatch: () => undefined,
 };
 const human: CommandGuard = { ...agent, evolutionHuman: true };
 

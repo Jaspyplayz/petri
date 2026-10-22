@@ -34,8 +34,9 @@ describe("guard-commands hook", () => {
   });
 
   it("fails closed on input it can't read", () => {
-    expect(runHook("guard-commands.ts", "not json").status).not.toBe(0);
+    expect(runHook("guard-commands.ts", "not json").status).toBe(2);
     expect(runHook("guard-commands.ts", toolCall("Bash", {})).status).toBe(2);
+    expect(runHook("guard-files.ts", "not json").status).toBe(2);
   });
 });
 

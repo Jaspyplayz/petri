@@ -60,10 +60,15 @@ describe("heredocs fed to an interpreter are checked", () => {
     evolutionHuman: false,
     protectedTarget: (path) => protectedRepoPath(path, projectRoot, { projectRoot, caseInsensitive }),
     secretPath: (path) => secretTarget(path, projectRoot, caseInsensitive),
+    readPatch: (path) => (path === "fix.patch" ? "--- a/vitest.config.ts\n+++ b/vitest.config.ts\n@@ -1 +1 @@\n" : undefined),
   };
 
   it.each([
     ["bash <<'EOF'\ngit push --force\nEOF", "force pushes"],
+    ["python3.12 - <<'EOF'\nimport os\nprint(os.environ)\nEOF", "print a secret"],
+    ["nodejs -e \"require('child_process').execSync('git push --force')\"", "force pushes"],
+    ["git apply <<'EOF'\ndiff --git a/eslint.config.mjs b/eslint.config.mjs\n--- a/eslint.config.mjs\n+++ b/eslint.config.mjs\nEOF", "eslint.config.mjs is a protected path"],
+    ["patch -p1 < fix.patch", "vitest.config.ts is a protected path"],
     ["cat <<'EOF' | sh\nrm -rf /\nEOF", "recursive delete"],
     ["python3 - <<'EOF'\nimport os\nprint(os.environ)\nEOF", "print a secret"],
     ["mkdir -p .github/.git", ".github/.git is a protected path"],
@@ -71,8 +76,11 @@ describe("heredocs fed to an interpreter are checked", () => {
     expect(commandProblem(command, guard)).toContain(reason);
   });
 
-  it("still lets data heredocs through", () => {
+  it("still lets data heredocs and messages through", () => {
     expect(commandProblem("cat > notes.md <<'EOF'\nnever run git push --force\nEOF", guard)).toBeUndefined();
+    expect(commandProblem("git commit -F - <<'EOF'\nfix: block rm -rf / and git push --force\nEOF", guard)).toBeUndefined();
+    expect(commandProblem('gh pr comment 8 --body "blocks git push --force"', guard)).toBeUndefined();
+    expect(commandProblem("git apply <<'EOF'\n--- a/src/features/blob/lib/blob-state.ts\n+++ b/src/features/blob/lib/blob-state.ts\nEOF", guard)).toBeUndefined();
   });
 });
 

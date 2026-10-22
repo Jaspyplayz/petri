@@ -5,14 +5,17 @@ export type CommandGuard = {
   readonly evolutionHuman: boolean;
   readonly protectedTarget: (path: string) => string | undefined;
   readonly secretPath: (path: string) => boolean;
+  readonly readPatch: (path: string) => string | undefined;
 };
 
 const assignment = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const wrappers = new Set(["sudo", "doas", "command", "builtin", "exec", "nohup", "nice", "time", "xargs", "!", "{", "}", "if", "then", "elif", "else", "while", "until", "do"]);
-const nestedRunners = new Set([
-  ...["bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "cmd", "eval", "source", ".", "ssh", "su", "watch", "wsl", "script", "docker", "kubectl"],
-  ...["node", "tsx", "deno", "bun", "python", "python3", "py", "perl", "ruby", "php"],
+const dataSinks = new Set([
+  ...["cat", "tee", "echo", "printf", "print", "write-output", "write-host", "grep", "egrep", "fgrep", "rg", "wc", "head", "tail"],
+  ...["sort", "uniq", "less", "more", "jq", "diff", "read", "gh", "gitleaks", "test", "[", "[["],
 ]);
+const gitDataSubcommands = new Set(["commit", "tag", "notes", "hash-object", "log", "show", "grep", "diff", "status"]);
+const patchHeader = /^(?:(?:\+\+\+|---)\s+|diff --git\s+|(?:rename|copy) (?:from|to)\s+)(.+)$/gm;
 const printers = new Set(["echo", "printf", "print", "cat", "write-output", "write-host", "write-information", "out-host"]);
 const envDrivers = new Set(["get-childitem", "gci", "ls", "dir", "get-item", "gi", "get-content", "gc", "cat", "type"]);
 const removers = new Set(["rm", "unlink", "truncate", "remove-item", "ri", "del", "erase", "rd", "rmdir", "clear-content", "set-content", "add-content", "out-file", "new-item", "tee"]);
@@ -142,8 +145,28 @@ function printsSecret(name: string, args: readonly Word[], all: readonly Word[])
   return supabase !== -1 && texts.slice(supabase + 1).includes("status");
 }
 
-function writeTargets(name: string, args: readonly Word[], segment: Segment, all: readonly Word[]): string[] {
+function isDataSink(name: string, all: readonly Word[]): boolean {
+  if (name !== "git") return dataSinks.has(name);
+  const git = gitInvocation(all);
+  return git !== undefined && git.config.length === 0 && gitDataSubcommands.has(git.subcommand);
+}
+
+function patchTargets(patch: string): string[] {
+  return [...patch.matchAll(patchHeader)].flatMap((match) =>
+    (match[1] ?? "")
+      .split(/\s+/)
+      .map((path) => path.replace(/^[ab]\//, ""))
+      .filter((path) => path !== "" && path !== "/dev/null"),
+  );
+}
+
+function writeTargets(name: string, args: readonly Word[], segment: Segment, all: readonly Word[], guard: CommandGuard): string[] {
   const targets = [...segment.writeTargets];
+  const gitSubcommand = name === "git" ? gitInvocation(all)?.subcommand : undefined;
+  if (name === "patch" || gitSubcommand === "apply" || gitSubcommand === "am") {
+    const patches = [...segment.heredocs, ...operands(args).flatMap((path) => guard.readPatch(path) ?? [])];
+    targets.push(...patches.flatMap(patchTargets));
+  }
   if (removers.has(name) || movers.has(name)) targets.push(...operands(args));
   if (copiers.has(name)) targets.push(...operands(args).slice(-1));
   if (inPlaceEditors.has(name) && options(args).some((flag) => flag.startsWith("-i") || shortCluster(flag, "i") || flag.startsWith("--in-place"))) targets.push(...operands(args));
@@ -169,7 +192,7 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
       (printsSecret(name, args, all) ? messages.printSecret : undefined);
     if (problem) return problem;
     if (!guard.evolutionHuman) {
-      const target = writeTargets(name, args, segment, all).map(guard.protectedTarget).find((path) => path !== undefined);
+      const target = writeTargets(name, args, segment, all, guard).map(guard.protectedTarget).find((path) => path !== undefined);
       if (target !== undefined) return messages.protectedWrite(target);
     }
   } else if (!guard.evolutionHuman) {
@@ -177,10 +200,10 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     if (target !== undefined) return messages.protectedWrite(target);
   }
   if (depth >= maxNesting) return undefined;
-  const runsNested = segment.words.some((word) => nestedRunners.has(programName(word.text)));
+  const inspectAll = program === undefined || !isDataSink(programName(program.text), all);
   const nestedCommands = [
-    ...segment.quoted.filter((part) => runsNested || part.includes("$(") || part.includes("`")),
-    ...(runsNested ? segment.heredocs : []),
+    ...segment.quoted.filter((part) => inspectAll || part.includes("$(") || part.includes("`")),
+    ...(inspectAll ? segment.heredocs : []),
   ];
   for (const nestedCommand of nestedCommands) {
     const nested = commandProblem(nestedCommand, guard, depth + 1);
