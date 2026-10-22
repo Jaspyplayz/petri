@@ -241,6 +241,8 @@ describe("review findings stay closed", () => {
     "git config --glo user.email jasper@example.com && git config -l && git config --get-regexp '^color'",
     "pnpm exec tsx scripts/new-feature.ts sparkles",
     'cd "$(git rev-parse --show-toplevel)" && ls',
+    'git commit -m "$msg" && watch -n 5 "$HOME/bin/status"',
+    "sed -i '/^old$/d; s/a$/b/' notes.md",
   ])("allows %s", (command) => {
     expect(commandProblem(command, guard)).toBeUndefined();
   });
@@ -253,7 +255,17 @@ describe("review findings stay closed", () => {
     expect(commandProblem(command, { ...guard, powershell: true })).toBeUndefined();
   });
 
-  it.each(["x=$(cat cmd.txt); $x", "$files = Get-ChildItem src", 'bash -c "$x"', "sh -c '$x' && zsh -c \"`cat cmd`\""])(
+  it.each([
+    "x=$(cat cmd.txt); $x",
+    "$files = Get-ChildItem src",
+    'bash -c "$x"',
+    "sh -c '$x' && zsh -c \"`cat cmd`\"",
+    'sh -c "true; $x"',
+    "find . -exec sh -c 'true; $0' {} \\;",
+    'timeout 5 bash -c "cd app && $x"',
+    "cmd /c %x%",
+    'watch -n 5 "date; $x"',
+  ])(
     "treats a variable in the program position as dynamic in bash: %s",
     (command) => {
       expect(commandProblem(command, guard)).toContain("can't see which program");

@@ -61,6 +61,7 @@ const variableReference = /\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-
 const interpreterNames = "(node(js)?|deno|bun|tsx|ts-node(-esm)?|python[\\d.]*w?|py|pypy[\\d.]*|ruby|perl|php|lua|rscript|julia|osascript)";
 const interpreterName = new RegExp(`^${interpreterNames}$`);
 const shellPrograms = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish", "busybox", "pwsh", "powershell", "cmd"]);
+const expansion = /\$[\w{('"@*#?$!-]|`/;
 const interpreters = new RegExp(`(^|[\\s;&|(\`'"/\\\\<>])${interpreterNames}(\\.exe)?(?=$|[\\s;&|)\`'"<>])`, "i");
 const powershellValueStatement = /^([-+*/%]?=|\?\?=|-(eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|replace|split|join|is|isnot|as|and|or|xor|not|band|bor|f)|[.[].*)$/i;
 const dynamicPrograms = [
@@ -295,7 +296,14 @@ function writeTargets(name: string, args: readonly Word[], segment: Segment, all
   return targets.flatMap(candidatePaths);
 }
 
-function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): string | undefined {
+function runsDynamicShell(words: readonly Word[]): boolean {
+  const shell = words.findIndex((word) => shellPrograms.has(programName(word.text)));
+  if (shell === -1) return false;
+  const cmd = programName(words[shell]?.text ?? "") === "cmd";
+  return words.slice(shell + 1).some((word) => expansion.test(word.text) || (cmd && /%[^%\s]+%|![^!\s]+!/.test(word.text)));
+}
+
+function segmentProblem(segment: Segment, guard: CommandGuard, depth: number, lone: boolean): string | undefined {
   const all = commandWords(segment);
   const [program, ...args] = all;
   if (segment.words.some((word) => /^(\$env:)?(LEFTHOOK|HUSKY)=["']?(0|false)/i.test(word.text) || /^(\$env:)?LEFTHOOK_(EXCLUDE|SKIP)=/i.test(word.text))) {
@@ -328,9 +336,9 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     const name = programName(program.text);
     const [firstArgument] = args;
     const valueStatement =
-      guard.powershell === true ? firstArgument === undefined || powershellValueStatement.test(firstArgument.text) : depth > 0 && firstArgument === undefined;
-    if (/[$`]/.test(program.text) && !valueStatement) return messages.dynamicProgram;
-    if (shellPrograms.has(name) && args.some((word) => /^\s*[$`]/.test(word.text))) return messages.dynamicProgram;
+      guard.powershell === true ? firstArgument === undefined || powershellValueStatement.test(firstArgument.text) : depth > 0 && lone && firstArgument === undefined;
+    if (expansion.test(program.text) && !valueStatement) return messages.dynamicProgram;
+    if (runsDynamicShell(all)) return messages.dynamicProgram;
     if ((name === "eval" || name === "source" || program.text === ".") && args.some((word) => /[$`]/.test(word.text))) return messages.dynamicProgram;
   }
   const startsPrograms =
@@ -370,9 +378,11 @@ export function commandProblem(command: string, guard: CommandGuard, depth = 0):
   if (configHomeOverrides.some((pattern) => pattern.test(command))) return messages.configHome;
   const script = scriptProblem(command);
   if (script) return script;
-  const segments = [...parseShell(command), ...parseShell(command, true)];
+  const quoteAware = parseShell(command);
+  const segments = [...quoteAware, ...parseShell(command, true)];
+  const lone = quoteAware.length === 1;
   for (const segment of segments) {
-    const problem = segmentProblem(segment, guard, depth);
+    const problem = segmentProblem(segment, guard, depth, lone);
     if (problem) return problem;
   }
   if (interpreters.test(command) && spawnsProcess.test(command)) return messages.spawnFromScript;
