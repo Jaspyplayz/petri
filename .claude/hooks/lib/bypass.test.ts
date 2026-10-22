@@ -189,6 +189,14 @@ describe("review findings stay closed", () => {
     ["git -c commit.gpgsign=false commit -m x", "git aliases"],
     ["node -e \"const env = {}; require('child_process').spawnSync('git', ['commit'], { env })\"", "overriding HOME"],
     ["python3 -c \"import os; os.execve('/usr/bin/git', ['git', 'commit'], e)\"", "overriding HOME"],
+    ["git config color.diff.x '!sh -c x' && git config --rename-section color.diff alias", "git aliases"],
+    ["git config rename-section color.diff alias", "git aliases"],
+    ["git config alias.x '-c core.hooksPath=/dev/null commit'", "git aliases"],
+    ["python3 -c \"import subprocess; subprocess.run(['git', 'commit'], **{'env': e})\"", "overriding HOME"],
+    ["node -e \"const o = {}; o.env = e; require('child_process').spawnSync('git', ['commit'], o)\"", "overriding HOME"],
+    ["node -e \"require('child_process').spawnSync('g' + 'it', ['push', '-' + 'f'])\"", "starts other programs"],
+    ["python3 -c \"import os; os.system('g' + 'it push -f')\"", "starts other programs"],
+    ["python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['ls'])\nEOF", "starts other programs"],
   ])("%s", (command, reason) => {
     expect(commandProblem(command, guard)).toContain(reason);
   });
@@ -207,7 +215,8 @@ describe("review findings stay closed", () => {
     'export PATH="$HOME/bin:$PATH"; local x="$1" y=$2',
     'eval "$(ssh-agent -s)" && read -r sha <<< "$HOME"',
     "node -e \"console.log(process.env.NODE_ENV)\"",
-    "python3 -c \"import subprocess; subprocess.run(['ls'])\"",
+    "python3 -c \"import json; print(json.dumps({'a': 1}))\"",
+    'grep -rn "child_process" scripts && git log --oneline -3',
     "git remote add upstream https://github.com/example/petri.git && git config user.name Jasper",
     "git config user.email && git config --get remote.origin.url && git config get core.editor",
     "git config --global user.name 'Jasper' && git -c core.quotepath=off status",

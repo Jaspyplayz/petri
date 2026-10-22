@@ -19,7 +19,9 @@ const patchPrograms = new Set(["patch", "gpatch"]);
 const forceOptions = ["--force", "--force-with-lease", "--force-if-includes", "--mirror"];
 const harmlessGitConfig = /^(user\.(name|email)|color\..+|advice\..+|core\.(quotepath|autocrlf|safecrlf)|init\.defaultbranch|pull\.rebase|push\.autosetupremote)$/i;
 const gitConfigValueOptions = new Set(["-f", "--file", "--blob", "--type", "--default", "--comment", "--value"]);
-const gitConfigWriteFlags = new Set(["--add", "--replace-all", "--unset", "--unset-all", "--edit", "-e", "--rename-section", "--remove-section"]);
+const gitConfigWriteFlags = new Set(["--add", "--replace-all", "--unset", "--unset-all"]);
+const gitConfigSectionActions = new Set(["edit", "rename-section", "remove-section", "--edit", "-e", "--rename-section", "--remove-section"]);
+const gitConfigSubcommands = new Set(["get", "set", "unset", "list", "edit", "rename-section", "remove-section"]);
 const gitConfigReadFlags = /^(--get(-all|-regexp|-urlmatch|-color|colorbool)?|--list|-l)$/;
 const configHomes = "(HOME|HOMEDRIVE|HOMEPATH|USERPROFILE|XDG_CONFIG_HOME|CLAUDE_CONFIG_DIR)";
 const envSetters = "(SetEnvironmentVariable|putenv|setenv)";
@@ -36,7 +38,8 @@ const configHomeOverrides = [
   /\b(read|mapfile|readarray)\b[^;&|<\n]*?[\s'"]\$/,
   /\beval\b[^;&|\n]*\$\{?\w+\}?\w*\s*[-+]?=/,
   /(process\.env|os\.environ|\bENV)\s*\[\s*(?!(["'])\w+\2\s*\])|\$ENV\{\s*\$|Object\.assign\s*\(\s*process\.env|os\.environ\s*(\.(update|setdefault|__setitem__)|\|=)/,
-  /\b(spawn|exec|execFile|fork|Popen|run|call|check_call|check_output|system)\w*\s*\([^;\n]*?\benv\s*[=:,}]/,
+  /\b(spawn|exec|execFile|fork|Popen|run|call|check_call|check_output|system)\w*\s*\([^;\n]*?\benv["']?\s*[=:,}]/,
+  /\.env\s*=(?!=)|\[\s*["']env["']\s*\]\s*=(?!=)/,
   /\b(exec[lv]p?e|spawn[lv]p?e|posix_spawnp?)\s*\(/,
 ];
 const unresolvedPath = /[$`%]|^~/;
@@ -48,6 +51,8 @@ const movers = new Set(["mv", "move-item", "mi", "ln", "mkdir", "touch", "new-it
 const inPlaceEditors = new Set(["sed", "perl"]);
 const secretName = /(SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|PRIVATE|CREDENTIAL|SALT|COOKIE|SESSION|APIKEY|(^|_)O?AUTH($|_)|(^|_)KEYS?($|_))/i;
 const variableReference = /\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%/gi;
+const interpreters = /^(node(js)?|deno|bun|python[\d.]*|py|pypy[\d.]*|ruby|perl|php|lua)$/;
+const spawnsProcess = /child_process|subprocess|os\.(system|popen|exec|spawn)|Popen|Deno\.Command|Bun\.spawn|\b(spawn|exec|execFile)(Sync)?\s*\(|\bsystem\s*\(/;
 const maxNesting = 3;
 
 const messages = {
@@ -58,6 +63,7 @@ const messages = {
   secretFile: "Blocked: env and credential files hold secrets and stay unread. Scripts such as `pnpm setup:secrets` and `pnpm env:local` read them for you.",
   evolutionHuman: "Blocked: EVOLUTION_HUMAN is set by a human when they start Claude Code, never by a command.",
   patchTool: "Blocked: patch, git apply and git am are off for agents, because the guard can't reliably tell which files a patch writes. Use the Edit/Write tools; a human can run them with EVOLUTION_HUMAN=1.",
+  spawnFromScript: "Blocked: inline interpreter code that starts other programs (child_process, subprocess, os.system, …) hides them from the guard. Run them directly in the shell.",
   gitAlias: "Blocked: agents set only a few harmless git config keys (user.name, user.email, color.*, advice.*, …). Others, such as git aliases, config includes, push refspecs, pagers, editors, diff and filter drivers, and GIT_CONFIG_* variables, change what a git command runs. Spell out the git command instead, or ask a human.",
   configHome: "Blocked: overriding HOME (or HOMEDRIVE/HOMEPATH), USERPROFILE, XDG_CONFIG_HOME or CLAUDE_CONFIG_DIR, or setting environment variables by a computed name or for a spawned process, can point git and other tools at a different config. Leave them as they are.",
   protectedWrite: (path: string) =>
@@ -129,17 +135,23 @@ function gitInvocation(words: readonly Word[]): GitInvocation | undefined {
 function gitConfigWrites(rest: readonly Word[]): string[] {
   const flags: string[] = [];
   const values: string[] = [];
+  let positional = false;
   for (let index = 0; index < rest.length; index += 1) {
     const word = rest[index]?.text ?? "";
-    if (gitConfigValueOptions.has(word)) index += 1;
-    else if (word.startsWith("-")) flags.push(word);
-    else values.push(word);
+    if (!positional && gitConfigValueOptions.has(word)) {
+      index += 1;
+    } else if (!positional && word.startsWith("-")) {
+      flags.push(word.split("=")[0] ?? "");
+    } else {
+      values.push(word);
+      positional = values.length > 1 || !gitConfigSubcommands.has(word);
+    }
   }
   const [first = "", ...others] = values;
+  if ([first, ...flags].some((action) => gitConfigSectionActions.has(action))) return [`a whole section (${first})`];
   if (first === "get" || first === "list" || flags.some((flag) => gitConfigReadFlags.test(flag))) return [];
   if (first === "set" || first === "unset") return [others[0] ?? ""];
-  if (["edit", "rename-section", "remove-section"].includes(first)) return [first];
-  if (flags.some((flag) => gitConfigWriteFlags.has(flag.split("=")[0] ?? ""))) return [first];
+  if (flags.some((flag) => gitConfigWriteFlags.has(flag))) return [first];
   return others.length > 0 ? [first] : [];
 }
 
@@ -282,7 +294,9 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     const nested = commandProblem(substitution, guard, depth);
     if (nested) return nested;
   }
-  if (depth >= maxNesting) return undefined;
+  const inlineCode = program !== undefined && interpreters.test(programName(program.text)) ? [...args.map((word) => word.text), ...segment.heredocs] : [];
+  const startsPrograms = inlineCode.some((code) => spawnsProcess.test(code)) ? messages.spawnFromScript : undefined;
+  if (depth >= maxNesting) return startsPrograms;
   const inspectAll = program === undefined || !isDataSink(programName(program.text), all);
   const nestedCommands = [
     ...segment.quoted.filter((part) => inspectAll || part.includes("$(") || part.includes("`")),
@@ -292,7 +306,7 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     const nested = commandProblem(nestedCommand, guard, depth + 1);
     if (nested) return nested;
   }
-  return undefined;
+  return startsPrograms;
 }
 
 function scriptProblem(command: string): string | undefined {
