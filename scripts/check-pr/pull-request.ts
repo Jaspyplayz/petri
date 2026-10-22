@@ -8,6 +8,7 @@ export type PullRequest = {
   readonly authorIsBot: boolean;
   readonly labels: readonly string[];
   readonly headRef: string;
+  readonly headRepository: string | undefined;
   readonly baseSha: string;
   readonly headSha: string;
 };
@@ -17,7 +18,12 @@ export type LabelEvent = {
   readonly label: string | undefined;
   readonly actor: string | undefined;
   readonly actorType: string | undefined;
+  readonly createdAt: string | undefined;
 };
+
+type FetchPage = typeof fetch;
+
+const approvalVoidingEvents = new Set(["base_ref_changed", "head_ref_force_pushed", "head_ref_restored"]);
 
 function stringAt(record: Readonly<Record<string, unknown>> | undefined, key: string): string | undefined {
   const value = record?.[key];
@@ -49,6 +55,7 @@ export function pullRequestFromEvent(payload: unknown): PullRequest | undefined 
       return name === undefined ? [] : [name];
     }),
     headRef,
+    headRepository: stringAt(asRecord(head?.repo), "full_name"),
     baseSha,
     headSha,
   };
@@ -81,12 +88,19 @@ export function labelAddedByHuman(
   pullRequest: PullRequest,
   events: readonly LabelEvent[],
   humans: readonly string[],
+  lastHeadUpdate: string | undefined,
 ): boolean {
   if (pullRequest.action === "synchronize" || !pullRequest.labels.includes(label)) return false;
   const lastLabeled = events.filter((event) => event.event === "labeled" && event.label === label).at(-1);
   if (!lastLabeled?.actor || lastLabeled.actorType !== "User") return false;
   const actor = lastLabeled.actor.toLowerCase();
-  return humans.some((human) => human.toLowerCase() === actor);
+  if (!humans.some((human) => human.toLowerCase() === actor)) return false;
+  const labeledAt = Date.parse(lastLabeled.createdAt ?? "");
+  const voidedAt = [lastHeadUpdate, ...events.filter((event) => approvalVoidingEvents.has(event.event)).map((event) => event.createdAt)].map(
+    (time) => Date.parse(time ?? ""),
+  );
+  if (Number.isNaN(labeledAt) || voidedAt.some((time) => Number.isNaN(time))) return false;
+  return voidedAt.every((time) => labeledAt > time);
 }
 
 export function labelEventsFromApi(page: unknown): LabelEvent[] {
@@ -102,34 +116,57 @@ export function labelEventsFromApi(page: unknown): LabelEvent[] {
         label: stringAt(asRecord(record?.label), "name"),
         actor: stringAt(actor, "login"),
         actorType: stringAt(actor, "type"),
+        createdAt: stringAt(record, "created_at"),
       },
     ];
   });
+}
+
+async function githubGet(url: string, token: string, what: string, fetchPage: FetchPage): Promise<unknown> {
+  const response = await fetchPage(url, {
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token}`,
+      "x-github-api-version": "2022-11-28",
+    },
+  });
+  if (!response.ok) throw new Error(`GitHub API ${String(response.status)} while reading ${what}`);
+  return response.json();
 }
 
 export async function fetchLabelEvents(
   repository: string,
   pullNumber: number,
   token: string,
-  fetchPage: typeof fetch = fetch,
+  fetchPage: FetchPage = fetch,
 ): Promise<LabelEvent[]> {
   const events: LabelEvent[] = [];
   for (let page = 1; page <= 20; page += 1) {
-    const response = await fetchPage(
+    const body = await githubGet(
       `https://api.github.com/repos/${repository}/issues/${String(pullNumber)}/events?per_page=100&page=${String(page)}`,
-      {
-        headers: {
-          accept: "application/vnd.github+json",
-          authorization: `Bearer ${token}`,
-          "x-github-api-version": "2022-11-28",
-        },
-      },
+      token,
+      "issue events",
+      fetchPage,
     );
-    if (!response.ok) throw new Error(`GitHub API ${String(response.status)} while reading issue events`);
-    const body: unknown = await response.json();
-    const batch = labelEventsFromApi(body);
-    events.push(...batch);
+    events.push(...labelEventsFromApi(body));
     if (!Array.isArray(body) || body.length < 100) break;
   }
   return events;
+}
+
+export async function fetchLastHeadUpdate(
+  repository: string,
+  headRef: string,
+  token: string,
+  fetchPage: FetchPage = fetch,
+): Promise<string | undefined> {
+  const ref = encodeURIComponent(`refs/heads/${headRef}`);
+  const body = await githubGet(
+    `https://api.github.com/repos/${repository}/activity?ref=${ref}&direction=desc&per_page=1`,
+    token,
+    "repository activity",
+    fetchPage,
+  );
+  const latest: unknown = Array.isArray(body) ? body[0] : undefined;
+  return stringAt(asRecord(latest), "timestamp");
 }

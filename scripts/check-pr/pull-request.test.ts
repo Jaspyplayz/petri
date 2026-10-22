@@ -4,6 +4,7 @@ import { repoRoot } from "./context";
 import {
   agentReasons,
   fetchLabelEvents,
+  fetchLastHeadUpdate,
   humanMaintainers,
   type LabelEvent,
   labelAddedByHuman,
@@ -22,7 +23,7 @@ function eventPayload(
       number: 42,
       user: { login: overrides.login ?? "Jaspyplayz", type: overrides.type ?? "User" },
       labels: (overrides.labels ?? []).map((name) => ({ name })),
-      head: { ref: overrides.ref ?? "chore/thing", sha: "b".repeat(40) },
+      head: { ref: overrides.ref ?? "chore/thing", sha: "b".repeat(40), repo: { full_name: "Jaspyplayz/petri" } },
       base: { ref: "main", sha: "a".repeat(40) },
     },
   };
@@ -43,6 +44,7 @@ describe("pullRequestFromEvent", () => {
       authorIsBot: false,
       labels: ["evolution", "risk:low"],
       headRef: "chore/thing",
+      headRepository: "Jaspyplayz/petri",
       baseSha: "a".repeat(40),
       headSha: "b".repeat(40),
     });
@@ -78,16 +80,20 @@ describe("humanMaintainers", () => {
 });
 
 describe("labelAddedByHuman", () => {
-  const labeled = (actor: string, actorType = "User", label = "protected-ok"): LabelEvent => ({
+  const pushedAt = "2026-10-22T10:00:00Z";
+  const labeled = (actor: string, actorType = "User", label = "protected-ok", createdAt = "2026-10-22T11:00:00Z"): LabelEvent => ({
     event: "labeled",
     label,
     actor,
     actorType,
+    createdAt,
   });
   const pr = pullRequest({ labels: ["evolution", "protected-ok"] });
+  const approved = (events: readonly LabelEvent[], lastHeadUpdate: string | undefined = pushedAt) =>
+    labelAddedByHuman("protected-ok", pr, events, ["Jaspyplayz"], lastHeadUpdate);
 
-  it("accepts the label when a maintainer added it last", () => {
-    expect(labelAddedByHuman("protected-ok", pr, [labeled("claude[bot]", "Bot"), labeled("jaspyplayz")], ["Jaspyplayz"])).toBe(true);
+  it("accepts the label when a maintainer added it last, after the latest push", () => {
+    expect(approved([labeled("claude[bot]", "Bot"), labeled("jaspyplayz")])).toBe(true);
   });
 
   it.each([
@@ -96,17 +102,34 @@ describe("labelAddedByHuman", () => {
     ["a bot re-added it after the maintainer", [labeled("Jaspyplayz"), labeled("claude[bot]", "Bot")]],
     ["there is no labeled event", []],
     ["another label was added", [labeled("Jaspyplayz", "User", "size-ok")]],
+    ["the label has no timestamp", [{ ...labeled("Jaspyplayz"), createdAt: undefined }]],
   ])("rejects it when %s", (_name, events) => {
-    expect(labelAddedByHuman("protected-ok", pr, events, ["Jaspyplayz"])).toBe(false);
+    expect(approved(events)).toBe(false);
   });
 
   it("voids the approval when new commits are pushed", () => {
     const pushed = pullRequest({ labels: ["evolution", "protected-ok"], action: "synchronize" });
-    expect(labelAddedByHuman("protected-ok", pushed, [labeled("Jaspyplayz")], ["Jaspyplayz"])).toBe(false);
+    expect(labelAddedByHuman("protected-ok", pushed, [labeled("Jaspyplayz")], ["Jaspyplayz"], pushedAt)).toBe(false);
+  });
+
+  it("voids a label added before the latest push, whatever event re-runs the check", () => {
+    expect(approved([labeled("Jaspyplayz")], "2026-10-22T12:00:00Z")).toBe(false);
+    expect(approved([labeled("Jaspyplayz", "User", "protected-ok", pushedAt)])).toBe(false);
+  });
+
+  it("voids a label added before the base branch changed", () => {
+    const retargeted: LabelEvent = { event: "base_ref_changed", label: undefined, actor: "claude[bot]", actorType: "Bot", createdAt: "2026-10-22T12:00:00Z" };
+    expect(approved([labeled("Jaspyplayz"), retargeted])).toBe(false);
+    expect(approved([retargeted, labeled("Jaspyplayz", "User", "protected-ok", "2026-10-22T13:00:00Z")])).toBe(true);
+  });
+
+  it("fails closed when the latest push time is unknown", () => {
+    expect(labelAddedByHuman("protected-ok", pr, [labeled("Jaspyplayz")], ["Jaspyplayz"], undefined)).toBe(false);
   });
 
   it("rejects a label that is no longer on the PR", () => {
-    expect(labelAddedByHuman("protected-ok", pullRequest({ labels: ["evolution"] }), [labeled("Jaspyplayz")], ["Jaspyplayz"])).toBe(false);
+    const unlabeled = pullRequest({ labels: ["evolution"] });
+    expect(labelAddedByHuman("protected-ok", unlabeled, [labeled("Jaspyplayz")], ["Jaspyplayz"], pushedAt)).toBe(false);
   });
 });
 
@@ -125,11 +148,32 @@ describe("fetchLabelEvents", () => {
       "https://api.github.com/repos/Jaspyplayz/petri/issues/42/events?per_page=100&page=1",
       "https://api.github.com/repos/Jaspyplayz/petri/issues/42/events?per_page=100&page=2",
     ]);
-    expect(events.at(-1)).toEqual({ event: "labeled", label: "size-ok", actor: "Jaspyplayz", actorType: "User" });
+    expect(events.at(-1)).toEqual({ event: "labeled", label: "size-ok", actor: "Jaspyplayz", actorType: "User", createdAt: undefined });
   });
 
   it("fails closed on API errors", async () => {
     const failing: typeof fetch = () => Promise.resolve(new Response("nope", { status: 403 }));
     await expect(fetchLabelEvents("o/r", 1, "t", failing)).rejects.toThrow("GitHub API 403");
+  });
+});
+
+describe("fetchLastHeadUpdate", () => {
+  it("reads the newest activity on the head branch", async () => {
+    const urls: string[] = [];
+    const fakeFetch: typeof fetch = (input) => {
+      urls.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      return Promise.resolve(Response.json([{ activity_type: "push", timestamp: "2026-10-22T10:00:00Z" }]));
+    };
+    expect(await fetchLastHeadUpdate("Jaspyplayz/petri", "evo/12-blob", "token", fakeFetch)).toBe("2026-10-22T10:00:00Z");
+    expect(urls).toEqual([
+      "https://api.github.com/repos/Jaspyplayz/petri/activity?ref=refs%2Fheads%2Fevo%2F12-blob&direction=desc&per_page=1",
+    ]);
+  });
+
+  it("returns undefined when the branch has no activity and throws on API errors", async () => {
+    const empty: typeof fetch = () => Promise.resolve(Response.json([]));
+    expect(await fetchLastHeadUpdate("o/r", "x", "t", empty)).toBeUndefined();
+    const failing: typeof fetch = () => Promise.resolve(new Response("nope", { status: 404 }));
+    await expect(fetchLastHeadUpdate("o/r", "x", "t", failing)).rejects.toThrow("GitHub API 404");
   });
 });

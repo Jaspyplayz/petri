@@ -33,7 +33,7 @@ done(
     `pr-size: ${range} is an agent PR (${context.agentReasons.join(", ")}) with ${measured}.`,
     ...biggest,
     "",
-    `Split it into smaller PRs (one issue, one concern each), or a maintainer can add the label "${label}".`,
+    `Split it into smaller PRs (one issue, one concern each), or a maintainer can add the label "${label}" after the latest push (new commits or a base-branch change void it).`,
   ],
   false,
 );

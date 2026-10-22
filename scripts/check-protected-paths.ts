@@ -45,7 +45,7 @@ done(
     `protected-paths: ${range} is an ${agent} and touches ${String(violations.length)} protected path(s):`,
     ...listing,
     "",
-    `Agents can't weaken their own guardrails. A maintainer (${context.humans.join(", ") || "repository owner"}) can approve by adding the label "${label}".`,
+    `Agents can't weaken their own guardrails. A maintainer (${context.humans.join(", ") || "repository owner"}) can approve by adding the label "${label}" after the latest push. New commits or a base-branch change void an approval: remove the label and add it again.`,
   ],
   false,
 );

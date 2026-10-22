@@ -7,6 +7,7 @@ import type { FileReader } from "./protected-paths.ts";
 import {
   agentReasons,
   fetchLabelEvents,
+  fetchLastHeadUpdate,
   humanMaintainers,
   labelAddedByHuman,
   type PullRequest,
@@ -72,8 +73,12 @@ export function loadCheckContext(argv: readonly string[], env: Env): CheckContex
     read: (side, path) => readAt(root, side === "base" ? base : head, path),
     humanLabel: async (label) => {
       if (!pullRequest?.labels.includes(label) || !token || !repository) return false;
-      const events = await fetchLabelEvents(repository, pullRequest.number, token);
-      return labelAddedByHuman(label, pullRequest, events, humans);
+      if (pullRequest.headRepository !== repository) return false;
+      const [events, lastHeadUpdate] = await Promise.all([
+        fetchLabelEvents(repository, pullRequest.number, token),
+        fetchLastHeadUpdate(repository, pullRequest.headRef, token),
+      ]);
+      return labelAddedByHuman(label, pullRequest, events, humans, lastHeadUpdate);
     },
     summary: (markdown) => {
       if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${markdown}\n`);
