@@ -4,7 +4,7 @@
 pre-commit:
   jobs:
     - name: secrets
-      run: gitleaks git --pre-commit --staged --redact --no-banner --verbose
+      run: gitleaks git --pre-commit --staged --ignore-gitleaks-allow --redact --no-banner --verbose
     - name: typecheck
       glob: "*.{ts,tsx,mts,cts}"
       run: pnpm -s typecheck

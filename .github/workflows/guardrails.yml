@@ -3,6 +3,7 @@ name: Guardrails
 # pull_request_target runs this file and scripts/check-* from the BASE branch, so a PR
 # cannot edit the checks that judge it. The PR head is fetched as git data only: it is
 # never checked out, installed or executed. Do not add steps that run PR code here.
+# No step keeps a git credential: the token goes only to the one fetch that needs it.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
@@ -26,6 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
@@ -33,7 +35,10 @@ jobs:
       - name: Fetch the PR head as data
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head"
       - name: Agents may not change protected paths
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -51,6 +56,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
@@ -58,7 +64,10 @@ jobs:
       - name: Fetch the PR head as data
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head"
       - name: Agent PRs stay small
         env:
           GITHUB_TOKEN: ${{ github.token }}

@@ -67,6 +67,11 @@ describe("protectedPathViolations", () => {
     "src/shared/server-env-schema.ts",
     "supabase/config.toml",
     "supabase/seed.sql",
+    "src/eslint.config.mjs",
+    ".env",
+    ".env.production",
+    ".env.example",
+    "src/.env.local",
   ])("blocks agent edits to %s", (path) => {
     expect(violations([{ path, status: "modified" }])).toEqual([path]);
   });
