@@ -208,6 +208,13 @@ describe("review findings stay closed", () => {
     ["& ('g' + 'it') push -f", "can't see which program"],
     ["iex $cmd", "can't see which program"],
     ['eval "$cmd"', "can't see which program"],
+    ['"$g" push -f', "can't see which program"],
+    ["$g -c 'x'", "can't see which program"],
+    ['bash -c \'"$g" push -f\'', "can't see which program"],
+    ['eval "$(ssh-agent -s)"', "can't see which program"],
+    ['source "$script"', "can't see which program"],
+    ["python3<<'EOF'\nimport subprocess\nsubprocess.run(['ls'])\nEOF", "starts other programs"],
+    ["node<script.js -e \"require('child_process')\"", "starts other programs"],
   ])("%s", (command, reason) => {
     expect(commandProblem(command, guard)).toContain(reason);
   });
@@ -224,7 +231,8 @@ describe("review findings stay closed", () => {
     "Get-ChildItem $env:USERPROFILE; cd ${env:HOME}",
     'while read -r line; do echo "$line"; done < notes.md',
     'export PATH="$HOME/bin:$PATH"; local x="$1" y=$2',
-    'eval "$(ssh-agent -s)" && read -r sha <<< "$HOME"',
+    'read -r sha <<< "$HOME" && source ./scripts/env.sh',
+    "$c = Get-Content notes.md; $c -replace 'a', 'b' | Set-Content out.md; $n += 1; $x.Trim()",
     "node -e \"console.log(process.env.NODE_ENV)\"",
     "python3 -c \"import json; print(json.dumps({'a': 1}))\"",
     'grep -rn "child_process" scripts && git log --oneline -3',

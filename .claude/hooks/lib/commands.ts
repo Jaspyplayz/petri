@@ -57,7 +57,10 @@ const movers = new Set(["mv", "move-item", "mi", "ln", "mkdir", "touch", "new-it
 const inPlaceEditors = new Set(["sed", "perl"]);
 const secretName = /(SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|PRIVATE|CREDENTIAL|SALT|COOKIE|SESSION|APIKEY|(^|_)O?AUTH($|_)|(^|_)KEYS?($|_))/i;
 const variableReference = /\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%/gi;
-const interpreters = /(^|[\s;&|(`'"/\\])(node(js)?|deno|bun|tsx|ts-node(-esm)?|python[\d.]*w?|py|pypy[\d.]*|ruby|perl|php|lua|rscript|julia|osascript)(\.exe)?(?=$|[\s;&|)`'"])/i;
+const interpreterNames = "(node(js)?|deno|bun|tsx|ts-node(-esm)?|python[\\d.]*w?|py|pypy[\\d.]*|ruby|perl|php|lua|rscript|julia|osascript)";
+const interpreterName = new RegExp(`^${interpreterNames}$`);
+const interpreters = new RegExp(`(^|[\\s;&|(\`'"/\\\\<>])${interpreterNames}(\\.exe)?(?=$|[\\s;&|)\`'"<>])`, "i");
+const powershellValueStatement = /^([-+*/%]?=|\?\?=|-(eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|replace|split|join|is|isnot|as|and|or|xor|not|band|bor|f)|[.[].*)$/i;
 const dynamicPrograms = [
   /(^|[;&|({\n]\s*)(&\s*[($]|\$\{?\w+\}?\s+(?![-+*/.]?=|-)[\w"'./]|\$\([^)]*\)\s+[\w"'./-]|`[^`]*`\s+[\w"'./-])/,
   /\b(iex|Invoke-Expression|Invoke-Command|icm|Start-Process|saps)\b/i,
@@ -319,7 +322,17 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     const nested = commandProblem(substitution, guard, depth);
     if (nested) return nested;
   }
-  if (depth >= maxNesting) return undefined;
+  if (program) {
+    const name = programName(program.text);
+    const [firstArgument] = args;
+    if (/[$`]/.test(program.text) && firstArgument !== undefined && !powershellValueStatement.test(firstArgument.text)) return messages.dynamicProgram;
+    if ((name === "eval" || name === "source" || program.text === ".") && args.some((word) => /[$`]/.test(word.text))) return messages.dynamicProgram;
+  }
+  const startsPrograms =
+    program !== undefined && interpreterName.test(programName(program.text)) && [...args.map((word) => word.text), ...segment.heredocs].some((code) => spawnsProcess.test(code))
+      ? messages.spawnFromScript
+      : undefined;
+  if (depth >= maxNesting) return startsPrograms;
   const inspectAll = program === undefined || !isDataSink(programName(program.text), all);
   const nestedCommands = [
     ...segment.quoted.filter((part) => inspectAll || part.includes("$(") || part.includes("`")),
@@ -329,7 +342,7 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     const nested = commandProblem(nestedCommand, guard, depth + 1);
     if (nested) return nested;
   }
-  return undefined;
+  return startsPrograms;
 }
 
 function scriptProblem(command: string): string | undefined {
