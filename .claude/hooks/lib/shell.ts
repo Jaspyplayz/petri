@@ -7,7 +7,10 @@ export type Segment = {
   readonly words: readonly Word[];
   readonly writeTargets: readonly string[];
   readonly quoted: readonly string[];
+  readonly heredocs: readonly string[];
 };
+
+type OpenSegment = Segment & { readonly heredocs: string[] };
 
 type Heredoc = { readonly delimiter: string; readonly stripTabs: boolean };
 
@@ -15,7 +18,8 @@ const doubleQuoteEscapes = new Set(["$", "`", '"', "\\", "\n"]);
 const delimiterEnd = /[\s;&|<>()]/;
 
 export function parseShell(command: string): Segment[] {
-  const segments: Segment[] = [];
+  const segments: OpenSegment[] = [];
+  let lineStart = 0;
   let words: Word[] = [];
   let writeTargets: string[] = [];
   let quoted: string[] = [];
@@ -37,22 +41,28 @@ export function parseShell(command: string): Segment[] {
   };
   const flushSegment = (): void => {
     flushWord();
-    if (words.length > 0 || quoted.length > 0) segments.push({ words, writeTargets, quoted });
+    if (words.length > 0 || quoted.length > 0) segments.push({ words, writeTargets, quoted, heredocs: [] });
     words = [];
     writeTargets = [];
     quoted = [];
     nextIsWriteTarget = false;
   };
-  const skipHeredocBodies = (): void => {
+  const readHeredocBodies = (): void => {
+    const bodies: string[] = [];
     for (const heredoc of heredocs) {
+      const lines: string[] = [];
       while (index < command.length) {
         const end = command.indexOf("\n", index);
         const line = command.slice(index, end === -1 ? command.length : end).replace(/\r$/, "");
         index = end === -1 ? command.length : end + 1;
         if ((heredoc.stripTabs ? line.replace(/^\t+/, "") : line) === heredoc.delimiter) break;
+        lines.push(line);
       }
+      bodies.push(lines.join("\n"));
     }
+    for (const segment of segments.slice(lineStart)) segment.heredocs.push(...bodies);
     heredocs = [];
+    lineStart = segments.length;
   };
 
   while (index < command.length) {
@@ -97,7 +107,7 @@ export function parseShell(command: string): Segment[] {
     } else if (char === "\n") {
       flushSegment();
       index += 1;
-      skipHeredocBodies();
+      readHeredocBodies();
     } else if (char === "<") {
       flushWord();
       if (command.startsWith("<<<", index)) {

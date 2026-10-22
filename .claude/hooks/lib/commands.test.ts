@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { commandProblem, type CommandGuard } from "./commands";
-import { projectRoot, protectedRepoPath } from "./paths";
+import { projectRoot, protectedRepoPath, secretTarget } from "./paths";
 
 const pathGuard = { projectRoot, caseInsensitive: process.platform === "win32" };
 const agent: CommandGuard = {
   evolutionHuman: false,
   protectedTarget: (path) => protectedRepoPath(path, projectRoot, pathGuard),
+  secretPath: (path) => secretTarget(path, projectRoot, pathGuard.caseInsensitive),
 };
 const human: CommandGuard = { ...agent, evolutionHuman: true };
 

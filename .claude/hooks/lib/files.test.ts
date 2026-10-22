@@ -2,12 +2,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type FileGuard, fileProblem } from "./files";
-import { isSecretFile, projectRoot, protectedRepoPath, toNativePath } from "./paths";
+import { isSecretFile, projectRoot, protectedRepoPath, secretTarget, toNativePath } from "./paths";
 
 const pathGuard = { projectRoot, caseInsensitive: process.platform === "win32" };
 const agent: FileGuard = {
   evolutionHuman: false,
   protectedTarget: (path) => protectedRepoPath(path, projectRoot, pathGuard),
+  secretPath: (path) => secretTarget(path, projectRoot, pathGuard.caseInsensitive),
 };
 const at = (path: string) => join(projectRoot, path);
 

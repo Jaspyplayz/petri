@@ -1,20 +1,23 @@
 import { basename } from "node:path";
-import { isSecretFile } from "./paths.ts";
 import { parseShell, type Segment, type Word } from "./shell.ts";
 
 export type CommandGuard = {
   readonly evolutionHuman: boolean;
   readonly protectedTarget: (path: string) => string | undefined;
+  readonly secretPath: (path: string) => boolean;
 };
 
 const assignment = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const wrappers = new Set(["sudo", "doas", "command", "builtin", "exec", "nohup", "nice", "time", "xargs", "!", "{", "}", "if", "then", "elif", "else", "while", "until", "do"]);
-const nestedRunners = new Set(["bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "cmd", "eval", "ssh", "su", "watch", "wsl", "script", "docker", "kubectl"]);
+const nestedRunners = new Set([
+  ...["bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "cmd", "eval", "source", ".", "ssh", "su", "watch", "wsl", "script", "docker", "kubectl"],
+  ...["node", "tsx", "deno", "bun", "python", "python3", "py", "perl", "ruby", "php"],
+]);
 const printers = new Set(["echo", "printf", "print", "cat", "write-output", "write-host", "write-information", "out-host"]);
 const envDrivers = new Set(["get-childitem", "gci", "ls", "dir", "get-item", "gi", "get-content", "gc", "cat", "type"]);
 const removers = new Set(["rm", "unlink", "truncate", "remove-item", "ri", "del", "erase", "rd", "rmdir", "clear-content", "set-content", "add-content", "out-file", "new-item", "tee"]);
-const copiers = new Set(["cp", "install", "ln", "rsync", "copy-item", "cpi"]);
-const movers = new Set(["mv", "move-item", "mi"]);
+const copiers = new Set(["cp", "install", "rsync", "copy-item", "cpi"]);
+const movers = new Set(["mv", "move-item", "mi", "ln", "mkdir", "touch", "new-item", "ni", "md"]);
 const inPlaceEditors = new Set(["sed", "perl"]);
 const secretName = /(SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|PRIVATE|CREDENTIAL|SALT|COOKIE|SESSION|APIKEY|(^|_)O?AUTH($|_)|(^|_)KEYS?($|_))/i;
 const variableReference = /\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%/gi;
@@ -157,7 +160,7 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
   if (segment.words.some((word) => /^(\$env:)?(LEFTHOOK|HUSKY)=["']?(0|false)/i.test(word.text) || /^(\$env:)?LEFTHOOK_(EXCLUDE|SKIP)=/i.test(word.text))) {
     return messages.skipHooks;
   }
-  if (segment.words.some((word) => isSecretFile(word.text)) || segment.writeTargets.some(isSecretFile)) return messages.secretFile;
+  if (segment.words.some((word) => guard.secretPath(word.text)) || segment.writeTargets.some(guard.secretPath)) return messages.secretFile;
   if (program) {
     const name = programName(program.text);
     const problem =
@@ -175,11 +178,13 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
   }
   if (depth >= maxNesting) return undefined;
   const runsNested = segment.words.some((word) => nestedRunners.has(programName(word.text)));
-  for (const part of segment.quoted) {
-    if (runsNested || part.includes("$(") || part.includes("`")) {
-      const nested = commandProblem(part, guard, depth + 1);
-      if (nested) return nested;
-    }
+  const nestedCommands = [
+    ...segment.quoted.filter((part) => runsNested || part.includes("$(") || part.includes("`")),
+    ...(runsNested ? segment.heredocs : []),
+  ];
+  for (const nestedCommand of nestedCommands) {
+    const nested = commandProblem(nestedCommand, guard, depth + 1);
+    if (nested) return nested;
   }
   return undefined;
 }
@@ -193,7 +198,7 @@ function scriptProblem(command: string): string | undefined {
 
 export function commandProblem(command: string, guard: CommandGuard, depth = 0): string | undefined {
   if (/EVOLUTION_HUMAN/.test(command)) return messages.evolutionHuman;
-  const script = depth === 0 ? scriptProblem(command) : undefined;
+  const script = scriptProblem(command);
   if (script) return script;
   for (const segment of parseShell(command)) {
     const problem = segmentProblem(segment, guard, depth);

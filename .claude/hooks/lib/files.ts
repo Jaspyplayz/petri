@@ -1,8 +1,7 @@
-import { isSecretFile } from "./paths.ts";
-
 export type FileGuard = {
   readonly evolutionHuman: boolean;
   readonly protectedTarget: (path: string) => string | undefined;
+  readonly secretPath: (path: string) => boolean;
 };
 
 export type ToolCall = {
@@ -24,7 +23,7 @@ function pathOf(toolInput: Readonly<Record<string, unknown>>): string | undefine
 export function fileProblem(call: ToolCall, guard: FileGuard): string | undefined {
   const path = pathOf(call.toolInput);
   if (path === undefined || (!readers.has(call.toolName) && !writers.has(call.toolName))) return undefined;
-  if (isSecretFile(path)) {
+  if (guard.secretPath(path)) {
     return "Blocked: env and credential files hold secrets, so agents neither read nor write them. Scripts such as `pnpm setup:secrets` and `pnpm env:local` handle them.";
   }
   if (!writers.has(call.toolName) || guard.evolutionHuman) return undefined;

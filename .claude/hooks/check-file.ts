@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { toRepoPath } from "../../scripts/check-pr/glob.ts";
 import { asRecord, parseJsonRecord } from "../../scripts/check-pr/json.ts";
 import { block, parseHookInput, readStdin } from "./lib/hook-input.ts";
-import { findRepoRoot, projectRoot, toNativePath } from "./lib/paths.ts";
+import { findRepoRoot, isTrustedRoot, projectRoot, toNativePath } from "./lib/paths.ts";
 
 const run = promisify(execFile);
 const maxLines = 40;
@@ -18,10 +18,10 @@ if (typeof filePath !== "string") process.exit(0);
 const absolute = resolve(input.cwd ?? projectRoot, toNativePath(filePath, process.platform === "win32"));
 const root = findRepoRoot(dirname(absolute)) ?? projectRoot;
 const repoPath = toRepoPath(relative(root, absolute));
-if (!/^src\/.+\.(ts|tsx|mts|cts)$/.test(repoPath)) process.exit(0);
+if (!/^src\/.+\.(ts|tsx|mts|cts)$/.test(repoPath) || !isTrustedRoot(root, projectRoot)) process.exit(0);
 
 function binOf(packageName: string, bin: string): string {
-  const manifestPath = createRequire(join(root, "package.json")).resolve(`${packageName}/package.json`);
+  const manifestPath = createRequire(join(projectRoot, "package.json")).resolve(`${packageName}/package.json`);
   const relativeBin = asRecord(parseJsonRecord(readFileSync(manifestPath, "utf8"))?.bin)?.[bin];
   if (typeof relativeBin !== "string") throw new Error(`${packageName} has no "${bin}" bin`);
   return join(dirname(manifestPath), relativeBin);
