@@ -82,14 +82,14 @@ export function BlobCreature() {
                 className="fill-culture stroke-culture-deep"
                 strokeWidth="4"
               />
-              <ellipse cx="78" cy="96" rx="9" ry={mood === "poked" ? 3 : 11} className="fill-ink" />
-              <ellipse cx="122" cy="96" rx="9" ry={mood === "poked" ? 3 : 11} className="fill-ink" />
-              <circle cx="81" cy="91" r="3" className="fill-agar" />
-              <circle cx="125" cy="91" r="3" className="fill-agar" />
+              <ellipse cx="78" cy="96" rx="9" ry={mood === "poked" ? 3 : 11} className="fill-blob-face" />
+              <ellipse cx="122" cy="96" rx="9" ry={mood === "poked" ? 3 : 11} className="fill-blob-face" />
+              <circle cx="81" cy="91" r="3" className="fill-white" />
+              <circle cx="125" cy="91" r="3" className="fill-white" />
               {mood === "fed" ? (
-                <ellipse cx="100" cy="128" rx="12" ry="10" className="fill-ink" />
+                <ellipse cx="100" cy="128" rx="12" ry="10" className="fill-blob-face" />
               ) : (
-                <path d="M84 124q16 14 32 0" className="fill-none stroke-ink" strokeWidth="5" strokeLinecap="round" />
+                <path d="M84 124q16 14 32 0" className="fill-none stroke-blob-face" strokeWidth="5" strokeLinecap="round" />
               )}
               <ellipse cx="62" cy="116" rx="9" ry="5" className="fill-spore/50" />
               <ellipse cx="138" cy="116" rx="9" ry="5" className="fill-spore/50" />

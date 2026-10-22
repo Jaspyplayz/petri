@@ -11,6 +11,23 @@ test.describe("blob", () => {
     await expect(page.getByTestId("blob-pokes")).toHaveText("2");
   });
 
+  test("poking plays the wobble animation and the blob sits on its shadow", async ({ page }) => {
+    await page.goto("/");
+    const creature = page.getByTestId("blob-creature");
+    const animationNames = () =>
+      creature.locator("svg g").evaluateAll((groups) => groups.map((group) => getComputedStyle(group).animationName));
+    await expect.poll(animationNames).toContainEqual(expect.stringContaining("breathe"));
+    await page.getByTestId("blob-poke-button").click();
+    await expect.poll(animationNames).toContainEqual(expect.stringContaining("wobble"));
+
+    const gap = await creature.locator("svg").evaluate((svg) => {
+      const body = svg.querySelector("path")?.getBoundingClientRect();
+      const shadow = svg.querySelector(":scope > ellipse")?.getBoundingClientRect();
+      return body && shadow ? shadow.top - body.bottom : Number.POSITIVE_INFINITY;
+    });
+    expect(gap).toBeLessThan(12);
+  });
+
   test("feeding grows the blob", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("blob-size")).toHaveText("100%");
