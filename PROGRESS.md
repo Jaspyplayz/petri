@@ -1,6 +1,7 @@
 # PROGRESS
 
 **Current phase:** 1 — Scaffold ✅ (exit criteria passed, see evidence). Branch `chore/phase-1-scaffold`, one PR waiting for the user to merge (self-merge was blocked by the permission classifier).
+**Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
 **Next action:** After the Phase 1 PR is merged: Phase 2 step 2.1 on a new branch `chore/phase-2-guardrails`. In parallel the user can work through `docs/MANUAL_STEPS.md` steps 4–7 (none block Phase 2). Phase 3 note: screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
@@ -114,6 +115,10 @@ A fresh-context subagent reviewed `git diff main...HEAD` against STARTER_PROMPT 
 - LOW, generator registers folders without a manifest → fixed (checked with a stray folder).
 - LOW, blob mood never resets → fixed via `animationend` (+ reduced-motion path), with e2e tests.
 - LOW, timeline counter capped at 100 rows and counting reverted changes → fixed with exact counts minus reverts.
+
+### Phase 1 — secret scan (2026-10-22)
+
+`gitleaks git --log-opts="main..HEAD"` found 2 `jwt` hits: the public Supabase CLI demo keys (`iss: supabase-demo`) in `.env.example` (commit 5a834cf). They were removed and replaced by `pnpm env:local`, which generates `.env.local` from `supabase status`. The PR is squash-merged, so `main` never contains them. Note: the branch was pushed in the same command chain as that scan (`;` rather than `&&`). Phase 2's pre-commit hook and CI `secrets` job make that ordering mistake impossible.
 
 ### Phase 1 — RLS / grants probe with the anon key against local REST (2026-10-22)
 
