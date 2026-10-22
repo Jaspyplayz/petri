@@ -17,7 +17,7 @@ Status key: ⬜ todo · ✅ done
 
 5. ⬜ **Sentry: one token left.** Claude created the project `petri` in org `jaspys-team` (free Developer plan) and wrote `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG` and `SENTRY_PROJECT` into `.env.setup`. You still need to create the auth token, because Sentry doesn't let tools create tokens:
    - Open https://jaspys-team.sentry.io/settings/account/api/auth-tokens/ and click **Create New Token**.
-   - Tick `project:read`, `event:read` and `project:releases`.
+   - Name: `petri`. Permissions: **Project: Read**, **Release: Admin**, **Issue & Event: Read**, **Organization: Read**. Leave everything else at No Access.
    - Paste the token into `.env.setup` as `SENTRY_AUTH_TOKEN=`. Don't paste it into the chat.
 
 6. ⬜ **Claude in GitHub Actions + Vercel token.** In a terminal in the `petri` folder:
