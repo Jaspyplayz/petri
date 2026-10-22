@@ -14,9 +14,13 @@ Status key: ⬜ todo · ✅ done
 
 ## To do
 
-4. ⬜ **Supabase project: reply "create supabase".** Claude then runs `supabase projects create petri` in "Jaspy's Team" (us-east-1, Free plan), applies the migrations, and writes the project URL, anon key and service-role key into `.env.setup` for you. Two notes:
-   - It would be the org's second project (`turnpoint` is the first). The Free plan allows 2 active projects.
-   - **Check the spend cap is on:** supabase.com → your org → Billing → "Spend cap" enabled. On the Free plan there's nothing to pay, so this only matters if the org is ever upgraded.
+4. ⬜ **Supabase project: one command left.** Claude created `petri` (ref `ejwwwasbkxqnyrjzlvll`, us-east-1) in "Jaspy's Team" and wrote its URL, anon key, service-role key, DB password and ref into `.env.setup`. The org is on the **Free plan**, so nothing can be charged (spend caps only apply to paid plans). Pushing the migrations to the production database needs your OK, because Claude's permission mode blocks production deploys. Type this in Claude Code:
+
+   ```
+   ! pnpm db:push:prod
+   ```
+
+   It links the project, shows the 5 pending migrations, applies them (no seed data) and lists the result. The password is read from `.env.setup` and redacted from the output. Claude then checks RLS on production with the anon key and runs the Supabase security advisors.
 
 5. ⬜ **Sentry (2 minutes).** On sentry.io create a Next.js project named `petri` (Developer plan is free). Then paste into `.env.setup`:
    - `NEXT_PUBLIC_SENTRY_DSN`: Project Settings → Client Keys (DSN)

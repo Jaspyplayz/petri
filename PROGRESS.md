@@ -1,8 +1,8 @@
 # PROGRESS
 
-**Current phase:** 1 — Scaffold ✅ (exit criteria passed, see evidence). Branch `chore/phase-1-scaffold`, PR https://github.com/Jaspyplayz/petri/pull/1 waiting for the user to squash-merge (self-merge was blocked by the permission classifier).
+**Current phase:** 1 ✅ merged (PR #1, 2026-10-22). Between phases: production Supabase setup (MANUAL_STEPS step 4).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action:** After the Phase 1 PR is merged: Phase 2 step 2.1 on a new branch `chore/phase-2-guardrails`. In parallel the user can work through `docs/MANUAL_STEPS.md` steps 4–7 (none block Phase 2). Phase 3 note: screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
+**Next action:** The user runs `! pnpm db:push:prod`; Claude then verifies RLS and the advisors on production. Then Phase 2 step 2.1 on `chore/phase-2-guardrails`. Phase 3 note: screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
