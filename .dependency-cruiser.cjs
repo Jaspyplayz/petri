@@ -37,6 +37,20 @@ module.exports = {
       to: { path: "^src/features/", pathNot: "^src/features/[^/]+/index\\.ts$" },
     },
     {
+      name: "src-top-level-folder",
+      comment: "src/ holds app/, features/, shared/ and root files (instrumentation, proxy). Other folders would sit outside the rules.",
+      severity: "error",
+      from: { path: "^src/(?!(app|features|shared)/)[^/]+/" },
+      to: {},
+    },
+    {
+      name: "import-into-src-top-level-folder",
+      comment: "src/ holds app/, features/, shared/ and root files (instrumentation, proxy). Other folders would sit outside the rules.",
+      severity: "error",
+      from: {},
+      to: { path: "^src/(?!(app|features|shared)/)[^/]+/" },
+    },
+    {
       name: "unresolvable-import",
       severity: "error",
       from: {},
@@ -49,6 +63,39 @@ module.exports = {
       to: { circular: true },
     },
   ],
+  allowed: [
+    {
+      comment: "Packages and Node built-ins.",
+      from: {},
+      to: { dependencyTypes: ["npm", "npm-dev", "npm-optional", "npm-peer", "core"] },
+    },
+    {
+      comment: "A feature imports its own files.",
+      from: { path: "^src/features/([^/]+)/" },
+      to: { path: "^src/features/$1/" },
+    },
+    {
+      comment: "Features, routes and root files import src/shared/, and src/shared/ imports only itself.",
+      from: { path: "^src/((app|features|shared)/|[^/]+$)" },
+      to: { path: "^src/shared/" },
+    },
+    {
+      comment: "The registry lists the feature manifests.",
+      from: { path: "^src/features/registry\\.ts$" },
+      to: { path: "^src/features/[^/]+/feature\\.manifest\\.ts$" },
+    },
+    {
+      comment: "Routes and root files import features only through their index.ts.",
+      from: { path: "^src/(app/|[^/]+$)" },
+      to: { path: "^src/features/[^/]+/index\\.ts$" },
+    },
+    {
+      comment: "Routes import other route files.",
+      from: { path: "^src/app/" },
+      to: { path: "^src/app/" },
+    },
+  ],
+  allowedSeverity: "error",
   options: {
     doNotFollow: { path: "node_modules" },
     tsPreCompilationDeps: true,
