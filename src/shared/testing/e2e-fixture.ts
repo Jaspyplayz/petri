@@ -14,15 +14,15 @@ export const test = base.extend<BrowserProblems>({
     await use({ "x-forwarded-for": randomTestIp() });
   },
   problems: [
-    async ({ page }, use) => {
+    async ({ context }, use) => {
       const problems: string[] = [];
-      page.on("console", (message) => {
+      context.on("console", (message) => {
         if (message.type() === "error") {
           problems.push(`console.error: ${message.text()}`);
         }
       });
-      page.on("pageerror", (error) => {
-        problems.push(`pageerror: ${error.message}`);
+      context.on("weberror", (webError) => {
+        problems.push(`pageerror: ${webError.error().message}`);
       });
       await use(problems);
       expect(problems, "browser console errors or uncaught page errors").toEqual([]);
