@@ -1,10 +1,14 @@
 import "server-only";
 import { log } from "@/shared/lib/log";
+import { readBodyWithLimit } from "@/shared/lib/read-body";
 import { serviceSupabase } from "@/shared/supabase/service-client";
-import { parseEventBody } from "../lib/event-payload";
+import { MAX_EVENT_BODY_BYTES, parseEventBody } from "../lib/event-payload";
 
 export async function handleEventRequest(request: Request): Promise<Response> {
-  const parsed = parseEventBody(await request.text());
+  const body = await readBodyWithLimit(request, MAX_EVENT_BODY_BYTES);
+  if (!body.ok) return Response.json({ error: body.reason }, { status: 413 });
+
+  const parsed = parseEventBody(body.text);
   if (!parsed.ok) {
     return Response.json({ error: parsed.reason }, { status: parsed.reason === "too_large" ? 413 : 400 });
   }

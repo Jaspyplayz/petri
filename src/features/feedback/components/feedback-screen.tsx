@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { FeedbackBoard } from "./feedback-board";
+import { FeedbackForm } from "./feedback-form";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -15,6 +16,7 @@ export function FeedbackScreen({ searchParams }: { readonly searchParams: Search
           Timeline.
         </p>
       </header>
+      <FeedbackForm />
       <Suspense fallback={<p className="text-ink-soft">Loading feedback…</p>}>
         <FeedbackBoard searchParams={searchParams} />
       </Suspense>
