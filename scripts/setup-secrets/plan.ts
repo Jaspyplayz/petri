@@ -68,7 +68,7 @@ export const SECRET_SPECS: readonly SecretSpec[] = [
   {
     key: "SENTRY_AUTH_TOKEN",
     required: false,
-    how: "Sentry → Settings → Auth Tokens (scopes: project:read, event:read, project:releases)",
+    how: "Sentry → Settings → Auth Tokens (Project: Read, Release: Admin, Issue & Event: Read, Organization: Read)",
     github: "secret",
     vercel: deployed,
     vercelSensitive: true,
@@ -76,7 +76,7 @@ export const SECRET_SPECS: readonly SecretSpec[] = [
   {
     key: "CLAUDE_CODE_OAUTH_TOKEN",
     required: true,
-    how: "Run `claude setup-token` and paste the token",
+    how: "Set in GitHub by `/install-github-app`; leave blank unless rotating (then paste `claude setup-token` output)",
     github: "secret",
   },
   {
@@ -88,7 +88,7 @@ export const SECRET_SPECS: readonly SecretSpec[] = [
   {
     key: "VERCEL_TOKEN",
     required: false,
-    how: "vercel.com/account/tokens → create a token (used by the guardian for instant rollback)",
+    how: "vercel.com/account/settings/tokens → create a token scoped to the petri project (guardian rollback)",
     github: "secret",
   },
   {
@@ -134,13 +134,19 @@ export type SetupAction =
 export type SetupPlan = {
   readonly actions: readonly SetupAction[];
   readonly missingRequired: readonly SecretSpec[];
+  readonly keptExisting: readonly SecretSpec[];
   readonly skippedOptional: readonly SecretSpec[];
   readonly generated: ReadonlyMap<string, string>;
 };
 
-export function planSetup(values: ReadonlyMap<string, string>, specs: readonly SecretSpec[] = SECRET_SPECS): SetupPlan {
+export function planSetup(
+  values: ReadonlyMap<string, string>,
+  specs: readonly SecretSpec[] = SECRET_SPECS,
+  existingGithubSecrets: ReadonlySet<string> = new Set(),
+): SetupPlan {
   const actions: SetupAction[] = [];
   const missingRequired: SecretSpec[] = [];
+  const keptExisting: SecretSpec[] = [];
   const skippedOptional: SecretSpec[] = [];
   const generated = new Map<string, string>();
 
@@ -149,6 +155,10 @@ export function planSetup(values: ReadonlyMap<string, string>, specs: readonly S
     if (value === "" && spec.generate) {
       value = spec.generate();
       generated.set(spec.key, value);
+    }
+    if (value === "" && spec.github === "secret" && !spec.vercel && existingGithubSecrets.has(spec.key)) {
+      keptExisting.push(spec);
+      continue;
     }
     if (value === "") {
       (spec.required ? missingRequired : skippedOptional).push(spec);
@@ -161,7 +171,7 @@ export function planSetup(values: ReadonlyMap<string, string>, specs: readonly S
     }
   }
 
-  return { actions, missingRequired, skippedOptional, generated };
+  return { actions, missingRequired, keptExisting, skippedOptional, generated };
 }
 
 export function describeAction(action: SetupAction): string {
@@ -190,7 +200,16 @@ export function commandFor(action: SetupAction): ShellCommand {
     case "vercel-env":
       return {
         command: "vercel",
-        args: ["env", "add", action.key, action.environment, "--force", "--yes", ...(action.sensitive ? ["--sensitive"] : [])],
+        args: [
+          "env",
+          "add",
+          action.key,
+          "--environment",
+          action.environment,
+          ...(action.sensitive ? ["--sensitive"] : ["--type", "config"]),
+          "--force",
+          "--yes",
+        ],
         stdin: action.value,
       };
   }

@@ -2,6 +2,7 @@ import "server-only";
 import { log } from "@/shared/lib/log";
 import { readBodyWithLimit } from "@/shared/lib/read-body";
 import { guardJsonWrite } from "@/shared/lib/request-guards";
+import { writesOffResponse } from "@/shared/lib/writes-off-response";
 import { consumeRateLimit, hashClientIp, rateLimitedResponse } from "@/shared/supabase/rate-limit";
 import { serviceSupabase } from "@/shared/supabase/service-client";
 import {
@@ -38,6 +39,9 @@ export async function handleCreateFeedback(request: Request): Promise<Response> 
   const input = feedbackInputSchema.safeParse(body.json);
   if (!input.success) return errorResponse("invalid", 400);
 
+  const writesOff = writesOffResponse();
+  if (writesOff) return writesOff;
+
   try {
     const ipHash = hashClientIp(request.headers);
     if (!(await consumeRateLimit(ipHash, "post", RATE_LIMITS.post))) return rateLimitedResponse(RATE_LIMITS.post);
@@ -61,6 +65,9 @@ export async function handleVote(request: Request, rawId: string): Promise<Respo
 
   const id = feedbackIdSchema.safeParse(rawId);
   if (!id.success) return errorResponse("not_found", 404);
+
+  const writesOff = writesOffResponse();
+  if (writesOff) return writesOff;
 
   try {
     const voterHash = hashClientIp(request.headers);
