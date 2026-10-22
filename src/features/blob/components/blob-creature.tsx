@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type AnimationEvent, type SubmitEvent } from "react";
+import { useEffect, useMemo, useState, type AnimationEvent, type SubmitEvent } from "react";
 import { track } from "@/shared/lib/track";
 import { useLocalStorage } from "@/shared/lib/use-local-storage";
 import { Button } from "@/shared/ui/button";
@@ -24,6 +24,9 @@ export function BlobCreature() {
   const [stored, setStored] = useLocalStorage(BLOB_STORAGE_KEY);
   const state = useMemo(() => parseBlobState(stored), [stored]);
   const [wobbles, setWobbles] = useState(0);
+  useEffect(() => {
+    document.title = state.name;
+  }, [state.name]);
   const [wobbling, setWobbling] = useState(false);
   const [mood, setMood] = useState<Mood>("calm");
   const [draftName, setDraftName] = useState<string | null>(null);
