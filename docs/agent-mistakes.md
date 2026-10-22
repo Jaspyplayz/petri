@@ -27,9 +27,47 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Category:** verification tooling false positive
 - **Fix rung:** (c) skill/tooling: the Phase 3 verify skill takes HTTP statuses from Playwright's `response.status()` or the Resource Timing API, never from the extension's network panel.
 
+## 2026-10-22 · PROGRESS claimed PR #1 was squash-merged; it was merge-committed
+
+- **What happened:** The Phase 1 secret-scan evidence said "the PR is squash-merged, so `main` never contains" the public Supabase demo JWTs. In fact PR #1 was merged with a merge commit, so 5a834cf, which contains them, is in main's history.
+- **Evidence:** `git merge-base --is-ancestor 5a834cf origin/main` succeeds (checked in Phase 2).
+- **Root cause:** The claim was written from the intended merge method, not checked against git.
+- **Category:** unverified claim in evidence
+- **Impact:** Low. These are the Supabase CLI's public demo keys (`iss: supabase-demo`), identical on every machine, not secrets. But a full-history gitleaks scan will always flag them.
+- **Fix rung:** (a) design: CI's `secrets` job scans only the commits a PR or push adds. PROGRESS is corrected. Follow-up for Phase 6: branch protection allows squash merges only, and the evolution loop already uses `--squash`.
+
+## 2026-10-22 · `test.fail()` "proved" the console-error fixture with the wrong failure
+
+- **What happened:** The first fixture self-test used `test.fail()` and passed. It passed only because `E2E_BASE_URL` was set to an empty string, so the test failed on an invalid URL, not because the fixture caught the console error.
+- **Root cause:** `test.fail()` accepts any failure, so an expected-failure test proves nothing about why it failed.
+- **Category:** verification false positive
+- **Fix rung:** (b) hard rule: two strict self-tests assert the exact strings the fixture records (`console.error: …`, `pageerror: …`), and the expected-failure test first polls until exactly one problem is recorded. The JSON report confirmed the failure is the fixture's "browser console errors or uncaught page errors".
+
+## 2026-10-22 · Printed `supabase status` output into the conversation
+
+- **What happened:** While checking the local stack, `supabase status` was run without redirecting its output. It prints the local service-role and anon keys.
+- **Impact:** Low: these were the local CLI demo keys, not production secrets. But the habit leaks real keys elsewhere.
+- **Category:** secret hygiene
+- **Fix rung:** (b) hard rule: the `guard-commands` Claude Code hook blocks `supabase status` (plus `printenv`, `env` dumps, `gh auth token` and echoing secret-named variables). `pnpm env:local` reads the status for you.
+
+## 2026-10-22 · Lint passed locally but failed in CI (stale generated types)
+
+- **What happened:** The first CI run on PR #8 failed `lint` and `unit` with "Unsafe member access .params on a type that cannot be resolved" in `src/app/api/feedback/[id]/vote/route.ts`.
+- **Root cause:** Route files use the global `RouteContext`/`PageProps` types that `next typegen` writes to `.next/types`. Locally that folder was left over from earlier builds; a fresh checkout doesn't have it, and only `typecheck` ran typegen.
+- **Category:** environment drift
+- **Fix rung:** (a) design: `pnpm lint` runs `next typegen` first, lefthook runs typecheck before lint, and the check-file hook generates the types when they're missing. Checked by deleting `.next/types`: the old script exits 1, the new one exits 0.
+
 ## 2026-10-22 · Every preview page view would have sent an error to Sentry
 
 - **What happened:** Previews deliberately get no service-role key, so `/api/events` failed `serverEnv()` and called `log.error` on every page view.
 - **Root cause:** The write handlers treated "secrets intentionally absent on preview" the same as "secrets missing in production".
 - **Category:** observability noise / design gap
 - **Fix rung:** (a) design: `writesOffResponse()` (shared) returns a quiet `503 unavailable` when `VERCEL_ENV=preview` lacks the secrets, and stays loud (`log.error` → Sentry) anywhere else. `writeAvailability` is unit-tested for all three cases.
+
+## 2026-10-22 · Turned the hooks on before the guardrail reviews were finished
+
+- **What happened:** `.claude/settings.json` went live (f82cc71) while an automated security review and an independent review of the guardrails were still running. Both came back with real gaps in protected files, including a regression from d387f54: the new `$(...)` scanner isn't quote-aware, so `echo $(echo ")") ; git push --force` gets past the command guard. From then on the hooks (correctly) refused every edit to `.claude/hooks/**` and the other guardrail files, so none of the fixes could land without a human.
+- **Evidence:** the PreToolUse hook blocked the drafted `shell.ts` fix ("Blocked: .claude/hooks/lib/shell.ts is a protected path").
+- **Root cause:** Activation was treated as one more step, not as the point where agent edits to guardrails stop. A parser change to a security control also shipped without a test that compares the new parse with the old one.
+- **Category:** sequencing / verification gap
+- **Fix rung:** (c) process: turn guardrails on last, after every review of them has settled. Changes to a guard's parser need differential tests (old parse vs new parse on the same attack table) before they merge. The open findings are listed in PROGRESS.md and wait for a human-approved session.

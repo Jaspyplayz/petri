@@ -18,8 +18,16 @@ Status key: ⬜ todo · ✅ done
 
 ## To do
 
-8. ⬜ **Go live (Phase 9, after everything above).** Open the Vercel production URL and check the three pages load, then run `pnpm evolution:resume` (or set the repo variable `EVOLUTION_ENABLED=true` in the GitHub app).
+8. ⬜ **Finish Phase 2 (now).**
+   - **Squash-merge PR #8** once `ci-ok` is green. Until then `guardrails.yml` can't run on any PR, because `pull_request_target` always uses `main`'s copy.
+   - **Start Claude Code with `EVOLUTION_HUMAN=1`:** `$env:EVOLUTION_HUMAN = "1"; claude --continue` in PowerShell, or `EVOLUTION_HUMAN=1 claude --continue` in bash.
+   - The hooks now block Claude from editing guardrail files, and every remaining review fix (PROGRESS.md, step 2.11) is in one. Claude does those fixes in a follow-up PR for you to review.
+   - Afterwards, start Claude normally again.
+9. ⬜ **Go live (Phase 9, after everything above).** Open the Vercel production URL and check the three pages load, then run `pnpm evolution:resume` (or set the repo variable `EVOLUTION_ENABLED=true` in the GitHub app).
 
-## Optional: fewer clicks while there's no CI
+## Good to know (Phase 2 guardrails)
 
-Until `ci.yml` exists (Phase 2), Claude opens one PR per phase and you merge it. To let Claude merge its own phase PRs before CI exists, add a permission rule for `gh pr merge` in Claude Code (`/permissions`). After Phase 2, branch protection and the required checks gate every merge instead.
+- **Merging phase PRs.** `ci.yml` (aggregate check `ci-ok`) and `guardrails.yml` (`guardrails-ok`) now run on every PR. Until Phase 6 turns on branch protection, you still merge Claude's phase PRs yourself: wait for both checks to be green, then use **Squash and merge**.
+- **Editing guardrails with Claude.** Claude Code hooks stop agents from editing protected paths (the list is in `.github/guardrails.json`). To have Claude change them for you, start Claude Code with `EVOLUTION_HUMAN=1` in its environment: `EVOLUTION_HUMAN=1 claude` in bash, or `$env:EVOLUTION_HUMAN = "1"; claude` in PowerShell. Agents can't set this themselves, because the hooks block any command that names it. Your own PRs are never blocked by `protected-paths`. Only agent PRs are (label `evolution`, a bot author or an `evo/` branch).
+- **Approving an agent PR that touches guardrails or is over 400 lines.** Add the label `protected-ok` or `size-ok` yourself. It only counts when you add it after the latest push, so if new commits arrive, remove the label and add it again. To let other people approve too, set the repo variable `HUMAN_MAINTAINERS` (comma-separated GitHub logins). It defaults to the repo owner.
+- **Pre-commit hook.** `pnpm install` installs lefthook, which runs gitleaks, typecheck and lint on every commit. gitleaks must be on your PATH: `winget install Gitleaks.Gitleaks` or `brew install gitleaks`.
