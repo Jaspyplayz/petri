@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, posix } from "node:path";
 import { parseShell, type Segment, type Word } from "./shell.ts";
 
 export type CommandGuard = {
@@ -16,6 +16,9 @@ const dataSinks = new Set([
 const gitDataSubcommands = new Set(["commit", "tag", "notes", "hash-object", "log", "show", "grep", "diff", "status"]);
 const gitValueOptions = new Set(["-C", "-c", "--config-env", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--attr-source"]);
 const patchPrograms = new Set(["patch", "gpatch"]);
+const forceOptions = ["--force", "--force-with-lease", "--force-if-includes", "--mirror"];
+const gitIndirection = /^(alias|include|includeif)\./i;
+const gitConfigVariable = /^(\$?env:)?GIT_CONFIG(_\w+)?(=|$)/i;
 const unresolvedPath = /[$`%]|^~/;
 const printers = new Set(["echo", "printf", "print", "cat", "write-output", "write-host", "write-information", "out-host"]);
 const envDrivers = new Set(["get-childitem", "gci", "ls", "dir", "get-item", "gi", "get-content", "gc", "cat", "type"]);
@@ -30,14 +33,14 @@ const maxNesting = 3;
 const messages = {
   forcePush: "Blocked: force pushes (-f, --force, --force-with-lease, --mirror, +refspec) rewrite shared history. Push a new commit instead.",
   skipHooks: "Blocked: git hooks are guardrails. Don't skip them (--no-verify, commit -n, LEFTHOOK=0, core.hooksPath); fix what the hook reports.",
-  removeRoot: "Blocked: recursive delete of a filesystem root or home directory.",
+  removeRoot: "Blocked: recursive delete of a filesystem root, a home directory or a whole working directory (*, ., ..). Name the folder you mean.",
   printSecret: "Blocked: this would print a secret or the whole environment. Check that a variable is set with [ -n \"$NAME\" ] instead of printing it.",
   secretFile: "Blocked: env and credential files hold secrets and stay unread. Scripts such as `pnpm setup:secrets` and `pnpm env:local` read them for you.",
   evolutionHuman: "Blocked: EVOLUTION_HUMAN is set by a human when they start Claude Code, never by a command.",
   patchTool: "Blocked: patch, git apply and git am are off for agents, because the guard can't reliably tell which files a patch writes. Use the Edit/Write tools; a human can run them with EVOLUTION_HUMAN=1.",
-  gitAlias: "Blocked: git aliases hide what a command really runs, so agents don't define them. Spell out the git command instead.",
+  gitAlias: "Blocked: git aliases, config includes and GIT_CONFIG_* variables change what a git command runs, so agents don't set them. Spell out the git command instead.",
   protectedWrite: (path: string) =>
-    `Blocked: ${path} is a protected path (.github/guardrails.json). Agents can't change their own guardrails; a human can by starting Claude Code with EVOLUTION_HUMAN=1.`,
+    `Blocked: ${path} is a protected path (.github/guardrails.json, or a Claude Code settings file). Agents can't change their own guardrails; a human can by starting Claude Code with EVOLUTION_HUMAN=1.`,
 };
 
 function programName(word: string): string {
@@ -118,19 +121,24 @@ function shortCluster(option: string, letter: string): boolean {
   return /^-[A-Za-z]+$/.test(option) && option.includes(letter);
 }
 
+function abbreviates(flag: string, option: string): boolean {
+  const name = flag.split("=")[0] ?? "";
+  return name.length > 2 && option.startsWith(name);
+}
+
 function gitProblem(words: readonly Word[]): string | undefined {
   const git = gitInvocation(words);
   if (!git) return undefined;
   if (git.config.some((setting) => /^core\.hookspath/i.test(setting))) return messages.skipHooks;
   if (git.subcommand === "config" && git.rest.some((word) => /^core\.hookspath$/i.test(word.text))) return messages.skipHooks;
-  if (git.config.some((setting) => /^alias\./i.test(setting))) return messages.gitAlias;
-  if (git.subcommand === "config" && git.rest.some((word) => /^alias\./i.test(word.text))) return messages.gitAlias;
+  if (git.config.some((setting) => gitIndirection.test(setting))) return messages.gitAlias;
+  if (git.subcommand === "config" && git.rest.some((word) => gitIndirection.test(word.text))) return messages.gitAlias;
   const flags = options(git.rest);
-  if (flags.includes("--no-verify")) return messages.skipHooks;
+  if (flags.some((flag) => abbreviates(flag, "--no-verify"))) return messages.skipHooks;
   if (git.subcommand === "commit" && flags.some((flag) => shortCluster(flag, "n"))) return messages.skipHooks;
   const push = gitRuns(words, git, "push");
   if (push) {
-    const forced = options(push).some((flag) => flag.startsWith("--force") || flag === "--mirror" || shortCluster(flag, "f"));
+    const forced = options(push).some((flag) => flag.startsWith("--force") || forceOptions.some((option) => abbreviates(flag, option)) || shortCluster(flag, "f"));
     if (forced || operands(push).some((operand) => operand.startsWith("+"))) return messages.forcePush;
   }
   if (git.subcommand === "credential" && git.rest[0]?.text === "fill") return messages.printSecret;
@@ -138,8 +146,10 @@ function gitProblem(words: readonly Word[]): string | undefined {
 }
 
 function isRootLike(target: string): boolean {
-  const path = target.replaceAll("\\", "/").replace(/\/\*$/, "").replace(/\/+$/, "");
+  const slashed = target.replaceAll("\\", "/").replace(/\/\*$/, "");
+  const path = (slashed === "" ? "" : posix.normalize(slashed)).replace(/\/+$/, "");
   if (path === "" || path === "~" || /^\$\{?(HOME|USERPROFILE)\}?$/i.test(path) || /^\$env:(HOME|USERPROFILE)$/i.test(path)) return true;
+  if (path === "*" || path === ".*" || /^\.\.?(\/\.\.)*$/.test(path)) return true;
   if (/^%(HOMEPATH|USERPROFILE)%$/i.test(path)) return true;
   return /^\/[^/]+$/.test(path) || /^[A-Za-z]:(\/[^/]+)?$/.test(path) || /^\/[A-Za-z]\/[^/]+$/.test(path);
 }
@@ -160,7 +170,10 @@ function secretVariables(word: Word): string[] {
 }
 
 function printsSecret(name: string, args: readonly Word[], all: readonly Word[]): boolean {
-  if (printers.has(name) && args.some((word) => secretVariables(word).length > 0)) return true;
+  const program = all[0];
+  if (program && secretVariables(program).length > 0) return true;
+  if (printers.has(name) && args.some((word) => secretVariables(word).length > 0 || word.expandable.includes("${!"))) return true;
+  if (all.some((word) => /\/proc\/[^/\s]+\/environ/.test(word.text))) return true;
   if (name === "printenv") return args.length === 0 || args.some((word) => secretName.test(word.text));
   if (name === "env" || (name === "set" && args.length === 0)) return true;
   if (name === "export" || name === "declare" || name === "typeset") {
@@ -170,8 +183,12 @@ function printsSecret(name: string, args: readonly Word[], all: readonly Word[])
   if (envDrivers.has(name) && args.some((word) => /^env:/i.test(word.text))) return true;
   const texts = all.map((word) => word.text.toLowerCase());
   if (name === "gh" && texts[1] === "auth") return texts[2] === "token" || (texts[2] === "status" && texts.some((text) => text === "-t" || text === "--show-token"));
-  const supabase = texts.findIndex((text) => programName(text) === "supabase");
-  return supabase !== -1 && texts.slice(supabase + 1).includes("status");
+  return runsSubcommand(texts, "supabase", "status");
+}
+
+function runsSubcommand(texts: readonly string[], program: string, subcommand: string): boolean {
+  const index = texts.findIndex((text) => programName(text) === program);
+  return index !== -1 && texts.slice(index + 1).includes(subcommand);
 }
 
 function isDataSink(name: string, all: readonly Word[]): boolean {
@@ -203,6 +220,8 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
   if (segment.words.some((word) => /^(\$env:)?(LEFTHOOK|HUSKY)=["']?(0|false)/i.test(word.text) || /^(\$env:)?LEFTHOOK_(EXCLUDE|SKIP)=/i.test(word.text))) {
     return messages.skipHooks;
   }
+  if (runsSubcommand(all.map((word) => word.text.toLowerCase()), "lefthook", "uninstall")) return messages.skipHooks;
+  if (segment.words.some((word) => gitConfigVariable.test(word.text))) return messages.gitAlias;
   if (segment.words.some((word) => guard.secretPath(word.text)) || segment.writeTargets.some(guard.secretPath)) return messages.secretFile;
   if (program) {
     const name = programName(program.text);
@@ -240,16 +259,23 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
 
 function scriptProblem(command: string): string | undefined {
   if (/process\.env(?![\w.[])/.test(command) || /os\.environ(?![\w.[])/.test(command)) return messages.printSecret;
+  if (/GetEnvironmentVariables\s*\(/i.test(command)) return messages.printSecret;
+  const powershellNamed = [...command.matchAll(/GetEnvironmentVariable\s*\(\s*["']([A-Za-z_][A-Za-z0-9_]*)/gi)];
+  if (powershellNamed.some((match) => secretName.test(match[1] ?? ""))) return messages.printSecret;
   const printing = /console\.\w+|process\.stdout|print\(|\s-p\b|--print/.test(command);
-  const named = [...command.matchAll(/(?:process\.env\.|process\.env\[\s*["'`]|os\.environ(?:\.get\(|\[)\s*["'])([A-Za-z_][A-Za-z0-9_]*)/g)];
+  const named = [...command.matchAll(/(?:process\.env\.|process\.env\[\s*["'`]|os\.environ(?:\.get\(|\[)\s*["']|os\.getenv\(\s*["'])([A-Za-z_][A-Za-z0-9_]*)/g)];
   return printing && named.some((match) => secretName.test(match[1] ?? "")) ? messages.printSecret : undefined;
+}
+
+export function pathProblem(path: string, guard: CommandGuard): string | undefined {
+  return guard.secretPath(path) ? messages.secretFile : undefined;
 }
 
 export function commandProblem(command: string, guard: CommandGuard, depth = 0): string | undefined {
   if (/EVOLUTION_HUMAN/.test(command)) return messages.evolutionHuman;
   const script = scriptProblem(command);
   if (script) return script;
-  for (const segment of parseShell(command)) {
+  for (const segment of [...parseShell(command), ...parseShell(command, true)]) {
     const problem = segmentProblem(segment, guard, depth);
     if (problem) return problem;
   }

@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { commandProblem, type CommandGuard } from "./commands";
+import { fileProblem } from "./files";
 import { isTrustedRoot, projectRoot, protectedRepoPath, secretTarget } from "./paths";
 
 const caseInsensitive = process.platform === "win32";
@@ -101,6 +102,76 @@ describe("heredocs fed to an interpreter are checked", () => {
     expect(commandProblem("git commit -F - <<'EOF'\nfix: block rm -rf / and git push --force\nEOF", guard)).toBeUndefined();
     expect(commandProblem('gh pr comment 8 --body "blocks git push --force"', guard)).toBeUndefined();
     expect(commandProblem('git commit -m "$(cat msg.txt)" && echo "$(date)" > notes.md', guard)).toBeUndefined();
+  });
+});
+
+describe("review findings stay closed", () => {
+  const guard: CommandGuard = {
+    evolutionHuman: false,
+    protectedTarget: (path) => protectedRepoPath(path, projectRoot, { projectRoot, caseInsensitive }),
+    secretPath: (path) => secretTarget(path, projectRoot, caseInsensitive),
+  };
+
+  it.each([
+    ['echo $(echo ")") ; git push --force', "force pushes"],
+    ["echo $(echo ')') ; git push --force", "force pushes"],
+    ['echo "$(echo ")")" ; git push --force', "force pushes"],
+    ["echo $(echo \\)) ; git push --force", "force pushes"],
+    ["echo `echo \\`` ; git push --force", "force pushes"],
+    ["echo $(echo x ; git push --force", "force pushes"],
+    ["cat <<EOF\n$(git push --force)\nEOF", "force pushes"],
+    ["cat <<EOF\n`rm -rf /`\nEOF", "recursive delete"],
+    ["GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x", "GIT_CONFIG_* variables"],
+    ["$env:GIT_CONFIG_PARAMETERS = \"'core.hookspath'='x'\"", "GIT_CONFIG_* variables"],
+    ["git -c include.path=/tmp/evil.cfg commit -m x", "config includes"],
+    ["git config --global includeIf.gitdir:~/x.path /tmp/evil.cfg", "config includes"],
+    ["git commit --no-verif -m x", "git hooks are guardrails"],
+    ["git push --mirr origin", "force pushes"],
+    ["git push --forc origin main", "force pushes"],
+    ["lefthook uninstall", "git hooks are guardrails"],
+    ["pnpm exec lefthook uninstall", "git hooks are guardrails"],
+    ["$GITHUB_TOKEN", "print a secret"],
+    ["$env:GITHUB_TOKEN", "print a secret"],
+    ['"$env:SUPABASE_SERVICE_ROLE_KEY"', "print a secret"],
+    ["cat /proc/self/environ", "print a secret"],
+    ["echo ${!name}", "print a secret"],
+    ["python -c \"import os; print(os.getenv('GITHUB_TOKEN'))\"", "print a secret"],
+    ["[Environment]::GetEnvironmentVariables()", "print a secret"],
+    ['[Environment]::GetEnvironmentVariable("GITHUB_TOKEN")', "print a secret"],
+    ["rm -rf /usr/..", "recursive delete"],
+    ["cd / && rm -rf *", "recursive delete"],
+    ["rm -rf .", "recursive delete"],
+    ["rm -rf ../..", "recursive delete"],
+  ])("%s", (command, reason) => {
+    expect(commandProblem(command, guard)).toContain(reason);
+  });
+
+  it.each([
+    "rm -rf node_modules/.cache dist",
+    "cat <<'EOF'\n$(git push --force)\nEOF",
+    "git push origin main --follow-tags",
+    "git commit --amend --no-edit",
+    'echo "$(date)" && git log --oneline -5',
+    "pnpm exec lefthook install",
+  ])("allows %s", (command) => {
+    expect(commandProblem(command, guard)).toBeUndefined();
+  });
+
+  it("protects Claude Code settings outside the repo", () => {
+    const paths = { projectRoot, caseInsensitive };
+    expect(protectedRepoPath(join(homedir(), ".claude", "settings.json"), projectRoot, paths)).toContain(".claude/settings.json");
+    expect(protectedRepoPath(join(homedir(), ".claude", "CLAUDE.md"), projectRoot, paths)).toContain(".claude/CLAUDE.md");
+    expect(protectedRepoPath(join(homedir(), "notes.md"), projectRoot, paths)).toBeUndefined();
+  });
+
+  it.each([".env*", "*", "**/*", "{*.ts,.env.local}", ".en[v]*", "id_*"])("blocks Grep with glob %s", (glob) => {
+    const fileGuard = { evolutionHuman: false, protectedTarget: () => undefined, secretPath: () => false };
+    expect(fileProblem({ toolName: "Grep", toolInput: { pattern: "KEY", path: projectRoot, glob } }, fileGuard)).toContain("secrets");
+  });
+
+  it("allows Grep with an ordinary glob", () => {
+    const fileGuard = { evolutionHuman: false, protectedTarget: () => undefined, secretPath: () => false };
+    expect(fileProblem({ toolName: "Grep", toolInput: { pattern: "x", path: projectRoot, glob: "*.{ts,tsx}" } }, fileGuard)).toBeUndefined();
   });
 });
 
