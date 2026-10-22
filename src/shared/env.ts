@@ -27,6 +27,14 @@ export function serverRuntime(): string | undefined {
   return process.env.NEXT_RUNTIME;
 }
 
+export function writeEnvSource(): Readonly<Record<string, string | undefined>> {
+  return {
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    RATE_LIMIT_SALT: process.env.RATE_LIMIT_SALT,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+  };
+}
+
 let cachedServerEnv: ServerEnv | undefined;
 
 export function serverEnv(): ServerEnv {
