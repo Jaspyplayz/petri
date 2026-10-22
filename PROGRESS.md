@@ -1,7 +1,8 @@
 # PROGRESS
 
-**Current phase:** 0 — Recon and plan ✅ (exit criteria passed). The user asked to stop after Phase 0.
-**Next action:** Phase 1 step 1.0. The manual steps in `docs/MANUAL_STEPS.md` (Docker, CLI logins) unblock local Supabase and PRs, but Phase 1 can start before they're done.
+**Current phase:** 1 — Scaffold ✅ (exit criteria passed, see evidence). Branch `chore/phase-1-scaffold`, PR https://github.com/Jaspyplayz/petri/pull/1 waiting for the user to squash-merge (self-merge was blocked by the permission classifier).
+**Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
+**Next action:** After the Phase 1 PR is merged: Phase 2 step 2.1 on a new branch `chore/phase-2-guardrails`. In parallel the user can work through `docs/MANUAL_STEPS.md` steps 4–7 (none block Phase 2). Phase 3 note: screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
@@ -14,14 +15,14 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 1 — Scaffold (one folder per feature)
 
-- [ ] 1.0 Add `.env.setup` and `artifacts/` to `.gitignore`; pin `packageManager: pnpm@12.15.0`
-- [ ] 1.1 Scaffold Next.js + TS strict + Tailwind + Vitest + Playwright + Zod; Supabase CLI devDep, migrations for all tables, RLS, `supabase gen types`
-- [ ] 1.2 `pnpm new:feature <id>` generator
-- [ ] 1.3 Generate `blob`, `feedback`, `timeline`, `analytics`
-- [ ] 1.4 Feedback writes: Server Action/route + Zod + length cap + hashed-IP rate limit; service role server-only
-- [ ] 1.5 Sentry (no-op without DSN; release = commit SHA)
-- [ ] 1.6 Consolidate `docs/MANUAL_STEPS.md` + `pnpm setup:secrets`
-- [ ] Exit: `pnpm dev` shows all three pages working against local Supabase
+- [x] 1.0 Add `.env.setup` and `artifacts/` to `.gitignore`; pin `packageManager: pnpm@12.15.0`
+- [x] 1.1 Scaffold Next.js + TS strict + Tailwind + Vitest + Playwright + Zod; Supabase CLI devDep, migrations for all tables, RLS, `supabase gen types`
+- [x] 1.2 `pnpm new:feature <id>` generator
+- [x] 1.3 Generate `blob`, `feedback`, `timeline`, `analytics`
+- [x] 1.4 Feedback writes: Server Action/route + Zod + length cap + hashed-IP rate limit; service role server-only
+- [x] 1.5 Sentry (no-op without DSN; release = commit SHA)
+- [x] 1.6 Consolidate `docs/MANUAL_STEPS.md` + `pnpm setup:secrets`
+- [x] Exit: `pnpm dev` shows all three pages working against local Supabase
 
 ## Phase 2 — Hard guardrails
 
@@ -66,6 +67,75 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Evidence
 
+### Phase 1 — exit: `pnpm dev` against local Supabase, driven in a real browser (2026-10-22)
+
+`pnpm db:reset` (migrations + seed), `pnpm dev --port 3000`, then a Playwright script poked, fed and renamed the blob, posted feedback, voted, sorted and opened the timeline, taking 7 screenshots (light + dark):
+
+```
+home: name=Blobby size=100% pokes=0
+after: name=Gloop size=120% pokes=2 feeds=4
+feedback items (top): 3,2,1,1,0
+post message: Thanks! Your feedback is on the board.
+my item votes before: 0
+my item votes after: 1 pressed=true
+timeline counter: 1 change shipped, 0 written by humans
+timeline titles: Reverted: Bigger wobble on poke | Bigger wobble on poke | The blob blushes when you feed it
+console errors/warnings/page errors: 0
+```
+
+What the screenshots show (checked by eye with the Read tool): the home page has the green blob centred under the Blob/Feedback/Timeline nav, sitting on its shadow, with Size/Pokes/Snacks stats, Poke and Feed buttons and the rename form. Mid-poke the eyes squint; after feeding the mouth opens into an "o", the heading reads "Gloop" and size is 120%. On /feedback the post form is above the board, the new post is first under "Newest" with 1 vote and a filled (pressed) vote button, and the seed items show Idea/Bug chips, Building/Triaged/Shipped/Rejected badges and issue/PR links. On /timeline the counter reads "1 change shipped, 0 written by humans" (2 changes − 1 revert), the revert card has a red "Reverted" badge, and the oldest entry lists the feedback behind it. In dark mode the theme inverts and the blob's face keeps dark eyes.
+
+The first two exit runs found two real bugs, both fixed (see `docs/agent-mistakes.md`): CSS Modules were silently disabled by the Tailwind Turbopack loader rule (no wobble animation, blob floating above its shadow), and the blob face inverted in dark mode. A hydration warning was also traced to Playwright's `caret: "hide"` screenshot option (3/3 repro), not to the app.
+
+### Phase 1 — local gates (2026-10-22)
+
+```
+$ pnpm typecheck            → next typegen && tsc --noEmit: 0 errors
+$ pnpm lint                 → eslint: 0 problems
+$ pnpm exec vitest run --coverage
+      Tests  116 passed (116)
+All files (features/*/lib) | 100 % lines
+$ pnpm e2e                  → next build && next start, chromium, console-error fixture on every test
+  19 passed (9.2s)
+$ pnpm e2e -g "wobble animation"   (with the old "*.css" loader rule restored temporarily)
+  ✘ Expected value: StringContaining "breathe" · Received array: ["none", "none"]   → regression test catches the CSS Modules bug
+```
+
+### Phase 1 — independent review (2026-10-22)
+
+A fresh-context subagent reviewed `git diff main...HEAD` against STARTER_PROMPT Phase 1 and probed the local REST API. It confirmed that RLS, grants and storage deny anon writes, that no secrets are in `.next/static`, and that there are no Phase 2 rule violations (useEffect, comments, console, process.env, default exports, cross-feature imports). How each finding was resolved:
+
+- MEDIUM, CSRF on write routes → fixed: same-origin + `application/json` guard on all three routes (403/415), with unit and e2e tests.
+- MEDIUM, client-controlled XFF → kept on Vercel (which overwrites it); IPv6 is now bucketed by /64 (unit tests).
+- MEDIUM, `/api/events` unlimited → fixed: 300/hour/IP rate limit (`event` action, migration 0005).
+- MEDIUM, service-role key on Vercel previews → fixed: production only (unit test).
+- LOW, `rate_limit_hits` never fully pruned → fixed in migration 0005; checked in SQL (stale row from another IP deleted, recent kept).
+- LOW, Windows shell quoting in setup:secrets → fixed: all values via stdin (unit test with an injection string).
+- LOW, mixed client/server barrels → declined, reason in decisions.md.
+- LOW, generator registers folders without a manifest → fixed (checked with a stray folder).
+- LOW, blob mood never resets → fixed via `animationend` (+ reduced-motion path), with e2e tests.
+- LOW, timeline counter capped at 100 rows and counting reverted changes → fixed with exact counts minus reverts.
+
+### Phase 1 — secret scan (2026-10-22)
+
+`gitleaks git --log-opts="main..HEAD"` found 2 `jwt` hits: the public Supabase CLI demo keys (`iss: supabase-demo`) in `.env.example` (commit 5a834cf). They were removed and replaced by `pnpm env:local`, which generates `.env.local` from `supabase status`. The PR is squash-merged, so `main` never contains them. Note: the branch was pushed in the same command chain as that scan (`;` rather than `&&`). Phase 2's pre-commit hook and CI `secrets` job make that ordering mistake impossible.
+
+### Phase 1 — RLS / grants probe with the anon key against local REST (2026-10-22)
+
+```
+1 anon feedback public cols: 200 (vote_count 3,2,… maintained by trigger)
+2 anon author_hash:          401 permission denied (column grant)
+3 anon votes:                401 permission denied
+4 anon insert feedback:      401 permission denied
+5 anon changelog:            200
+6 anon rpc rate limit:       401 permission denied for function consume_rate_limit
+7 anon events insert:        401 permission denied
+8 anon app_flags:            200
+9 anon update changelog:     401 permission denied
+```
+
+API behaviour covered by e2e: oversized post → 413 (streamed body cap), 281 chars or a bad category → 400, unknown/invalid id vote → 404, repeat vote → 200 `{alreadyVoted:true}`, 6th post in an hour from one IP → 429 with `Retry-After: 3600`. Sentry: the build is clean without a DSN, and `GITHUB_SHA=deadbeef… pnpm build` puts the SHA into the client bundle (release).
+
 ### Phase 0 — tool check (2026-10-22)
 
 ```
@@ -78,10 +148,10 @@ supabase  2.121.0 (via npx; devDep in P1)
 act       act version 0.2.89                     # installed this phase (winget --scope user)
 gitleaks  8.30.1                                 # installed this phase (winget --scope user)
 playwright Version 1.64.1 (chromium headless shell installed)
-docker    MISSING (manual step 1: needs admin + WSL2 + reboot)
-gh auth   NOT logged in (manual step 2)
-vercel    > Run `vercel deploy --temporary` ... or `vercel login` to log in.   # NOT logged in (manual step 2)
-supabase  not logged in (no ~/.supabase/access-token) (manual step 2)
+docker    MISSING (manual step 1: needs admin + WSL2 + reboot)        # P1: done, Docker 29.9.2 (Docker Desktop)
+gh auth   NOT logged in (manual step 2)                                # P1: done, Jaspyplayz (scopes repo, workflow)
+vercel    NOT logged in (manual step 2)                                # P1: done, jaspyplayz-5179
+supabase  not logged in (manual step 2)                                # P1: done, org "Jaspy's Team"
 git remote origin https://github.com/Jaspyplayz/petri.git — reachable (ls-remote: refs/heads/main f8b3e2e)
 ```
 
