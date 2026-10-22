@@ -1,3 +1,5 @@
-export default function HomePage() {
-  return <h1 className="text-3xl font-bold">Petri</h1>;
+import { BlobPanel } from "@/features/blob";
+
+export default function BlobPage() {
+  return <BlobPanel />;
 }
