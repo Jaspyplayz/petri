@@ -1,11 +1,10 @@
 import { describeRange, loadCheckContext } from "./check-pr/context.ts";
 import { changedFiles } from "./check-pr/git.ts";
-import { matchesAny } from "./check-pr/glob.ts";
-import { protectedPathViolations } from "./check-pr/protected-paths.ts";
+import { baseBranchViolation, isProtectedPath, protectedPathViolations } from "./check-pr/protected-paths.ts";
 
 const context = loadCheckContext(process.argv.slice(2), process.env);
 const changes = changedFiles(context.root, context.base, context.head);
-const touched = changes.filter((change) => matchesAny(change.path, context.config.protectedPaths));
+const touched = changes.filter((change) => isProtectedPath(change.path, context.config));
 const range = describeRange(context);
 
 function done(lines: readonly string[], ok: boolean): never {
@@ -25,7 +24,8 @@ if (context.agentReasons.length === 0) {
   );
 }
 
-const violations = protectedPathViolations(changes, context.config, context.read);
+const baseBranch = context.pullRequest && baseBranchViolation(context.pullRequest.baseRef, context.pullRequest.defaultBranch);
+const violations = [...(baseBranch ? [baseBranch] : []), ...protectedPathViolations(changes, context.config, context.read)];
 const agent = `agent PR (${context.agentReasons.join(", ")})`;
 if (violations.length === 0) {
   done([`protected-paths: ${range} is an ${agent} and touches no protected path it may not change.`], true);

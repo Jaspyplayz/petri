@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import { loadGuardrailsConfig } from "./config";
 import { repoRoot } from "./context";
 import type { ChangedFile } from "./git";
-import { type FileReader, protectedPathViolations, trustLevelAt } from "./protected-paths";
+import { baseBranchViolation, type FileReader, isProtectedPath, protectedPathViolations, trustLevelAt } from "./protected-paths";
 
 const config = loadGuardrailsConfig(repoRoot);
 
-function reader(files: { readonly base?: Record<string, string>; readonly head?: Record<string, string> }): FileReader {
-  return (side, path) => (side === "base" ? files.base : files.head)?.[path];
+type Sides = { readonly base?: Record<string, string>; readonly tip?: Record<string, string>; readonly head?: Record<string, string> };
+
+function reader(files: Sides): FileReader {
+  return (side, path) => files[side]?.[path];
 }
 
 const noFiles = reader({});
@@ -44,14 +46,43 @@ describe("protectedPathViolations", () => {
     ".pnpmfile.cjs",
     "patches/eslint.patch",
     "vercel.json",
+    ".claude/settings.local.json",
+    ".claude/CLAUDE.md",
+    ".claude/skills/verify-app/SKILL.md",
+    "CLAUDE.local.md",
+    "docs/CLAUDE.md",
+    "src/AGENTS.md",
+    ".mcp.json",
+    "STARTER_PROMPT.md",
+    "next.config.ts",
+    "scripts/new-feature.ts",
+    "scripts/new-feature/templates.ts",
+    "scripts/db-push-prod.ts",
+    "lefthook-local.yml",
+    ".lefthook.yml",
+    ".config/lefthook.yml",
+    ".gitattributes",
+    "src/.gitattributes",
+    ".gitleaksignore",
+    "src/shared/server-env-schema.ts",
+    "supabase/config.toml",
+    "supabase/seed.sql",
   ])("blocks agent edits to %s", (path) => {
     expect(violations([{ path, status: "modified" }])).toEqual([path]);
   });
 
-  it.each(["src/features/blob/components/blob-creature.tsx", "src/shared/ui/button.tsx", "docs/decisions.md", "scripts/new-feature.ts"])(
+  it.each(["src/features/blob/components/blob-creature.tsx", "src/shared/ui/button.tsx", "docs/decisions.md", "docs/claude-notes.md"])(
     "allows %s",
     (path) => {
       expect(violations([{ path, status: "modified" }])).toEqual([]);
+    },
+  );
+
+  it.each([".GITHUB/workflows/ci.yml", "ESLINT.config.mjs", ".Claude/Settings.json", "Package.json", "SCRIPTS/check-features.ts"])(
+    "ignores case, so %s can't slip past on a case-insensitive checkout",
+    (path) => {
+      expect(isProtectedPath(path, config)).toBe(true);
+      expect(violations([{ path, status: "modified" }])).toEqual([path]);
     },
   );
 
@@ -118,7 +149,7 @@ describe("protectedPathViolations", () => {
 
   describe("migrations", () => {
     const migration: ChangedFile = { path: "supabase/migrations/0006_more.sql", status: "added" };
-    const trust = (level: number) => reader({ base: { ".evolution/config.json": JSON.stringify({ trustLevel: level }) } });
+    const trust = (level: number) => reader({ tip: { ".evolution/config.json": JSON.stringify({ trustLevel: level }) } });
 
     it("blocks new migrations below trust level 4", () => {
       expect(violations([migration], trust(3))).toEqual([migration.path]);
@@ -130,13 +161,21 @@ describe("protectedPathViolations", () => {
       expect(violations([{ ...migration, status: "modified" }], trust(4))).toEqual([migration.path]);
     });
 
-    it("reads the trust level from the base, not the PR", () => {
-      const read = reader({
-        base: { ".evolution/config.json": JSON.stringify({ trustLevel: 1 }) },
-        head: { ".evolution/config.json": JSON.stringify({ trustLevel: 4 }) },
-      });
-      expect(trustLevelAt(read, config, "base")).toBe(1);
-      expect(violations([migration], read)).toEqual([migration.path]);
+    it("reads the trust level from the base branch tip, not the merge base or the PR", () => {
+      const level = (trustLevel: number) => ({ ".evolution/config.json": JSON.stringify({ trustLevel }) });
+      const loweredOnMain = reader({ base: level(4), tip: level(1), head: level(4) });
+      expect(trustLevelAt(loweredOnMain, config, "tip")).toBe(1);
+      expect(violations([migration], loweredOnMain)).toEqual([migration.path]);
+      expect(violations([migration], reader({ base: level(1), tip: level(4), head: level(1) }))).toEqual([]);
     });
+  });
+});
+
+describe("baseBranchViolation", () => {
+  it("lets agent PRs target only the default branch", () => {
+    expect(baseBranchViolation("main", "main")).toBeUndefined();
+    expect(baseBranchViolation("release", "main")?.reason).toContain("default branch (main)");
+    expect(baseBranchViolation(undefined, "main")?.path).toBe("base branch (unknown)");
+    expect(baseBranchViolation("main", undefined)).toBeDefined();
   });
 });

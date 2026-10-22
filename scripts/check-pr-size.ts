@@ -18,19 +18,22 @@ function done(lines: readonly string[], ok: boolean): never {
 if (context.agentReasons.length === 0) {
   done([`pr-size: ${range} is not an agent PR; ${measured}.`], true);
 }
-if (size.total <= maxChangedLines) {
+if (size.total <= maxChangedLines && size.binary.length === 0) {
   done([`pr-size: ${range} has ${measured}.`], true);
 }
 
 const label = context.config.humanOnlyLabels.prSize;
-const biggest = size.counted.slice(0, 10).map((file) => `- ${file.path}: ${String(file.lines)}`);
+const biggest = [
+  ...size.binary.map((path) => `- ${path}: binary, so its size can't be measured`),
+  ...size.counted.slice(0, 10).map((file) => `- ${file.path}: ${String(file.lines)}`),
+];
 if (await context.humanLabel(label)) {
   done([`pr-size: ${range} has ${measured}, approved by a maintainer with "${label}".`, ...biggest], true);
 }
 
 done(
   [
-    `pr-size: ${range} is an agent PR (${context.agentReasons.join(", ")}) with ${measured}.`,
+    `pr-size: ${range} is an agent PR (${context.agentReasons.join(", ")}) with ${measured}${size.binary.length > 0 ? ` and ${String(size.binary.length)} binary file(s)` : ""}.`,
     ...biggest,
     "",
     `Split it into smaller PRs (one issue, one concern each), or a maintainer can add the label "${label}" after the latest push (new commits or a base-branch change void it).`,

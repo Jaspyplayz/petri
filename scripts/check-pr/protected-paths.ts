@@ -3,7 +3,7 @@ import type { ChangedFile } from "./git.ts";
 import { matchesAny } from "./glob.ts";
 import { canonicalJson, type JsonRecord, parseJsonRecord } from "./json.ts";
 
-export type Side = "base" | "head";
+export type Side = "base" | "head" | "tip";
 export type FileReader = (side: Side, path: string) => string | undefined;
 
 export type Violation = {
@@ -53,10 +53,14 @@ export function trustLevelAt(read: FileReader, config: GuardrailsConfig, side: S
   return trustLevelOf(parseJsonRecord(read(side, config.trustConfigPath))) ?? 0;
 }
 
+export function isProtectedPath(path: string, config: GuardrailsConfig): boolean {
+  return matchesAny(path, config.protectedPaths, { ignoreCase: true });
+}
+
 function violationReason(change: ChangedFile, config: GuardrailsConfig, read: FileReader): string | undefined {
   const { path, status } = change;
   if (matchesAny(path, config.migrations.paths)) {
-    const trustLevel = trustLevelAt(read, config, "base");
+    const trustLevel = trustLevelAt(read, config, "tip");
     if (trustLevel < config.migrations.allowedFromTrustLevel) {
       return `database migrations need trust level ${String(config.migrations.allowedFromTrustLevel)} (current: ${String(trustLevel)})`;
     }
@@ -84,8 +88,16 @@ export function protectedPathViolations(
   read: FileReader,
 ): Violation[] {
   return changes.flatMap((change) => {
-    if (!matchesAny(change.path, config.protectedPaths)) return [];
+    if (!isProtectedPath(change.path, config)) return [];
     const reason = violationReason(change, config, read);
     return reason === undefined ? [] : [{ path: change.path, reason }];
   });
+}
+
+export function baseBranchViolation(baseRef: string | undefined, defaultBranch: string | undefined): Violation | undefined {
+  if (baseRef !== undefined && baseRef === defaultBranch) return undefined;
+  return {
+    path: `base branch ${baseRef ?? "(unknown)"}`,
+    reason: `agent PRs target the default branch (${defaultBranch ?? "unknown"}) only, so the checks see the code they will land on`,
+  };
 }

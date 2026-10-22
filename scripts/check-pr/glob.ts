@@ -2,7 +2,11 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.+^$()|[\]\\]/g, "\\$&");
 }
 
-export function globToRegExp(glob: string): RegExp {
+export type GlobOptions = {
+  readonly ignoreCase?: boolean;
+};
+
+export function globToRegExp(glob: string, options: GlobOptions = {}): RegExp {
   let pattern = "";
   for (let index = 0; index < glob.length; index += 1) {
     const char = glob.charAt(index);
@@ -23,14 +27,14 @@ export function globToRegExp(glob: string): RegExp {
       pattern += escapeRegExp(char);
     }
   }
-  return new RegExp(`^${pattern}$`);
+  return new RegExp(`^${pattern}$`, options.ignoreCase ? "i" : "");
 }
 
 export function toRepoPath(path: string): string {
   return path.replaceAll("\\", "/").replace(/^\.\//, "");
 }
 
-export function matchesAny(path: string, globs: readonly string[]): boolean {
+export function matchesAny(path: string, globs: readonly string[], options: GlobOptions = {}): boolean {
   const repoPath = toRepoPath(path);
-  return globs.some((glob) => globToRegExp(glob).test(repoPath));
+  return globs.some((glob) => globToRegExp(glob, options).test(repoPath));
 }

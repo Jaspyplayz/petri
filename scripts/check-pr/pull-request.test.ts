@@ -3,6 +3,7 @@ import { loadGuardrailsConfig } from "./config";
 import { repoRoot } from "./context";
 import {
   agentReasons,
+  botCommitReasons,
   fetchLabelEvents,
   fetchLastHeadUpdate,
   humanMaintainers,
@@ -27,6 +28,7 @@ function eventPayload(
       head: { ref: overrides.ref ?? "chore/thing", sha: "b".repeat(40), repo: { full_name: "Jaspyplayz/petri" } },
       base: { ref: "main", sha: "a".repeat(40) },
     },
+    repository: { default_branch: "main" },
   };
 }
 
@@ -46,6 +48,8 @@ describe("pullRequestFromEvent", () => {
       labels: ["evolution", "risk:low"],
       headRef: "chore/thing",
       headRepository: "Jaspyplayz/petri",
+      baseRef: "main",
+      defaultBranch: "main",
       baseSha: "a".repeat(40),
       headSha: "b".repeat(40),
     });
@@ -67,8 +71,32 @@ describe("agentReasons", () => {
     [{ login: "claude[bot]", type: "Bot" }, ["bot author claude[bot]"]],
     [{ login: "dependabot[bot]", type: "Bot" }, ["bot author dependabot[bot]"]],
     [{ ref: "evo/12-bigger-blob" }, ["branch evo/12-bigger-blob"]],
+    [{ ref: "claude/issue-7-20261022" }, ["branch claude/issue-7-20261022"]],
   ])("flags %j", (overrides, expected) => {
     expect(agentReasons(pullRequest(overrides), config)).toEqual(expected);
+  });
+});
+
+describe("botCommitReasons", () => {
+  const human = { authorName: "Jasper", authorEmail: "jasper@example.com", committerName: "GitHub", committerEmail: "noreply@github.com" };
+
+  it("ignores human commits, including ones GitHub committed for them", () => {
+    expect(botCommitReasons([human], config)).toEqual([]);
+  });
+
+  it("flags any bot author or committer in the PR's commits, once each", () => {
+    const claude = { ...human, authorName: "claude[bot]", authorEmail: "209825114+claude[bot]@users.noreply.github.com" };
+    const actions = { ...human, committerName: "github-actions[bot]" };
+    expect(botCommitReasons([human, claude, claude, actions], config)).toEqual([
+      "bot commit by 209825114+claude[bot]@users.noreply.github.com",
+      "bot commit by claude[bot]",
+      "bot commit by github-actions[bot]",
+    ]);
+  });
+
+  it("flags the configured agent identities even without a [bot] suffix", () => {
+    const withAgent = { ...config, agentPullRequests: { ...config.agentPullRequests, authors: ["Petri-Agent"] } };
+    expect(botCommitReasons([{ ...human, committerName: "petri-agent" }], withAgent)).toEqual(["bot commit by petri-agent"]);
   });
 });
 
