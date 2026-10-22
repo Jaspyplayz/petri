@@ -1,8 +1,8 @@
 # PROGRESS
 
-**Current phase:** 1 — Scaffold ✅ (exit criteria passed, see evidence). Branch `chore/phase-1-scaffold`, PR https://github.com/Jaspyplayz/petri/pull/1 waiting for the user to squash-merge (self-merge was blocked by the permission classifier).
+**Current phase:** 1 ✅ merged (PR #1, 2026-10-22). Production Supabase is set up and verified (MANUAL_STEPS step 4 ✅).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action:** After the Phase 1 PR is merged: Phase 2 step 2.1 on a new branch `chore/phase-2-guardrails`. In parallel the user can work through `docs/MANUAL_STEPS.md` steps 4–7 (none block Phase 2). Phase 3 note: screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
+**Next action:** Phase 2 step 2.1 on `chore/phase-2-guardrails`. Phase 3 note: screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
@@ -115,6 +115,29 @@ A fresh-context subagent reviewed `git diff main...HEAD` against STARTER_PROMPT 
 - LOW, generator registers folders without a manifest → fixed (checked with a stray folder).
 - LOW, blob mood never resets → fixed via `animationend` (+ reduced-motion path), with e2e tests.
 - LOW, timeline counter capped at 100 rows and counting reverted changes → fixed with exact counts minus reverts.
+
+### Production Supabase — migrations + anon probe (2026-10-22)
+
+`pnpm db:push:prod` applied 5 migrations, no seeds; `migration list` shows local = remote for all 5. `list_tables`: 8 tables, RLS on for all, 0 rows apart from the 2 `app_flags`. Anon-key probe against `https://ejwwwasbkxqnyrjzlvll.supabase.co/rest/v1`. Every write probe would also have failed a CHECK, so a wrong grant could not have written a row.
+
+```
+1 read feedback public cols: 200 []
+2 read author_hash:          401 42501
+3 read votes:                401 42501
+4 read events:               401 42501
+5 read rate_limit_hits:      401 42501
+6 read agent_runs:           401 42501
+7 read changelog:            200 []
+8 read app_flags:            200 feedback_open=true, read_only_mode=false
+9 insert feedback:           401 42501
+10 insert events:            401 42501
+11 insert votes:             401 42501
+12 update changelog:         401 42501
+13 update app_flags:         401 42501
+14 rpc consume_rate_limit:   401 permission denied for function consume_rate_limit
+```
+
+Advisors. Security: INFO only, `rls_enabled_no_policy` on agent_runs, events, feedback_reports, rate_limit_hits and votes. That is deliberate: they deny anon entirely and only the service role writes. Performance: INFO only, 9 `unused_index` (the database is empty).
 
 ### Phase 1 — secret scan (2026-10-22)
 

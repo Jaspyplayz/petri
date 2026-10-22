@@ -11,12 +11,9 @@ Status key: ⬜ todo · ✅ done
 1. ✅ **WSL2 + Docker Desktop** installed (Docker 29.9.2, local Supabase runs).
 2. ✅ **CLI logins:** `gh` (Jaspyplayz), `vercel` (jaspyplayz-5179), `supabase` (org "Jaspy's Team").
 3. ✅ **Claude Code restarted** with the new PATH.
+4. ✅ **Supabase project** `petri` (ref `ejwwwasbkxqnyrjzlvll`, us-east-1, Free plan, so it can't be charged). Keys are in `.env.setup` and the 5 migrations are applied (2026-10-22). Future migrations go through `pnpm db:push:prod` until CI takes over.
 
 ## To do
-
-4. ⬜ **Supabase project: reply "create supabase".** Claude then runs `supabase projects create petri` in "Jaspy's Team" (us-east-1, Free plan), applies the migrations, and writes the project URL, anon key and service-role key into `.env.setup` for you. Two notes:
-   - It would be the org's second project (`turnpoint` is the first). The Free plan allows 2 active projects.
-   - **Check the spend cap is on:** supabase.com → your org → Billing → "Spend cap" enabled. On the Free plan there's nothing to pay, so this only matters if the org is ever upgraded.
 
 5. ⬜ **Sentry (2 minutes).** On sentry.io create a Next.js project named `petri` (Developer plan is free). Then paste into `.env.setup`:
    - `NEXT_PUBLIC_SENTRY_DSN`: Project Settings → Client Keys (DSN)

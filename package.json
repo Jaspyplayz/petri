@@ -21,6 +21,7 @@
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
+    "db:push:prod": "tsx scripts/db-push-prod.ts",
     "db:types": "supabase gen types typescript --local --schema public > src/shared/supabase/database.types.ts"
   },
   "dependencies": {
