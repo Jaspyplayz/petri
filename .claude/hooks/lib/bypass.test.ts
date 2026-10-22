@@ -181,6 +181,14 @@ describe("review findings stay closed", () => {
     ["git -c remote.origin.mirror=true push", "push refspecs"],
     ["git config core.fsmonitor ./watch.sh", "push refspecs"],
     ["git remote add --mirror=push backup https://example.com/x.git", "force pushes"],
+    ["git config core.sshCommand 'sh -c x'", "git aliases"],
+    ["git config --global core.pager 'sh -c x'", "git aliases"],
+    ["git -c diff.external=./x.sh diff", "git aliases"],
+    ["git config set --global credential.helper '!sh x'", "git aliases"],
+    ["git config --add filter.x.clean ./x.sh", "git aliases"],
+    ["git -c commit.gpgsign=false commit -m x", "git aliases"],
+    ["node -e \"const env = {}; require('child_process').spawnSync('git', ['commit'], { env })\"", "overriding HOME"],
+    ["python3 -c \"import os; os.execve('/usr/bin/git', ['git', 'commit'], e)\"", "overriding HOME"],
   ])("%s", (command, reason) => {
     expect(commandProblem(command, guard)).toContain(reason);
   });
@@ -201,6 +209,8 @@ describe("review findings stay closed", () => {
     "node -e \"console.log(process.env.NODE_ENV)\"",
     "python3 -c \"import subprocess; subprocess.run(['ls'])\"",
     "git remote add upstream https://github.com/example/petri.git && git config user.name Jasper",
+    "git config user.email && git config --get remote.origin.url && git config get core.editor",
+    "git config --global user.name 'Jasper' && git -c core.quotepath=off status",
   ])("allows %s", (command) => {
     expect(commandProblem(command, guard)).toBeUndefined();
   });

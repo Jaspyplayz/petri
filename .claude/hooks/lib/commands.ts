@@ -17,7 +17,10 @@ const gitDataSubcommands = new Set(["commit", "tag", "notes", "hash-object", "lo
 const gitValueOptions = new Set(["-C", "-c", "--config-env", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--attr-source"]);
 const patchPrograms = new Set(["patch", "gpatch"]);
 const forceOptions = ["--force", "--force-with-lease", "--force-if-includes", "--mirror"];
-const gitIndirection = /^(alias|include|includeif)\.|^remote\..+\.(push|mirror)(=|$)|^core\.fsmonitor(=|$)/i;
+const harmlessGitConfig = /^(user\.(name|email)|color\..+|advice\..+|core\.(quotepath|autocrlf|safecrlf)|init\.defaultbranch|pull\.rebase|push\.autosetupremote)$/i;
+const gitConfigValueOptions = new Set(["-f", "--file", "--blob", "--type", "--default", "--comment", "--value"]);
+const gitConfigWriteFlags = new Set(["--add", "--replace-all", "--unset", "--unset-all", "--edit", "-e", "--rename-section", "--remove-section"]);
+const gitConfigReadFlags = /^(--get(-all|-regexp|-urlmatch|-color|colorbool)?|--list|-l)$/;
 const configHomes = "(HOME|HOMEDRIVE|HOMEPATH|USERPROFILE|XDG_CONFIG_HOME|CLAUDE_CONFIG_DIR)";
 const envSetters = "(SetEnvironmentVariable|putenv|setenv)";
 const configHomeOverrides = [
@@ -33,7 +36,8 @@ const configHomeOverrides = [
   /\b(read|mapfile|readarray)\b[^;&|<\n]*?[\s'"]\$/,
   /\beval\b[^;&|\n]*\$\{?\w+\}?\w*\s*[-+]?=/,
   /(process\.env|os\.environ|\bENV)\s*\[\s*(?!(["'])\w+\2\s*\])|\$ENV\{\s*\$|Object\.assign\s*\(\s*process\.env|os\.environ\s*(\.(update|setdefault|__setitem__)|\|=)/,
-  /\b(spawn|exec|execFile|fork|Popen|run|call|check_call|check_output|system)\w*\s*\([^;\n]*?\benv\s*[=:]/,
+  /\b(spawn|exec|execFile|fork|Popen|run|call|check_call|check_output|system)\w*\s*\([^;\n]*?\benv\s*[=:,}]/,
+  /\b(exec[lv]p?e|spawn[lv]p?e|posix_spawnp?)\s*\(/,
 ];
 const unresolvedPath = /[$`%]|^~/;
 const printers = new Set(["echo", "printf", "print", "cat", "write-output", "write-host", "write-information", "out-host"]);
@@ -54,7 +58,7 @@ const messages = {
   secretFile: "Blocked: env and credential files hold secrets and stay unread. Scripts such as `pnpm setup:secrets` and `pnpm env:local` read them for you.",
   evolutionHuman: "Blocked: EVOLUTION_HUMAN is set by a human when they start Claude Code, never by a command.",
   patchTool: "Blocked: patch, git apply and git am are off for agents, because the guard can't reliably tell which files a patch writes. Use the Edit/Write tools; a human can run them with EVOLUTION_HUMAN=1.",
-  gitAlias: "Blocked: git aliases, config includes, push refspecs, mirror and fsmonitor settings and GIT_CONFIG_* variables change what a git command runs, so agents don't set them. Spell out the git command instead.",
+  gitAlias: "Blocked: agents set only a few harmless git config keys (user.name, user.email, color.*, advice.*, …). Others, such as git aliases, config includes, push refspecs, pagers, editors, diff and filter drivers, and GIT_CONFIG_* variables, change what a git command runs. Spell out the git command instead, or ask a human.",
   configHome: "Blocked: overriding HOME (or HOMEDRIVE/HOMEPATH), USERPROFILE, XDG_CONFIG_HOME or CLAUDE_CONFIG_DIR, or setting environment variables by a computed name or for a spawned process, can point git and other tools at a different config. Leave them as they are.",
   protectedWrite: (path: string) =>
     `Blocked: ${path} is a protected path (.github/guardrails.json, or a Claude Code settings file). Agents can't change their own guardrails; a human can by starting Claude Code with EVOLUTION_HUMAN=1.`,
@@ -122,6 +126,23 @@ function gitInvocation(words: readonly Word[]): GitInvocation | undefined {
   return undefined;
 }
 
+function gitConfigWrites(rest: readonly Word[]): string[] {
+  const flags: string[] = [];
+  const values: string[] = [];
+  for (let index = 0; index < rest.length; index += 1) {
+    const word = rest[index]?.text ?? "";
+    if (gitConfigValueOptions.has(word)) index += 1;
+    else if (word.startsWith("-")) flags.push(word);
+    else values.push(word);
+  }
+  const [first = "", ...others] = values;
+  if (first === "get" || first === "list" || flags.some((flag) => gitConfigReadFlags.test(flag))) return [];
+  if (first === "set" || first === "unset") return [others[0] ?? ""];
+  if (["edit", "rename-section", "remove-section"].includes(first)) return [first];
+  if (flags.some((flag) => gitConfigWriteFlags.has(flag.split("=")[0] ?? ""))) return [first];
+  return others.length > 0 ? [first] : [];
+}
+
 function gitRuns(words: readonly Word[], git: GitInvocation, subcommand: string): readonly Word[] | undefined {
   if (git.subcommand === subcommand) return git.rest;
   const index = words.findIndex((word, position) => position > 0 && word.text === subcommand);
@@ -148,8 +169,8 @@ function gitProblem(words: readonly Word[]): string | undefined {
   if (!git) return undefined;
   if (git.config.some((setting) => /^core\.hookspath/i.test(setting))) return messages.skipHooks;
   if (git.subcommand === "config" && git.rest.some((word) => /^core\.hookspath$/i.test(word.text))) return messages.skipHooks;
-  if (git.config.some((setting) => gitIndirection.test(setting))) return messages.gitAlias;
-  if (git.subcommand === "config" && git.rest.some((word) => gitIndirection.test(word.text))) return messages.gitAlias;
+  if (git.config.some((setting) => !harmlessGitConfig.test(setting.split("=")[0] ?? ""))) return messages.gitAlias;
+  if (git.subcommand === "config" && gitConfigWrites(git.rest).some((key) => !harmlessGitConfig.test(key))) return messages.gitAlias;
   const flags = options(git.rest);
   if (flags.some((flag) => abbreviates(flag, "--no-verify"))) return messages.skipHooks;
   if (git.subcommand === "commit" && flags.some((flag) => shortCluster(flag, "n"))) return messages.skipHooks;
