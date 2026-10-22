@@ -72,6 +72,25 @@ describe("protectedPathViolations", () => {
       ).toEqual(["package.json"]);
     });
 
+    it.each([
+      ["a guardrail toolchain package", { zod: "4.0.0", eslint: "8.0.0" }],
+      ["a scoped toolchain package", { zod: "4.0.0", "@typescript-eslint/parser": "1.0.0" }],
+      ["an npm: alias", { zod: "npm:not-zod@1.0.0" }],
+      ["a git dependency", { zod: "github:someone/zod" }],
+      ["a local file", { zod: "file:../zod" }],
+      ["a tarball URL", { zod: "https://example.com/zod.tgz" }],
+    ])("blocks %s", (_name, dependencies) => {
+      const head = JSON.stringify({ name: "petri", scripts: { lint: "eslint" }, dependencies });
+      expect(
+        violations([{ path: "package.json", status: "modified" }], reader({ base: { "package.json": base }, head: { "package.json": head } })),
+      ).toEqual(["package.json"]);
+    });
+
+    it("allows registry ranges and removing a dependency", () => {
+      const head = JSON.stringify({ name: "petri", scripts: { lint: "eslint" }, dependencies: { ms: "^2.1.0 || 3.x", clsx: ">=2 <3" } });
+      expect(violations([{ path: "package.json", status: "modified" }], reader({ base: { "package.json": base }, head: { "package.json": head } }))).toEqual([]);
+    });
+
     it("blocks unparseable package.json", () => {
       expect(
         violations([{ path: "package.json", status: "modified" }], reader({ base: { "package.json": base }, head: { "package.json": "{" } })),

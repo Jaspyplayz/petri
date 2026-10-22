@@ -13,9 +13,11 @@ import {
 
 const config = loadGuardrailsConfig(repoRoot);
 
-function eventPayload(overrides: { login?: string; type?: string; labels?: string[]; ref?: string } = {}) {
+function eventPayload(
+  overrides: { login?: string; type?: string; labels?: string[]; ref?: string; action?: string } = {},
+) {
   return {
-    action: "labeled",
+    action: overrides.action ?? "labeled",
     pull_request: {
       number: 42,
       user: { login: overrides.login ?? "Jaspyplayz", type: overrides.type ?? "User" },
@@ -35,6 +37,7 @@ function pullRequest(overrides: Parameters<typeof eventPayload>[0] = {}): PullRe
 describe("pullRequestFromEvent", () => {
   it("reads the fields the checks need", () => {
     expect(pullRequest({ labels: ["evolution", "risk:low"] })).toEqual({
+      action: "labeled",
       number: 42,
       author: "Jaspyplayz",
       authorIsBot: false,
@@ -95,6 +98,11 @@ describe("labelAddedByHuman", () => {
     ["another label was added", [labeled("Jaspyplayz", "User", "size-ok")]],
   ])("rejects it when %s", (_name, events) => {
     expect(labelAddedByHuman("protected-ok", pr, events, ["Jaspyplayz"])).toBe(false);
+  });
+
+  it("voids the approval when new commits are pushed", () => {
+    const pushed = pullRequest({ labels: ["evolution", "protected-ok"], action: "synchronize" });
+    expect(labelAddedByHuman("protected-ok", pushed, [labeled("Jaspyplayz")], ["Jaspyplayz"])).toBe(false);
   });
 
   it("rejects a label that is no longer on the PR", () => {

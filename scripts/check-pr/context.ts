@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { type GuardrailsConfig, loadGuardrailsConfig } from "./config.ts";
+import { type GuardrailsConfig, guardrailsConfigAt } from "./config.ts";
 import { mergeBase, readAt, resolveCommit } from "./git.ts";
 import type { FileReader } from "./protected-paths.ts";
 import {
@@ -47,12 +47,12 @@ export function loadCheckContext(argv: readonly string[], env: Env): CheckContex
     },
   });
   const root = repoRoot;
-  const config = loadGuardrailsConfig(root);
   const pullRequest = pullRequestFromEnv(env);
   const baseRef = values.base ?? pullRequest?.baseSha ?? "origin/main";
   const headRef = values.head ?? pullRequest?.headSha ?? "HEAD";
   const head = resolveCommit(root, headRef);
   const base = mergeBase(root, resolveCommit(root, baseRef), head);
+  const config = guardrailsConfigAt(root, (path) => readAt(root, base, path));
   const reasons = [
     ...(pullRequest ? agentReasons(pullRequest, config) : []),
     ...(values["as-agent"] ? ["--as-agent"] : []),

@@ -2,6 +2,7 @@ import type { GuardrailsConfig } from "./config.ts";
 import { asRecord } from "./json.ts";
 
 export type PullRequest = {
+  readonly action: string | undefined;
   readonly number: number;
   readonly author: string;
   readonly authorIsBot: boolean;
@@ -24,7 +25,8 @@ function stringAt(record: Readonly<Record<string, unknown>> | undefined, key: st
 }
 
 export function pullRequestFromEvent(payload: unknown): PullRequest | undefined {
-  const pullRequest = asRecord(asRecord(payload)?.pull_request);
+  const event = asRecord(payload);
+  const pullRequest = asRecord(event?.pull_request);
   if (!pullRequest) return undefined;
   const user = asRecord(pullRequest.user);
   const head = asRecord(pullRequest.head);
@@ -38,6 +40,7 @@ export function pullRequestFromEvent(payload: unknown): PullRequest | undefined 
   const baseSha = stringAt(base, "sha");
   if (typeof number !== "number" || !author || !headRef || !headSha || !baseSha) return undefined;
   return {
+    action: stringAt(event, "action"),
     number,
     author,
     authorIsBot: stringAt(user, "type") === "Bot" || author.endsWith("[bot]"),
@@ -79,7 +82,7 @@ export function labelAddedByHuman(
   events: readonly LabelEvent[],
   humans: readonly string[],
 ): boolean {
-  if (!pullRequest.labels.includes(label)) return false;
+  if (pullRequest.action === "synchronize" || !pullRequest.labels.includes(label)) return false;
   const lastLabeled = events.filter((event) => event.event === "labeled" && event.label === label).at(-1);
   if (!lastLabeled?.actor || lastLabeled.actorType !== "User") return false;
   const actor = lastLabeled.actor.toLowerCase();
