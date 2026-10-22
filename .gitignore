@@ -26,9 +26,18 @@ yarn-error.log*
 pnpm-debug.log*
 *.log
 
-# Env files
+# Env files (secrets live only in GitHub secrets / Vercel env)
 .env
-.env*.local
+.env.*
+!.env.example
+.env.setup
+
+# Verification artifacts (screenshots, reports)
+artifacts/
+
+# Supabase local state
+supabase/.branches/
+supabase/.temp/
 
 # Vercel
 .vercel
