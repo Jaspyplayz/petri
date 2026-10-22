@@ -11,16 +11,9 @@ Status key: ⬜ todo · ✅ done
 1. ✅ **WSL2 + Docker Desktop** installed (Docker 29.9.2, local Supabase runs).
 2. ✅ **CLI logins:** `gh` (Jaspyplayz), `vercel` (jaspyplayz-5179), `supabase` (org "Jaspy's Team").
 3. ✅ **Claude Code restarted** with the new PATH.
+4. ✅ **Supabase project** `petri` (ref `ejwwwasbkxqnyrjzlvll`, us-east-1, Free plan, so it can't be charged). Keys are in `.env.setup` and the 5 migrations are applied (2026-10-22). Future migrations go through `pnpm db:push:prod` until CI takes over.
 
 ## To do
-
-4. ⬜ **Supabase project: one command left.** Claude created `petri` (ref `ejwwwasbkxqnyrjzlvll`, us-east-1) in "Jaspy's Team" and wrote its URL, anon key, service-role key, DB password and ref into `.env.setup`. The org is on the **Free plan**, so nothing can be charged (spend caps only apply to paid plans). Pushing the migrations to the production database needs your OK, because Claude's permission mode blocks production deploys. Type this in Claude Code:
-
-   ```
-   ! pnpm db:push:prod
-   ```
-
-   It links the project, shows the 5 pending migrations, applies them (no seed data) and lists the result. The password is read from `.env.setup` and redacted from the output. Claude then checks RLS on production with the anon key and runs the Supabase security advisors.
 
 5. ⬜ **Sentry (2 minutes).** On sentry.io create a Next.js project named `petri` (Developer plan is free). Then paste into `.env.setup`:
    - `NEXT_PUBLIC_SENTRY_DSN`: Project Settings → Client Keys (DSN)
