@@ -1,8 +1,8 @@
 # PROGRESS
 
-**Current phase:** 4 done once its PRs merge: #27 (generator), #28 (CI check) and the `maintain-feature-map` PR, in that order. The exit check passed on throwaway #29 (evidence below). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 5 not started. Phase 4 is done: #27 (generator, 0120ab6), #28 (CI check, 34ff736) and #30 (the `maintain-feature-map` skill and the CLAUDE.md rule) are on `main`. The exit check passed on throwaway #29 (evidence below). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action:** merge the Phase 4 PRs in order, retargeting each stacked PR to `main` and merging `main` into it as the one below lands. Then start Phase 5 (CLAUDE.md and the trust ladder) in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes protected files (`CLAUDE.md`, `.github/`, `.evolution/`, `scripts/`). Read `FEATURE_MAP.md` first; use the `verify-app` and `maintain-feature-map` skills for any UI change.
+**Next action:** Phase 5 (CLAUDE.md and the trust ladder) in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes protected files (`CLAUDE.md`, `.github/`, `.evolution/`, `scripts/`). Read `FEATURE_MAP.md` first; use the `verify-app` and `maintain-feature-map` skills for any UI change.
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
