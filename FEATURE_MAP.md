@@ -112,12 +112,16 @@ The blob blinks every few seconds, and poking and feeding still work. Run it wit
 
 1. goto `/`
 2. expectVisible `creature`
-3. expectVisible `eyelid`
-4. screenshot "blinking"
-5. click `pokeButton`
-6. expectText `pokes` contains "1"
-7. click `feedButton`
-8. expectText `size` contains "105%"
+3. pauseAnimations at 1000 ms
+4. expectStyle `eyelid` has visibility "hidden"
+5. screenshot "eyes-open"
+6. pauseAnimations at 3350 ms
+7. expectStyle `eyelid` has visibility "visible"
+8. screenshot "eyes-closed"
+9. click `pokeButton`
+10. expectText `pokes` contains "1"
+11. click `feedButton`
+12. expectText `size` contains "105%"
 
 ### `blob.rename`
 

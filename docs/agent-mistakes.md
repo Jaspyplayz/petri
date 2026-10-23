@@ -134,3 +134,11 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** A concurrency group on a workflow that produces a required check. Only one pending run is kept, so a burst of events produces a cancelled suite that branch protection reads as the check never reported.
 - **Category:** design gap in CI (caught by the dry run)
 - **Fix rung:** none yet, logged only. A follow-up in PROGRESS removes the concurrency group or the label triggers. Without it, auto-merge would stall on every agent PR.
+
+## 2026-10-23 · The build agent shipped a blink flow it never ran, and it fails on production
+
+- **What happened:** #63 (blob blink) merged with every check green. Its post-merge production verify then failed on the builder's own `blob.blink` flow: `step 3 (expectVisible blob-eyelid): locator.waitFor: Timeout 10000ms exceeded.`
+- **Evidence:** Post-merge run 40039023852. Locally the flow failed 3 of 3 times; in the build's `verify:all` and `verify:compare` (run 40037068759) it passed. The eyelid is `visibility: visible` for about 245 ms of each 3.5 s loop, so `expectVisible` passes only when a poll lands in that window. The builder's report says it "could not run `pnpm verify:flow` (the command needed approval and was not granted), so the new blob.blink flow was never run", and its risk note says "expectVisible may miss the 250ms window". The run shows 5 permission denials; the log doesn't say which commands.
+- **Root cause:** `build.md` never pointed to `pauseAnimations`/`expectStyle`, and the builder couldn't run the verify tool, so nothing caught the timed check. `evolution-verify` judged the change with its own flows, which did pause (9/10), so the PR's real behaviour was right and only its flow was wrong.
+- **Category:** flaky verification (caught by post-merge)
+- **Fix rung:** prompt (#64) and the flow itself (pause at 1000 and 3350 ms, `expectStyle` on `visibility`; 3 of 3 pass). Why the builder's verify commands were denied is still open.
