@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { decide, footprint, requiredLevel, type ChangedFile } from "./automerge";
+import type { RiskLevel } from "../../src/shared/lib/feature-manifest";
+import { decide, footprint, manifestRiskLevel, requiredLevel, type ChangedFile, type ManifestRisk } from "./automerge";
 
 const existing = new Set(["blob", "feedback", "timeline"]);
 const modified = (filename: string): ChangedFile => ({ filename, status: "modified" });
@@ -62,22 +63,53 @@ describe("requiredLevel", () => {
   });
 });
 
+describe("manifestRiskLevel", () => {
+  it("reads one plain literal and nothing cleverer", () => {
+    expect(manifestRiskLevel('export const m = {\n  id: "blob",\n  riskLevel: "medium",\n};')).toBe("medium");
+    expect(manifestRiskLevel("riskLevel: 'low',")).toBe("low");
+    expect(manifestRiskLevel("riskLevel: LEVEL,")).toBeUndefined();
+    expect(manifestRiskLevel('riskLevel: x ? "low" : "high",')).toBeUndefined();
+    expect(manifestRiskLevel('// riskLevel: "high"\nriskLevel: "low",')).toBeUndefined();
+    expect(manifestRiskLevel("id: \"blob\"")).toBeUndefined();
+  });
+});
+
 describe("decide", () => {
   const blobOnly = footprint([modified("src/features/blob/lib/x.ts")], existing);
+  const blob = (before: RiskLevel | undefined, after: RiskLevel | undefined): ManifestRisk[] => [{ feature: "blob", before, after }];
 
   it("merges only when the trust level reaches what the footprint needs", () => {
-    expect(decide({ trustLevel: 1, issueRisk: "low", prRisks: ["low"], footprint: blobOnly }).merge).toBe(true);
-    expect(decide({ trustLevel: 0, issueRisk: "low", prRisks: ["low"], footprint: blobOnly })).toEqual({
+    expect(decide({ trustLevel: 1, issueRisk: "low", prRisks: ["low"], manifests: blob("low", "low"), footprint: blobOnly }).merge).toBe(true);
+    expect(decide({ trustLevel: 0, issueRisk: "low", prRisks: ["low"], manifests: blob("low", "low"), footprint: blobOnly })).toEqual({
       merge: false,
       reason: "trust level 0 is below 1, which it needs because it's a low-risk change inside the feature blob",
     });
   });
 
   it("uses the highest risk anyone states, and refuses a PR that lowers the issue's risk", () => {
-    expect(decide({ trustLevel: 1, issueRisk: "low", prRisks: ["medium"], footprint: blobOnly }).merge).toBe(false);
-    expect(decide({ trustLevel: 4, issueRisk: "medium", prRisks: ["low"], footprint: blobOnly })).toEqual({
+    expect(decide({ trustLevel: 1, issueRisk: "low", prRisks: ["medium"], manifests: [], footprint: blobOnly }).merge).toBe(false);
+    expect(decide({ trustLevel: 4, issueRisk: "medium", prRisks: ["low"], manifests: [], footprint: blobOnly })).toEqual({
       merge: false,
       reason: "the PR says its riskLevel is low, lower than the issue's medium",
+    });
+  });
+
+  it("counts the manifest's riskLevel on main even when the issue says low", () => {
+    expect(decide({ trustLevel: 1, issueRisk: "low", prRisks: ["low"], manifests: blob("medium", "medium"), footprint: blobOnly })).toEqual({
+      merge: false,
+      reason: "trust level 1 is below 2, which it needs because its riskLevel is medium (feature blob)",
+    });
+    expect(decide({ trustLevel: 1, issueRisk: "low", prRisks: [], manifests: blob("low", "high"), footprint: blobOnly }).merge).toBe(false);
+  });
+
+  it("never merges a PR that lowers a manifest's riskLevel or hides it", () => {
+    expect(decide({ trustLevel: 4, issueRisk: "low", prRisks: [], manifests: blob("medium", "low"), footprint: blobOnly })).toEqual({
+      merge: false,
+      reason: "it lowers the riskLevel of the feature blob from medium to low",
+    });
+    expect(decide({ trustLevel: 4, issueRisk: "low", prRisks: [], manifests: blob("low", undefined), footprint: blobOnly })).toEqual({
+      merge: false,
+      reason: "the riskLevel in src/features/blob/feature.manifest.ts can't be read at the PR's head",
     });
   });
 });

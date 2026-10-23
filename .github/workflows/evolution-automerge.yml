@@ -4,11 +4,14 @@ name: evolution-automerge
 # The verify workflow sets its status with GITHUB_TOKEN, which doesn't trigger other workflows, so this runs when
 # evolution-verify or CI finishes and checks every open evolution PR itself. gh pr merge --auto then waits for the
 # required checks (ci-ok and evolution-verify) before GitHub merges. It merges with EVOLUTION_BOT_TOKEN, because a
-# push to main by GITHUB_TOKEN wouldn't start the post-merge workflow.
+# push to main by GITHUB_TOKEN wouldn't start the post-merge workflow. The hourly run picks up PRs that waited for
+# maxMergesPerDay to reset.
 on:
   workflow_run:
     workflows: [evolution-verify, CI]
     types: [completed]
+  schedule:
+    - cron: "23 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -20,7 +23,7 @@ concurrency:
 
 jobs:
   automerge:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

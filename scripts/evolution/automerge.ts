@@ -68,6 +68,20 @@ export function requiredLevel(fp: Footprint, risk: RiskLevel): Requirement {
   return { level: 1, why: `it's a low-risk change inside the feature ${fp.features.join(", ")}` };
 }
 
+export const manifestPath = (feature: string): string => `src/features/${feature}/feature.manifest.ts`;
+
+// The riskLevel a manifest's source states, read as text because the PR's code never runs here. undefined when it
+// isn't a single plain literal (a constant, a ternary, two of them), so a human reads it instead.
+export function manifestRiskLevel(source: string): RiskLevel | undefined {
+  const mentions = source.match(/riskLevel/g)?.length ?? 0;
+  const literal = /\briskLevel\s*:\s*["'](low|medium|high)["']/.exec(source)?.[1];
+  return mentions === 1 ? (literal as RiskLevel | undefined) : undefined;
+}
+
+// A touched feature's riskLevel on main (before; undefined for a new feature) and at the PR's head (after; undefined
+// when the PR removes the manifest or it can't be read).
+export type ManifestRisk = { readonly feature: string; readonly before: RiskLevel | undefined; readonly after: RiskLevel | undefined };
+
 export type MergeDecision = { readonly merge: true; readonly reason: string } | { readonly merge: false; readonly reason: string };
 
 export function decide(input: {
@@ -75,6 +89,7 @@ export function decide(input: {
   readonly issueRisk: RiskLevel;
   // What the PR claims: its data comment and its risk:<level> labels.
   readonly prRisks: readonly RiskLevel[];
+  readonly manifests: readonly ManifestRisk[];
   readonly footprint: Footprint;
 }): MergeDecision {
   const rank = (risk: RiskLevel): number => RISK_ORDER.indexOf(risk);
@@ -82,7 +97,16 @@ export function decide(input: {
   if (lower.length > 0) {
     return { merge: false, reason: `the PR says its riskLevel is ${lower.join(", ")}, lower than the issue's ${input.issueRisk}` };
   }
-  const risk = [input.issueRisk, ...input.prRisks].reduce((a, b) => (rank(b) > rank(a) ? b : a));
+  const stated: RiskLevel[] = [input.issueRisk, ...input.prRisks];
+  for (const { feature, before, after } of input.manifests) {
+    if (after === undefined) return { merge: false, reason: `the riskLevel in ${manifestPath(feature)} can't be read at the PR's head` };
+    // CLAUDE.md: never lower a manifest's riskLevel. The trust ladder reads it.
+    if (before !== undefined && rank(after) < rank(before)) {
+      return { merge: false, reason: `it lowers the riskLevel of the feature ${feature} from ${before} to ${after}` };
+    }
+    stated.push(after, ...(before === undefined ? [] : [before]));
+  }
+  const risk = stated.reduce((a, b) => (rank(b) > rank(a) ? b : a));
   const required = requiredLevel(input.footprint, risk);
   if (required.level === undefined) return { merge: false, reason: `a human merges this one: ${required.why}` };
   if (input.trustLevel < required.level) {
