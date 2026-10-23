@@ -2,14 +2,33 @@ import { join } from "node:path";
 import { loadGuardrailsConfig } from "./check-pr/config";
 import { gh, issueNumberArg } from "./evolution/github-issue";
 import { linkedIssue } from "./evolution/github-pr";
-import { CLOSED_PR_FIELDS, resetComment, skipReason, type ClosedGhPr } from "./evolution/pr-closed";
+import { branchToDelete, CLOSED_PR_FIELDS, resetComment, skipReason, type ClosedGhPr } from "./evolution/pr-closed";
 import { loopSupabase } from "./evolution/supabase";
 
 // pnpm evolution:pr-closed <pr number>: when an evolution PR was closed without merging, the feedback the build marked
 // building on it goes back to triaged and loses the PR link. Only rows still building on this PR change, so rerunning
-// it, or running it after a newer build took the feedback, does nothing.
+// it, or running it after a newer build took the feedback, does nothing. It also deletes the PR's evo/ branch, as GitHub
+// does on merge, so the issue can be built again.
 const root = join(import.meta.dirname, "..");
 const usage = "usage: pnpm evolution:pr-closed <pr number>";
+
+function branchSha(branch: string): string | undefined {
+  try {
+    return gh(root, ["api", `repos/{owner}/{repo}/git/ref/heads/${branch}`, "--jq", ".object.sha"]);
+  } catch {
+    return undefined;
+  }
+}
+
+function deleteBranch(pr: ClosedGhPr): void {
+  const branch = branchToDelete(pr, branchSha(pr.headRefName));
+  if (branch === undefined) {
+    process.stdout.write(`pr-closed: keeping ${pr.headRefName} (gone already, moved on since the close, or not an evo/ branch here)\n`);
+    return;
+  }
+  gh(root, ["api", "-X", "DELETE", `repos/{owner}/{repo}/git/refs/heads/${branch}`]);
+  process.stdout.write(`pr-closed: deleted ${branch}; #${String(pr.number)} keeps its commits\n`);
+}
 
 async function main(): Promise<void> {
   const number = issueNumberArg(process.argv[2], usage);
@@ -19,6 +38,7 @@ async function main(): Promise<void> {
     process.stdout.write(`pr-closed: ${skip}, so nothing changes\n`);
     return;
   }
+  deleteBranch(pr);
   const issue = linkedIssue(root, pr, { allowClosed: true });
   if (typeof issue === "string") throw new Error(`pr-closed: can't trust #${String(number)}'s issue: ${issue}`);
   const update = await loopSupabase()

@@ -2,6 +2,7 @@ name: evolution-pr-closed
 
 # When an evolution PR is closed without merging, the feedback the build marked building on it goes back to triaged
 # and loses the PR link, so the board doesn't show a closed PR as in progress. A merged PR is post-merge's job.
+# It also deletes the PR's evo/ branch (contents: write), as GitHub does on merge, so the issue can be built again.
 # pull_request_target checks out main, never the PR, so only main's code runs next to the Supabase key.
 # No gate: it only undoes what the build recorded, then dispatches the next build, whose own gate applies.
 # workflow_dispatch backfills a PR closed before this existed.
@@ -27,7 +28,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       actions: write
-      contents: read
+      contents: write
       issues: write
       pull-requests: read
     steps:
