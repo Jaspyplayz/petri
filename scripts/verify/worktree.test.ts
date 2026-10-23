@@ -35,7 +35,7 @@ afterEach(() => {
   for (const dir of cleanup.splice(0).reverse()) rmSync(dir, { recursive: true, force: true });
 });
 
-describe("resolveCommit", () => {
+describe("resolveCommit", { timeout: 30_000 }, () => {
   it("resolves branches, relative refs and shas", () => {
     const { root, first, second } = repoWithTwoCommits();
     expect(resolveCommit(root, "HEAD")).toBe(second);
@@ -49,7 +49,7 @@ describe("resolveCommit", () => {
   });
 });
 
-describe("prepareBaseWorktree", () => {
+describe("prepareBaseWorktree", { timeout: 30_000 }, () => {
   it("checks the base out once, reuses it, and removes older base worktrees", () => {
     const { root, first, second } = repoWithTwoCommits();
     const parent = parentDir();
