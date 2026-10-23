@@ -19,8 +19,11 @@ on:
 permissions:
   contents: read
 
+# One build at a time. Every new issue gets three labels at once (evolution, evolution:ready, risk:*), and each starts
+# a run. Only the ones that can build share the group: in a shared group, a skipped run for another label cancelled
+# the pending evolution:ready run (#48's). The others get a group of their own and finish at once.
 concurrency:
-  group: evolution-build
+  group: ${{ (github.event_name == 'workflow_dispatch' || github.event.label.name == 'evolution:ready') && 'evolution-build' || format('evolution-build-other-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:
