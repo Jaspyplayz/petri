@@ -12,6 +12,7 @@ export type FlowStep<SelectorName extends string> =
 
 export type Flow<SelectorName extends string> = {
   readonly description: string;
+  readonly writes?: true;
   readonly steps: readonly FlowStep<SelectorName>[];
 };
 

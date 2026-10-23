@@ -67,6 +67,12 @@ describe("flowNames", () => {
   it("lists every feature's flows as feature.flow", () => {
     expect(flowNames([counter, empty, broken])).toEqual(["counter.increment", "broken.typo"]);
   });
+
+  it("leaves out flows that write when readOnly is set, and only then", () => {
+    const writer: FeatureManifest = { ...counter, id: "writer", flows: { save: { description: "Saves a row.", writes: true, steps: [] }, read: { description: "Reads.", steps: [] } } };
+    expect(flowNames([counter, writer])).toEqual(["counter.increment", "writer.save", "writer.read"]);
+    expect(flowNames([counter, writer], { readOnly: true })).toEqual(["counter.increment", "writer.read"]);
+  });
 });
 
 describe("parseScript", () => {

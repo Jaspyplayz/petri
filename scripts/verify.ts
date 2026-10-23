@@ -25,18 +25,19 @@ const usage = [
   "                                       working tree, with side-by-side screenshots",
   "",
   "  --base-url <url>   verify a running app (for example a preview) instead of starting one; not for compare",
+  "  --read-only        with all: skip flows marked writes: true (for production, where they'd leave real rows)",
   "",
 ].join("\n");
 
-function commandLine(args: readonly string[]): { positionals: string[]; baseUrl: string | undefined } {
+function commandLine(args: readonly string[]): { positionals: string[]; baseUrl: string | undefined; readOnly: boolean } {
   try {
     const { values, positionals } = parseArgs({
       args: [...args],
-      options: { "base-url": { type: "string" } },
+      options: { "base-url": { type: "string" }, "read-only": { type: "boolean" } },
       allowPositionals: true,
       strict: true,
     });
-    return { positionals, baseUrl: values["base-url"] };
+    return { positionals, baseUrl: values["base-url"], readOnly: values["read-only"] === true };
   } catch (error) {
     throw new VerifyError(error instanceof Error ? error.message : String(error));
   }
@@ -152,7 +153,8 @@ function single(positionals: readonly string[], what: string): string {
 }
 
 async function main(command: string | undefined, args: readonly string[]): Promise<number> {
-  const { positionals, baseUrl } = commandLine(args);
+  const { positionals, baseUrl, readOnly } = commandLine(args);
+  if (readOnly && command !== "all") throw new VerifyError("--read-only only applies to verify:all");
   switch (command ?? "") {
     case "up":
       process.stdout.write(`${await ensureServer(root, verifyPort())}\n`);
@@ -169,8 +171,8 @@ async function main(command: string | undefined, args: readonly string[]): Promi
       return verifyRuns([run], await baseUrlFor(baseUrl), false);
     }
     case "all": {
-      const runs = flowNames(featureManifests).map((name) => resolveFlow(featureManifests, name));
-      if (runs.length === 0) throw new VerifyError("no feature manifest defines a flow");
+      const runs = flowNames(featureManifests, { readOnly }).map((name) => resolveFlow(featureManifests, name));
+      if (runs.length === 0) throw new VerifyError(readOnly ? "no feature manifest defines a flow that doesn't write" : "no feature manifest defines a flow");
       return verifyRuns(runs, await baseUrlFor(baseUrl), true);
     }
     case "compare": {

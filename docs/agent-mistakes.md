@@ -103,3 +103,10 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** `verify:*` serves the shared working tree, and nothing marks it as in use by a running subagent. Pushing a branch didn't need a checkout at all.
 - **Category:** concurrency between the main agent and a subagent that share one working tree
 - **Fix rung:** (c) skill: `maintain-feature-map` now says not to check out branches or edit app code while an audit runs, and to do side work in a separate `git worktree`. I told the subagent to discard and rerun anything from that window.
+## 2026-10-23 · Typed a pinned action SHA from memory
+
+- **What happened:** In the new `evolution-post-merge.yml` I wrote `actions/upload-artifact@cf430e0371e4cd1a7e64d3ea6e8a0c0ae95b2b08 # v7.0.2`. That SHA isn't the repo's pin. The comment's version was right, the SHA was invented.
+- **Evidence:** `ci.yml:138` and `evolution-build.yml:79` pin `cf430e030ddbb5b0abf93d22962f4752f3646cd9`. I caught it by grepping the other workflows before committing.
+- **Root cause:** I wrote the line from memory instead of copying it from an existing workflow. Nothing local checks action pins, so CI would have been the first to fail (the action can't be resolved).
+- **Category:** hallucinated identifier (a commit SHA)
+- **Fix rung:** none yet, logged only. The working rule is to copy `uses:` lines from an existing workflow. If it happens again, the next rung is (b) a hard rule: a guardrail test that resolves every pinned `uses:` SHA in `.github/workflows/`.

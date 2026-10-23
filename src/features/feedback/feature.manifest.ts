@@ -45,6 +45,7 @@ export const feedbackManifest = defineFeature({
     },
     post: {
       description: "Posting an idea shows a confirmation and puts it on the board.",
+      writes: true,
       steps: [
         { action: "goto", path: "/feedback?sort=new" },
         { action: "fill", target: "bodyInput", value: "Verification flow: give the blob a tiny hat" },
@@ -57,6 +58,7 @@ export const feedbackManifest = defineFeature({
     },
     vote: {
       description: "Upvoting an item marks the button as voted.",
+      writes: true,
       steps: [
         { action: "goto", path: "/feedback?sort=new" },
         { action: "click", target: "voteButton" },

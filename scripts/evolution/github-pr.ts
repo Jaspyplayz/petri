@@ -37,12 +37,12 @@ export function evolutionPrsSharingHead(root: string, repo: string, pr: GhPr, co
 }
 
 // The issue an evolution PR implements, or why it can't be trusted to name one.
-export function linkedIssue(root: string, pr: GhPr): BuiltIssue | string {
+export function linkedIssue(root: string, pr: GhPr, options: { readonly allowClosed?: boolean } = {}): BuiltIssue | string {
   // The build workflow pushes evolution branches to this repository, never to a fork.
   if (pr.isCrossRepository) return "an evolution PR has to come from a branch of this repository";
   const data = prDataFromBody(pr.body);
   if (data === undefined) return "the PR body has no valid evolution-pr data comment";
-  const issue = fetchIssue(root, data.issueNumber, { requireReady: false });
+  const issue = fetchIssue(root, data.issueNumber, { requireReady: false, ...options });
   // The body names the issue, but anyone who can edit the PR can edit the body. The branch is the one the build
   // workflow derived from that issue, so a PR can't borrow another issue's criteria.
   const expected = branchName(issue.number, issue.title);
