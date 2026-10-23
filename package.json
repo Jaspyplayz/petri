@@ -47,6 +47,7 @@
     "verify:compare": "tsx scripts/verify.ts compare",
     "new:feature": "tsx scripts/new-feature.ts",
     "setup:secrets": "tsx scripts/setup-secrets.ts",
+    "setup:labels": "tsx scripts/setup-labels.ts",
     "env:local": "tsx scripts/env-local.ts",
     "db:start": "supabase start",
     "db:stop": "supabase stop",

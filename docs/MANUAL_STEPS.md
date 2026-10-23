@@ -27,7 +27,8 @@ Status key: ⬜ todo · ✅ done
     3. Repository permissions: **Contents: Read and write**, **Issues: Read and write**, **Pull requests: Read and write** (Metadata: Read is added for you). Leave everything else, including Workflows, at No access.
     4. Copy the token. In the repo, go to Settings → Secrets and variables → Actions → New repository secret. Name it `EVOLUTION_BOT_TOKEN` and paste the token.
     5. Tell Claude it's done. Don't paste the token in the chat.
-11. ⬜ **Go live (Phase 9, after everything above).** Open the Vercel production URL and check the three pages load, then run `pnpm evolution:resume` (or set the repo variable `EVOLUTION_ENABLED=true` in the GitHub app).
+11. ✅ **Loop labels.** Created by hand on 2026-10-23, after the first dry-run triage failed on a missing label. For a fresh repo, Claude runs `pnpm setup:labels --apply` (it needs only a `gh` login). It creates or updates every label the loop and the guardrails use, and it's safe to rerun.
+12. ⬜ **Go live (Phase 9, after everything above).** Open the Vercel production URL and check the three pages load, then run `pnpm evolution:resume` (or set the repo variable `EVOLUTION_ENABLED=true` in the GitHub app).
 
 ## Good to know (Phase 2 guardrails)
 
