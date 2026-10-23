@@ -38,6 +38,31 @@ describe("guard-commands hook", () => {
     expect(runHook("guard-commands.ts", toolCall("Bash", {})).status).toBe(2);
     expect(runHook("guard-files.ts", "not json").status).toBe(2);
   });
+
+  it("checks the code and commands that MCP code-execution tools run", () => {
+    const blocked = [
+      toolCall("mcp__runner__ctx_execute", { language: "shell", code: "git push --force" }),
+      toolCall("mcp__runner__ctx_execute", { language: "javascript", code: "console.log(process.env)" }),
+      toolCall("mcp__runner__ctx_batch_execute", { commands: [{ label: "ok", command: "ls" }, { label: "dump", command: "env" }] }),
+      toolCall("mcp__runner__ctx_execute_file", { path: ".env.setup", language: "python", code: "print(1)" }),
+    ];
+    for (const call of blocked) expect(runHook("guard-commands.ts", call).status).toBe(2);
+    expect(runHook("guard-commands.ts", toolCall("mcp__runner__ctx_execute", { language: "shell", code: "pnpm test" })).status).toBe(0);
+    expect(runHook("guard-commands.ts", toolCall("mcp__db__execute_sql", { query: "select 1" })).status).toBe(0);
+  });
+
+  it("lets agents run only shell through MCP code tools and scans every string field", () => {
+    const javascript = toolCall("mcp__runner__ctx_execute", { language: "javascript", code: "console.log(1)" });
+    const blocked = runHook("guard-commands.ts", javascript);
+    expect(blocked.status).toBe(2);
+    expect(blocked.stderr).toContain("runs code the guard can't check");
+    expect(runHook("guard-commands.ts", javascript, { EVOLUTION_HUMAN: "1" }).status).toBe(0);
+    expect(runHook("guard-commands.ts", toolCall("mcp__box__run_task", { spec: { steps: [{ cmd: "git push --force" }] } })).status).toBe(2);
+    expect(runHook("guard-commands.ts", toolCall("mcp__box__python_exec", { source: "open('x','w')" })).status).toBe(2);
+    expect(runHook("guard-commands.ts", toolCall("mcp__box__python_exec", { language: "bash", source: "open('x','w')" })).status).toBe(2);
+    expect(runHook("guard-commands.ts", toolCall("mcp__box__run", { runtime: "node", src: "1" })).status).toBe(2);
+    expect(runHook("guard-commands.ts", toolCall("mcp__box__run", { runtime: "bash", src: "ls" })).status).toBe(0);
+  });
 });
 
 describe("guard-files hook", () => {
@@ -59,15 +84,18 @@ describe("check-file hook", { timeout: 120_000 }, () => {
   });
 
   it("passes a clean src file and reports typecheck and lint errors to the agent", () => {
-    expect(runHook("check-file.ts", postToolUse(join(projectRoot, "src/features/blob/lib/blob-state.ts"))).status).toBe(0);
+    const clean = join(projectRoot, `src/shared/lib/hook-clean-${String(process.pid)}.ts`);
     const probe = join(projectRoot, `src/shared/lib/hook-probe-${String(process.pid)}.ts`);
-    writeFileSync(probe, 'export const typed: number = "text";\nexport const loose: any = 1;\n');
+    writeFileSync(clean, "export const typed: number = 1;\n");
     try {
+      expect(runHook("check-file.ts", postToolUse(clean)).status).toBe(0);
+      writeFileSync(probe, 'export const typed: number = "text";\nexport const loose: any = 1;\n');
       const result = runHook("check-file.ts", postToolUse(probe));
       expect(result.status).toBe(2);
       expect(result.stderr).toContain("TS2322");
       expect(result.stderr).toContain("@typescript-eslint/no-explicit-any");
     } finally {
+      rmSync(clean, { force: true });
       rmSync(probe, { force: true });
     }
   });
