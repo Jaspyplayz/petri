@@ -40,11 +40,6 @@ jobs:
       safe: ${{ steps.context.outputs.safe }}
       reason: ${{ steps.context.outputs.reason }}
     steps:
-      - name: Mark evolution-verify pending
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=pending -f context=evolution-verify -f description="Checking the PR" -f target_url="$RUN_URL" > /dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -70,6 +65,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: pnpm -s evolution:pr-context "$PR" pr
+      # Only for evolution PRs: another PR with the same head commit must not be able to reset this commit's status.
+      - name: Mark evolution-verify pending
+        if: steps.context.outputs.evolution == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=pending -f context=evolution-verify -f description="Checking the PR" -f target_url="$RUN_URL" > /dev/null
       - if: steps.context.outputs.evolution == 'true' && steps.context.outputs.safe == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -252,7 +254,8 @@ jobs:
         run: |
           report() { printf 'state=%s\ndescription=%s\n' "$1" "${2:0:139}" >> "$GITHUB_OUTPUT"; }
           if [ "$CONTEXT" != "success" ]; then report failure "Couldn't read the PR or its issue"
-          elif [ "$EVOLUTION" != "true" ]; then report success "Not an evolution PR"
+          elif [ "$EVOLUTION" != "true" ] && [ "$SAFE" = "true" ]; then report success "Not an evolution PR"
+          elif [ "$EVOLUTION" != "true" ]; then echo "skip=$REASON" >> "$GITHUB_OUTPUT"
           elif [ "$OPEN" != "true" ]; then report failure "Not verified, the loop is off: $GATE"
           elif [ "$SAFE" != "true" ]; then report failure "$REASON"
           elif [ "$JOBS" != "success success success" ]; then report failure "The verifier didn't finish (plan, run, judge: $JOBS)"
@@ -287,7 +290,12 @@ jobs:
           OUTCOME: ${{ steps.verdict.outcome }}
           STATE: ${{ steps.decide.outputs.state }}
           DESCRIPTION: ${{ steps.decide.outputs.description }}
+          SKIP: ${{ steps.decide.outputs.skip }}
         run: |
+          if [ -n "$SKIP" ]; then
+            echo "::error::No evolution-verify status for this PR: $SKIP"
+            exit 1
+          fi
           if [ "$JUDGED" = "true" ]; then
             if [ "$OUTCOME" = "success" ]; then STATE=success DESCRIPTION="Every acceptance criterion passed"
             else STATE=failure DESCRIPTION="The verifier found a problem, see the PR comment"
