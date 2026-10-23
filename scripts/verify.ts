@@ -1,13 +1,16 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, extname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { chromium, type Browser } from "@playwright/test";
 import { featureManifests } from "../src/features/registry";
+import { pairSteps, renderCompare, writeSideBySide, type ComparedFlow } from "./verify/compare";
 import { renderSummary, runFolderName, type VerifyReport } from "./verify/report";
 import { runVerification } from "./verify/runner";
 import { ensureServer, stopServer, verifyDirectory, verifyPort } from "./verify/server";
 import { flowNames, parseScript, resolveFlow, type VerifyRun } from "./verify/steps";
 import { VerifyError } from "./verify/verify-error";
+import { installBaseDependencies, prepareBaseWorktree, resolveCommit, shareEnvLocal } from "./verify/worktree";
 
 const root = join(import.meta.dirname, "..");
 const usage = [
@@ -17,8 +20,11 @@ const usage = [
   "  pnpm verify:flow <feature>.<flow>    run one flow from a feature manifest",
   "  pnpm verify:script <file.json>       run ad-hoc steps (targets are data-testids)",
   "  pnpm verify:all                      run every flow in every manifest",
+  "  pnpm verify:compare <baseRef> [flow ...]",
+  "                                       run the flows (default: all) on baseRef's build and on this",
+  "                                       working tree, with side-by-side screenshots",
   "",
-  "  --base-url <url>   verify a running app (for example a preview) instead of starting one",
+  "  --base-url <url>   verify a running app (for example a preview) instead of starting one; not for compare",
   "",
 ].join("\n");
 
@@ -87,6 +93,58 @@ async function verifyRuns(runs: readonly VerifyRun[], baseUrl: string, withSumma
   return results.every(({ report }) => report.passed) ? 0 : 1;
 }
 
+async function startBase(sha: string, label: string, port: number, runDir: string): Promise<{ dir: string; url: string }> {
+  const base = prepareBaseWorktree(root, sha, join(tmpdir(), `${basename(root)}-verify-base`));
+  if (base.created || !existsSync(join(base.dir, "node_modules"))) {
+    process.stdout.write(`verify: installing ${label}'s dependencies in ${base.dir}\n`);
+    installBaseDependencies(base.dir, join(runDir, "base-install.log"));
+  }
+  shareEnvLocal(root, base.dir);
+  process.stdout.write(`verify: before is ${label}, built in ${base.dir}\n`);
+  return { dir: base.dir, url: await ensureServer(base.dir, port) };
+}
+
+async function compareRuns(baseRef: string, runs: readonly VerifyRun[]): Promise<number> {
+  const sha = resolveCommit(root, baseRef);
+  const label = `${baseRef} (${sha.slice(0, 7)})`;
+  const port = verifyPort();
+  if (port === 65_535) throw new VerifyError("VERIFY_PORT must leave the next port free for the base build");
+  const runDir = join(verifyDirectory(root), runFolderName(new Date()));
+  mkdirSync(runDir, { recursive: true });
+  const base = await startBase(sha, label, port + 1, runDir);
+  const flows: ComparedFlow[] = [];
+  try {
+    process.stdout.write("verify: after is this working tree\n");
+    const prUrl = await ensureServer(root, port);
+    const browser = await launchBrowser();
+    try {
+      for (const run of runs) {
+        const before = join(runDir, "base", run.name);
+        const after = join(runDir, "pr", run.name);
+        const baseReport = await runVerification(browser, run, { baseUrl: base.url, outDir: before });
+        const prReport = await runVerification(browser, run, { baseUrl: prUrl, outDir: after });
+        const outDir = join(runDir, "compare", run.name);
+        mkdirSync(outDir, { recursive: true });
+        const sides = { before: { title: `Before: ${label}`, dir: before }, after: { title: "After: this working tree", dir: after } };
+        const written = await writeSideBySide(browser, run.name, pairSteps(baseReport, prReport), sides, outDir);
+        const images = written.map(({ number, path }) => ({ number, file: relative(runDir, path).replaceAll("\\", "/") }));
+        flows.push({ name: run.name, base: baseReport, pr: prReport, images });
+        const verdict = `${prReport.passed ? "PASS" : "FAIL"} ${run.name} (before: ${baseReport.passed ? "pass" : "fail"})`;
+        process.stdout.write(`${verdict} ${relative(root, outDir)}\n`);
+        for (const failure of prReport.failures) process.stdout.write(`  ✖ ${failure}\n`);
+      }
+    } finally {
+      await browser.close();
+    }
+  } finally {
+    await stopServer(base.dir);
+  }
+  writeFileSync(join(runDir, "compare.md"), renderCompare(baseRef, sha, flows));
+  writeFileSync(join(runDir, "compare.json"), `${JSON.stringify({ baseRef, sha, flows }, null, 2)}\n`);
+  process.stdout.write(`compare: ${relative(root, join(runDir, "compare.md"))}\n`);
+  return flows.every((flow) => flow.pr.passed) ? 0 : 1;
+}
+
 function single(positionals: readonly string[], what: string): string {
   const [value, ...extra] = positionals;
   if (value === undefined || extra.length > 0) throw new VerifyError(`expected exactly one ${what}\n\n${usage}`);
@@ -114,6 +172,14 @@ async function main(command: string | undefined, args: readonly string[]): Promi
       const runs = flowNames(featureManifests).map((name) => resolveFlow(featureManifests, name));
       if (runs.length === 0) throw new VerifyError("no feature manifest defines a flow");
       return verifyRuns(runs, await baseUrlFor(baseUrl), true);
+    }
+    case "compare": {
+      const [baseRef, ...names] = positionals;
+      if (baseRef === undefined) throw new VerifyError(`expected a base ref, such as origin/main\n\n${usage}`);
+      if (baseUrl !== undefined) throw new VerifyError("compare builds both sides itself, so it doesn't take --base-url");
+      const runs = (names.length > 0 ? names : flowNames(featureManifests)).map((name) => resolveFlow(featureManifests, name));
+      if (runs.length === 0) throw new VerifyError("no feature manifest defines a flow");
+      return compareRuns(baseRef, runs);
     }
     default:
       process.stderr.write(usage);

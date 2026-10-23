@@ -26,6 +26,7 @@
     "verify:flow": "tsx scripts/verify.ts flow",
     "verify:script": "tsx scripts/verify.ts script",
     "verify:all": "tsx scripts/verify.ts all",
+    "verify:compare": "tsx scripts/verify.ts compare",
     "new:feature": "tsx scripts/new-feature.ts",
     "setup:secrets": "tsx scripts/setup-secrets.ts",
     "env:local": "tsx scripts/env-local.ts",
