@@ -6,7 +6,7 @@ export const blobManifest = defineFeature({
   summary: "A squishy SVG creature you can poke, feed and name. State lives in the visitor's browser only.",
   routes: ["/"],
   uiLocation: "The home page, centred under the top navigation: the blob's name, the creature, its stats, Poke and Feed buttons, and a rename form.",
-  howToReach: ["Open /", "Or click 'Blob' in the top navigation"],
+  howToReach: ["Open / (from another page, click 'Blob' in the top navigation)"],
   keyboardShortcuts: [],
   selectors: {
     panel: "blob-panel",
