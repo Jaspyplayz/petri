@@ -1,0 +1,19 @@
+name: App stack
+description: Chromium for the verify runner, local Supabase (migrations + seed) and .env.local, so verify and e2e can run the app.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+    - name: Install Chromium
+      shell: bash
+      run: pnpm exec playwright install --with-deps --only-shell chromium
+    - name: Start local Supabase (migrations + seed)
+      shell: bash
+      run: pnpm db:start -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+    - name: Write .env.local from supabase status
+      shell: bash
+      run: pnpm env:local

@@ -1,0 +1,271 @@
+name: evolution-build
+
+# Builds one evolution:ready issue. The agent's code never runs where the secrets are:
+#   pick     trusted code: gate, pick the issue, mark its feedback building
+#   agent    no secrets: the builder edits a checkout; only its patch and JSON report leave the job
+#   verify   no secrets: checks and applies the patch, runs pnpm check, verify:all and verify:compare
+#   publish  secrets, but never runs the PR's code: pushes the branch and opens the PR with EVOLUTION_BOT_TOKEN
+# The cron fallback is added after the Phase 6 dry run (docs/decisions.md).
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue number to build (empty for the oldest evolution:ready issue)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evolution-build
+  cancel-in-progress: false
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  pick:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'evolution:ready'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      found: ${{ steps.pick.outputs.found }}
+      number: ${{ steps.pick.outputs.number }}
+      branch: ${{ steps.pick.outputs.branch }}
+      base: ${{ steps.base.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Base commit
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Gate (EVOLUTION_ENABLED, .evolution/PAUSED, maxOpenEvolutionPRs)
+        id: gate
+        env:
+          EVOLUTION_ENABLED: ${{ vars.EVOLUTION_ENABLED }}
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm -s evolution:gate build
+
+      - name: Pick the issue (only one triage filed)
+        if: steps.gate.outputs.open == 'true'
+        id: pick
+        env:
+          ISSUE: ${{ inputs.issue || github.event.issue.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm -s evolution:pick-issue "$ISSUE"
+
+      - name: Mark the linked feedback building
+        if: steps.pick.outputs.found == 'true'
+        env:
+          NUMBER: ${{ steps.pick.outputs.number }}
+          GH_TOKEN: ${{ github.token }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm -s evolution:feedback-status building "$NUMBER"
+
+      - if: steps.pick.outputs.found == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evolution-issue
+          path: artifacts/evolution/issue.json
+          retention-days: 30
+
+  agent:
+    needs: pick
+    if: needs.pick.outputs.found == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write # claude-code-action exchanges it for its app token
+    outputs:
+      report: ${{ steps.builder.outputs.structured_output }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.pick.outputs.base }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/app-stack
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evolution-issue
+          path: artifacts/evolution
+      - name: Agent settings from .evolution/
+        id: agent
+        run: pnpm -s evolution:agent-config build
+
+      - name: Builder agent (edits the checkout; can't commit, push or reach the web)
+        id: builder
+        uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: ${{ steps.agent.outputs.prompt }}
+          claude_args: >-
+            --model ${{ steps.agent.outputs.model }}
+            --max-turns ${{ steps.agent.outputs.max_turns }}
+            --allowedTools "Read,Glob,Grep,Edit,MultiEdit,Write,TodoWrite,Task,Bash(pnpm check),Bash(pnpm verify:*),Bash(pnpm featuremap),Bash(pnpm new:feature:*),Bash(pnpm test:*),Bash(pnpm typecheck),Bash(pnpm lint),Bash(git status),Bash(git diff:*)"
+            --disallowedTools "WebFetch,WebSearch"
+            --json-schema '${{ steps.agent.outputs.json_schema }}'
+
+      - name: The builder's patch
+        run: |
+          git add -A
+          git diff --cached --binary --no-renames > "$RUNNER_TEMP/evolution.patch"
+          git diff --cached --stat
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evolution-patch
+          path: ${{ runner.temp }}/evolution.patch
+          retention-days: 30
+
+  verify:
+    needs: [pick, agent]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      flows: ${{ steps.report.outputs.flows }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.pick.outputs.base }}
+          fetch-depth: 0 # verify:compare builds origin/main
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evolution-patch
+          path: ${{ runner.temp }}
+      - name: Check the builder's report
+        id: report
+        env:
+          REPORT: ${{ needs.agent.outputs.report }}
+        run: |
+          printf '%s' "$REPORT" > "$RUNNER_TEMP/report.json"
+          pnpm -s evolution:build-report "$RUNNER_TEMP/report.json"
+      - name: Stop if the builder was blocked
+        if: steps.report.outputs.outcome != 'done'
+        env:
+          REASON: ${{ steps.report.outputs.reason }}
+        run: |
+          echo "::error::The builder stopped: $REASON"
+          exit 1
+      - name: Check the patch before applying it (protected paths, binaries, size)
+        run: pnpm -s evolution:check-patch "$RUNNER_TEMP/evolution.patch"
+      - name: Apply the patch
+        run: git apply --index "$RUNNER_TEMP/evolution.patch"
+
+      - uses: ./.github/actions/app-stack
+      - name: pnpm check
+        run: pnpm check
+      - name: pnpm verify:all
+        run: pnpm verify:all
+      - name: pnpm verify:compare (before and after screenshots)
+        env:
+          FLOWS: ${{ steps.report.outputs.flows }}
+        run: |
+          read -r -a flows <<< "$FLOWS"
+          pnpm verify:compare origin/main "${flows[@]}"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evolution-verify
+          path: artifacts/verify/
+          retention-days: 30
+
+  publish:
+    needs: [pick, agent, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.pick.outputs.base }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evolution-patch
+          path: ${{ runner.temp }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evolution-verify
+          path: artifacts/verify
+      - name: Check the patch again, from this clean checkout
+        run: pnpm -s evolution:check-patch "$RUNNER_TEMP/evolution.patch"
+
+      - name: Push the branch (in a separate worktree, so nothing here runs the PR's code)
+        env:
+          BOT_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BASE: ${{ needs.pick.outputs.base }}
+          BRANCH: ${{ needs.pick.outputs.branch }}
+          NUMBER: ${{ needs.pick.outputs.number }}
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/branch" "$BASE"
+          cd "$RUNNER_TEMP/branch"
+          git apply --index "$RUNNER_TEMP/evolution.patch"
+          git -c user.name="petri-evolution" -c user.email="petri-evolution@users.noreply.github.com" commit -q -m "evolution: build #$NUMBER"
+          git push "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+
+      - name: Open the PR from the template
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BRANCH: ${{ needs.pick.outputs.branch }}
+          NUMBER: ${{ needs.pick.outputs.number }}
+          REPORT: ${{ needs.agent.outputs.report }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          mkdir -p artifacts/evolution
+          printf '%s' "$REPORT" > artifacts/evolution/build-report.json
+          mapfile -t summaries < <(find artifacts/verify -mindepth 2 -maxdepth 2 -name summary.md)
+          mapfile -t compares < <(find artifacts/verify -mindepth 2 -maxdepth 2 -name compare.json)
+          if [ "${#summaries[@]}" -ne 1 ] || [ "${#compares[@]}" -ne 1 ]; then
+            echo "::error::expected one verify:all run and one verify:compare run, got ${#summaries[@]} and ${#compares[@]}"
+            exit 1
+          fi
+          pnpm -s evolution:open-pr "$BRANCH" "$NUMBER" artifacts/evolution/build-report.json "$(dirname "${summaries[0]}")" "$(dirname "${compares[0]}")"
+
+      - name: Link the PR to the feedback and take the issue off the ready list
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ needs.pick.outputs.number }}
+          URL: ${{ steps.pr.outputs.url }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          pnpm -s evolution:feedback-status building "$NUMBER" "$URL"
+          gh issue edit "$NUMBER" --remove-label evolution:ready
+
+  stuck:
+    needs: [pick, agent, verify, publish]
+    if: failure() && needs.pick.outputs.found == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Label the issue evolution:stuck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ needs.pick.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue edit "$NUMBER" --repo "$GITHUB_REPOSITORY" --add-label evolution:stuck --remove-label evolution:ready
+          gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "The build didn't produce a PR. The run has the builder's report, the patch and the verify output: $RUN_URL"
