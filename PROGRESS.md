@@ -1,8 +1,8 @@
 # PROGRESS
 
-**Current phase:** 4 in progress (`pnpm featuremap`, `FEATURE_MAP.md` and the CI `featuremap` check done; the CLAUDE.md rule, the skill and the exit check are next). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 5 not started. Phase 4 is done: #27 (generator, 0120ab6), #28 (CI check, 34ff736) and #30 (the `maintain-feature-map` skill and the CLAUDE.md rule) are on `main`. The exit check passed on throwaway #29 (evidence below). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action:** Phase 4 (feature map), from an up-to-date `main`, in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes protected files (`scripts/`, `.claude/skills/maintain-feature-map/`, CI). Use the `verify-app` skill for any UI change.
+**Next action:** Phase 5 (CLAUDE.md and the trust ladder) in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes protected files (`CLAUDE.md`, `.github/`, `.evolution/`, `scripts/`). Read `FEATURE_MAP.md` first; use the `verify-app` and `maintain-feature-map` skills for any UI change.
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
@@ -37,8 +37,8 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 4 — Feature map
 
-- [x] 4.1 Manifest type + manifests (since Phase 1) · [x] 4.2 `pnpm featuremap` → FEATURE_MAP.md · [x] 4.3 CI `featuremap` job · [ ] 4.4 CLAUDE.md soft rule · [ ] 4.5 `maintain-feature-map` skill
-- [ ] Exit: renaming a testid without updating the manifest fails CI
+- [x] 4.1 Manifest type + manifests (since Phase 1) · [x] 4.2 `pnpm featuremap` → FEATURE_MAP.md · [x] 4.3 CI `featuremap` job · [x] 4.4 CLAUDE.md soft rule · [x] 4.5 `maintain-feature-map` skill
+- [x] Exit: renaming a testid without updating the manifest fails CI (throwaway #29, evidence below)
 
 ## Phase 5 — CLAUDE.md + trust ladder
 
@@ -67,6 +67,38 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 4 exit: renaming a testid fails CI (2026-10-22)
+
+Throwaway PR #29 (closed unmerged, branch deleted) renamed `data-testid="blob-feed-button"` to `"blob-feed-btn"` in `blob-creature.tsx` and left the manifest alone. It was opened against `feat/check-featuremap` (#28), the same way Phase 2's exit checks ran against the phase branch. In [run 39893870160](https://github.com/Jaspyplayz/petri/actions/runs/39893870160), the `featuremap` job failed with:
+
+```
+✖ src/features/blob/components/blob-creature.tsx:142: data-testid "blob-feed-btn" isn't in the blob manifest's selectors
+✖ blob manifest: selector feedButton ("blob-feed-button") isn't a data-testid anywhere in src/features/blob/
+featuremap: 2 problem(s). …
+```
+
+`ci-ok` failed with it. `e2e` failed too, because `blob.feed` clicks that testid. Every other job passed.
+
+### Phase 4: the CLAUDE.md rule, the `maintain-feature-map` skill and a map audit (2026-10-22)
+
+- **CLAUDE.md** has two new soft rules:
+  - Read `FEATURE_MAP.md` before any task, and use it to map vague feedback or a screenshot to a feature and a flow.
+  - Update the manifest and run `pnpm featuremap` in the same change as a UI change, and never edit the map by hand.
+- **`.claude/skills/maintain-feature-map/SKILL.md`** covers:
+  - which manifest field to update for each kind of UI change
+  - testid rules
+  - never lowering `riskLevel`
+  - how to write a flow
+  - how to audit the map with a subagent that sees only the map
+  
+  Claude Code listed the skill as soon as the file existed.
+- **The audit was run once, as the skill describes.** A general-purpose subagent got only `FEATURE_MAP.md` and the URL. It wrote one `verify:script` per feature, read every screenshot, and reported:
+  - **Blob, Feedback and Timeline matched**: the layout and every always-present selector (11, 16 and 6 of them).
+  - **One real gap:** the map said "Feedback" is in the "middle" of the top navigation and "Timeline" on the "right side". The links are grouped on the right, with the logo on the left. I checked the screenshot and fixed both `howToReach` lines.
+  - **State-dependent selectors:** five weren't visible on a plain page load because they belong to other states (`blob-name-error`, `feedback-empty`, `feedback-form-message`, `feedback-vote-error`, `timeline-empty`). It reported them as state-dependent, not as errors. The skill's audit prompt now says how to treat those and gives the step format.
+  - **Analytics** couldn't be checked from the screen, and the map says it's invisible.
+- **A mistake while the audit ran:** I briefly checked out the throwaway exit-check branch, and verify rebuilt from it. The subagent threw away and reran the three runs from that window, and the results matched. It's in `docs/agent-mistakes.md`, and the skill now warns against it.
 
 ### Phase 4: the `featuremap` CI check (2026-10-22)
 

@@ -95,3 +95,11 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** Tests that do real process I/O were given the default budget meant for pure tests. `runner.test.ts` (real Chromium) already had a 30 s budget; the new file didn't follow it.
 - **Category:** flaky test (timing under CI load)
 - **Fix rung:** (a) design: the git-spawning `describe` blocks get `{ timeout: 30_000 }`, like `runner.test.ts`. The assertions are unchanged.
+
+## 2026-10-22 · Switched branches while a subagent was verifying against the same working tree
+
+- **What happened:** While the feature-map audit subagent was running `verify:script`, I stashed my work and checked out a throwaway branch that renames `blob-feed-button`, to push the Phase 4 exit-check PR. About a minute later I switched back.
+- **Evidence:** `artifacts/verify/build.log` shows a rebuild at 23:12:03 local, inside that window. `verify:up` rebuilds from whatever is checked out, so audit runs in the window tested the throwaway code.
+- **Root cause:** `verify:*` serves the shared working tree, and nothing marks it as in use by a running subagent. Pushing a branch didn't need a checkout at all.
+- **Category:** concurrency between the main agent and a subagent that share one working tree
+- **Fix rung:** (c) skill: `maintain-feature-map` now says not to check out branches or edit app code while an audit runs, and to do side work in a separate `git worktree`. I told the subagent to discard and rerun anything from that window.
