@@ -3,7 +3,8 @@ name: evolution-pr-closed
 # When an evolution PR is closed without merging, the feedback the build marked building on it goes back to triaged
 # and loses the PR link, so the board doesn't show a closed PR as in progress. A merged PR is post-merge's job.
 # pull_request_target checks out main, never the PR, so only main's code runs next to the Supabase key.
-# No gate: it only undoes what the build recorded. workflow_dispatch backfills a PR closed before this existed.
+# No gate: it only undoes what the build recorded, then dispatches the next build, whose own gate applies.
+# workflow_dispatch backfills a PR closed before this existed.
 on:
   pull_request_target:
     types: [closed]
@@ -25,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      actions: write
       contents: read
       issues: write
       pull-requests: read
@@ -43,3 +45,13 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
         run: pnpm -s evolution:pr-closed "$PR"
+
+      # Closing the PR freed the one open-PR slot, so start the build for the oldest evolution:ready issue, if any,
+      # as post-merge does after a merge. The build's gate still decides whether it may run.
+      - name: Start the next build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ready=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label evolution:ready --limit 1 --json number --jq length)
+          if [ "$ready" = "0" ]; then echo "No evolution:ready issue is waiting."; exit 0; fi
+          gh workflow run evolution-build.yml --repo "$GITHUB_REPOSITORY"
