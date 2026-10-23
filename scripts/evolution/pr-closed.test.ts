@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadGuardrailsConfig } from "../check-pr/config";
-import { resetComment, skipReason, type ClosedGhPr } from "./pr-closed";
+import { branchToDelete, resetComment, safeBranchName, skipReason, type ClosedGhPr } from "./pr-closed";
 
 const config = loadGuardrailsConfig(join(import.meta.dirname, "..", ".."));
 
@@ -35,6 +35,32 @@ describe("skipReason", () => {
 
   it("leaves other PRs alone", () => {
     expect(skipReason(pr({ labels: [{ name: "documentation" }], headRefName: "docs/x" }), config)).toBe("#49 isn't an evolution PR");
+  });
+});
+
+describe("branchToDelete", () => {
+  const head = "a".repeat(40);
+
+  it("deletes the PR's evo/ branch while it still points at the PR's last commit", () => {
+    expect(branchToDelete(pr({}), head)).toBe("evo/47-make-the-blob-blink-every-few-seconds");
+  });
+
+  it("keeps a branch that's gone, has moved on, isn't evo/ or lives in a fork", () => {
+    expect(branchToDelete(pr({}), undefined)).toBeUndefined();
+    expect(branchToDelete(pr({}), "c".repeat(40))).toBeUndefined();
+    expect(branchToDelete(pr({ headRefName: "feat/blink" }), head)).toBeUndefined();
+    expect(branchToDelete(pr({ isCrossRepository: true }), head)).toBeUndefined();
+    expect(branchToDelete(pr({ headRefName: "evo/47-x#y" }), head)).toBeUndefined();
+  });
+});
+
+describe("safeBranchName", () => {
+  it.each(["evo/47-make-the-blob-blink-every-few-seconds", "evo/1_a.b"])("accepts %s", (name) => {
+    expect(safeBranchName(name)).toBe(true);
+  });
+
+  it.each(["evo/47#main", "evo/47%2Fmain", "evo/47?x=1", "evo/../main", "evo/a b", ""])("rejects %j, which could change the REST path", (name) => {
+    expect(safeBranchName(name)).toBe(false);
   });
 });
 
