@@ -40,7 +40,7 @@ export function triageJsonSchema(): string {
 
 export type IssuePlan = { readonly issues: readonly TriageIssue[]; readonly rejected: readonly Rejection[]; readonly problems: readonly string[] };
 
-const RISK_ORDER: readonly RiskLevel[] = ["low", "medium", "high"];
+export const RISK_ORDER: readonly RiskLevel[] = ["low", "medium", "high"];
 
 function higherRisk(a: RiskLevel, b: RiskLevel): RiskLevel {
   return RISK_ORDER.indexOf(a) >= RISK_ORDER.indexOf(b) ? a : b;

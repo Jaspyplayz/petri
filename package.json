@@ -26,6 +26,7 @@
     "evolution:pr-context": "tsx scripts/evolution-pr-context.ts",
     "evolution:verify-plan": "tsx scripts/evolution-verify-plan.ts",
     "evolution:verdict": "tsx scripts/evolution-verdict.ts",
+    "evolution:automerge": "tsx scripts/evolution-automerge.ts",
     "boundaries": "node scripts/check-boundaries.ts",
     "features": "tsx scripts/check-features.ts",
     "featuremap": "tsx scripts/featuremap.ts",

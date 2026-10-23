@@ -1,0 +1,61 @@
+name: evolution-automerge
+
+# Auto-merges evolution PRs that the trust level allows (the ladder in CLAUDE.md), or labels them needs-human.
+# The verify workflow sets its status with GITHUB_TOKEN, which doesn't trigger other workflows, so this runs when
+# evolution-verify or CI finishes and checks every open evolution PR itself. gh pr merge --auto then waits for the
+# required checks (ci-ok and evolution-verify) before GitHub merges. It merges with EVOLUTION_BOT_TOKEN, because a
+# push to main by GITHUB_TOKEN wouldn't start the post-merge workflow.
+on:
+  workflow_run:
+    workflows: [evolution-verify, CI]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evolution-automerge
+  cancel-in-progress: false
+
+jobs:
+  automerge:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      statuses: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+
+      - name: Gate (EVOLUTION_ENABLED, .evolution/PAUSED, maxMergesPerDay)
+        id: gate
+        env:
+          EVOLUTION_ENABLED: ${{ vars.EVOLUTION_ENABLED }}
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm -s evolution:gate automerge
+
+      - name: Trust level against each PR's footprint
+        if: steps.gate.outputs.open == 'true'
+        id: policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm -s evolution:automerge
+
+      - name: Turn on auto-merge (squash, only for the head that was verified)
+        if: steps.policy.outputs.merge != ''
+        env:
+          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          MERGE: ${{ steps.policy.outputs.merge }}
+        run: |
+          for entry in $MERGE; do
+            gh pr merge "${entry%%:*}" --repo "$GITHUB_REPOSITORY" --auto --squash --match-head-commit "${entry#*:}"
+          done
