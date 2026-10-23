@@ -64,6 +64,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 - [ ] 8.1 pause/resume + `app_flags` · [ ] 8.2 rate limits + caps · [ ] 8.3 secrets/env hygiene · [ ] 8.4 `docs/costs.md` + budget gate · [ ] 8.5 guardian (Sentry spike → rollback → revert → pause) · [ ] 8.6 moderation + report button
 - [ ] Exit: kill switch stops a run, 429, gitleaks catches fake key, simulated spike → revert + pause
 - [ ] Follow-up from Phase 6: run agent-written and PR code (the builder's Bash commands, the verify `run` job) as a separate OS user without sudo or docker, so it can't read `CLAUDE_CODE_OAUTH_TOKEN` or a runtime token from another process of the job. In the verify `run` job, run the verify CLI from main's checkout and only the PR's app as that user, so the app can't write the evidence the judge reads (docs/decisions.md)
+- [ ] Follow-up from Phase 6: `ci.yml` (no secrets) still restores the pnpm, Playwright and Next caches from main's scope, and untrusted code that runs in main's scope (the build agent job, the verify `run` job; both have sudo and docker on hosted runners) could write those keys. That would let it make `ci-ok` lie for later PRs. Fix: run untrusted code only in PR-scoped workflows, or stop restoring caches in `ci.yml`. Needs the user's OK, because it slows CI
 
 ## Phase 9 — Long-run mode and handoff
 
