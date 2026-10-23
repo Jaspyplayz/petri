@@ -16,6 +16,13 @@ test.describe("e2e fixture", () => {
     problems.splice(0);
   });
 
+  test("records problems from every page in the context", async ({ context, problems }) => {
+    const other = await context.newPage();
+    await other.evaluate(`console.error(${JSON.stringify(consoleError)})`);
+    await expect.poll(() => problems.join("\n")).toContain(`console.error: ${consoleError}`);
+    problems.splice(0);
+  });
+
   test("fails the test when the page recorded a problem", async ({ page, problems }) => {
     test.fail();
     await page.evaluate(`console.error(${JSON.stringify(consoleError)})`);

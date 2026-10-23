@@ -80,12 +80,12 @@ An independent fresh-context review of f82cc71 and the automated security review
 CI (the hard gate). **1, 4–8, the payload half of 9, the `database.types.ts` item in 2 and the nits in 10 are closed in `fix/phase-2-ci-gate`. The rest of 2, 3 and the rest of 10 (lint side doors, boundaries, test quality) are for the next PR.** Each closed item has a test in `scripts/**/*.test.ts`. 8 adds the `edited` trigger, but not the `branches: [main]` filter (see decisions.md).
 
 1. **(V) PR code runs before the checks.** `next typegen` (in `lint`/`typecheck`) loads the unprotected `next.config.ts`, which can rewrite `eslint.config.mjs` on the runner while the git diff stays clean. `check-features.ts` imports agent-written manifests, `registry.ts` and `scripts/new-feature/templates.ts`, and a `process.exit(0)` in any of them passes. Fix: protect `next.config.*` and `scripts/**`, and read manifests statically.
-2. **(V) Lint and fixture side doors.**
+2. **(V) Lint and fixture side doors.** **Closed in `fix/phase-2-lint-and-tests`, except `database.types.ts` (closed in `fix/phase-2-ci-gate`).**
    - `const { useEffect } = React` and `globalThis.console` / `globalThis.process`.
    - `it.fails` and `context.skip()`.
    - A default import of `@playwright/test`, `fixtureTest.extend({ problems })` and `page.removeAllListeners`.
    - The lint-ignored `database.types.ts`.
-3. **(V) A neutral folder bypasses the import boundaries.** For example, `src/bridge/` can re-export another feature. Fix: rules that list what's allowed, and only `app`, `features` and `shared` at the top of `src`.
+3. **(V) A neutral folder bypasses the import boundaries.** **Closed in `fix/phase-2-lint-and-tests`.** For example, `src/bridge/` can re-export another feature. Fix: rules that list what's allowed, and only `app`, `features` and `shared` at the top of `src`.
 4. **(V) Repo files can hide secrets and diff size.** `.gitattributes` `-diff`, `.gitleaksignore` and `gitleaks:allow` hide secrets from gitleaks, and binary numstat hides lines from `pr-size`. Fix: protect both files, run gitleaks with `--ignore-gitleaks-allow`, use `numstat --text`, and fail on binaries that can't be measured.
 5. **Agent detection misses `claude/*` branches** and agent pushes to human PRs.
 6. **(V) Config and trust level come from the merge base, not the base tip.**
@@ -96,7 +96,7 @@ CI (the hard gate). **1, 4–8, the payload half of 9, the `database.types.ts` i
    - Glob matching is also case-sensitive.
 8. **Retargeting a PR doesn't re-run `ci.yml`.** Fix: add the `edited` type and `branches: [main]`, and make Phase 6 rulesets require the trusted workflows.
 9. **Places that fail open.** A missing event payload counts as "not an agent PR", and a typegen crash in check-file is non-blocking.
-10. **Weak proofs.**
+10. **Weak proofs.** **The lint-config, `DECLARES_A_TEST`, coverage and retries items are closed in `fix/phase-2-lint-and-tests`.** Evidence there: every new lint case fails against `main`'s config (25 of 25), and `rules.test.ts` fails against `main`'s dependency-cruiser config.
     - The lint-config tests assert generic rule ids.
     - `DECLARES_A_TEST` is a regex.
     - Coverage measures only `lib/**/*.ts`.
