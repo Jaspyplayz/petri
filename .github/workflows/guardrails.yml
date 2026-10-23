@@ -11,10 +11,10 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: guardrails-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
-
+# No concurrency group. guardrails-ok is a required check, and a PR opened with labels starts several runs in the
+# same second. A group cancels one of them, and when the cancelled suite is the newest one, branch protection reads
+# guardrails-ok from it and waits forever ("expected"), as on #50. Without a group every run finishes, and the newest
+# one belongs to the latest event, whose payload carries the PR's latest labels. A duplicate run costs a minute.
 jobs:
   protected-paths:
     runs-on: ubuntu-latest
