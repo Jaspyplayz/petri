@@ -5,6 +5,7 @@ const serverStateSchema = z.object({
   port: z.number().int().positive(),
   url: z.url(),
   fingerprint: z.string().min(1),
+  buildId: z.string().min(1),
   startedAt: z.string(),
 });
 
@@ -19,6 +20,7 @@ export type ServerFacts = {
   readonly state: ServerState | undefined;
   readonly port: number;
   readonly fingerprint: string;
+  readonly buildId: string | undefined;
   readonly pidAlive: boolean;
   readonly portAnswers: boolean;
 };
@@ -36,9 +38,8 @@ export function parseServerState(text: string | undefined): ServerState | undefi
 export function planServer(facts: ServerFacts): ServerPlan {
   const ours = facts.state !== undefined && facts.state.port === facts.port && facts.pidAlive;
   if (ours && facts.portAnswers) {
-    return facts.state.fingerprint === facts.fingerprint
-      ? { kind: "reuse", url: facts.state.url }
-      : { kind: "start", stopPid: facts.state.pid };
+    const current = facts.state.fingerprint === facts.fingerprint && facts.state.buildId === facts.buildId;
+    return current ? { kind: "reuse", url: facts.state.url } : { kind: "start", stopPid: facts.state.pid };
   }
   if (facts.portAnswers) return { kind: "port-taken" };
   return { kind: "start", stopPid: undefined };

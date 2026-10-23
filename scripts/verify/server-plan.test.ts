@@ -6,10 +6,11 @@ const state: ServerState = {
   port: 3200,
   url: "http://127.0.0.1:3200",
   fingerprint: "abc",
+  buildId: "build-1",
   startedAt: "2026-10-22T20:00:00.000Z",
 };
 
-const facts = { state, port: 3200, fingerprint: "abc", pidAlive: true, portAnswers: true };
+const facts = { state, port: 3200, fingerprint: "abc", buildId: "build-1", pidAlive: true, portAnswers: true };
 
 describe("planServer", () => {
   it("reuses our server when it answers and was built from the same files", () => {
@@ -18,6 +19,11 @@ describe("planServer", () => {
 
   it("stops and rebuilds our server when the files changed", () => {
     expect(planServer({ ...facts, fingerprint: "changed" })).toEqual({ kind: "start", stopPid: 4242 });
+  });
+
+  it("stops and rebuilds when another build replaced .next under our server", () => {
+    expect(planServer({ ...facts, buildId: "build-2" })).toEqual({ kind: "start", stopPid: 4242 });
+    expect(planServer({ ...facts, buildId: undefined })).toEqual({ kind: "start", stopPid: 4242 });
   });
 
   it("starts fresh without killing anything when our process is gone", () => {
@@ -47,7 +53,15 @@ describe("parseServerState", () => {
     expect(parseServerState(JSON.stringify(state))).toEqual(state);
   });
 
-  it.each([undefined, "", "not json", "{}", JSON.stringify({ ...state, pid: -1 }), JSON.stringify({ ...state, url: "nope" })])(
+  it.each([
+    undefined,
+    "",
+    "not json",
+    "{}",
+    JSON.stringify({ ...state, pid: -1 }),
+    JSON.stringify({ ...state, url: "nope" }),
+    JSON.stringify({ ...state, buildId: undefined }),
+  ])(
     "treats %j as no state",
     (text) => {
       expect(parseServerState(text)).toBeUndefined();
