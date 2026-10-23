@@ -8,10 +8,8 @@ import { sourceFingerprint } from "./fingerprint";
 import { parseServerState, planServer, type ServerState } from "./server-plan";
 import { VerifyError } from "./verify-error";
 
-const nextBin = createRequire(import.meta.url).resolve("next/dist/bin/next");
 const supabaseServicesVerifyDoesNotUse = "realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor";
 const startupTimeoutMs = 90_000;
-
 
 export function verifyDirectory(root: string): string {
   return join(root, "artifacts", "verify");
@@ -32,6 +30,14 @@ function readState(root: string): ServerState | undefined {
 function currentBuildId(root: string): string | undefined {
   const path = join(root, ".next", "BUILD_ID");
   return existsSync(path) ? readFileSync(path, "utf8").trim() || undefined : undefined;
+}
+
+function nextBin(root: string): string {
+  try {
+    return createRequire(join(root, "package.json")).resolve("next/dist/bin/next");
+  } catch {
+    throw new VerifyError(`can't find next in ${root}; run pnpm install there`);
+  }
 }
 
 function logTail(path: string): string {
@@ -119,14 +125,15 @@ async function stopPid(pid: number, url: string): Promise<void> {
 
 async function startServer(root: string, port: number, fingerprint: string): Promise<string> {
   const url = `http://127.0.0.1:${String(port)}`;
+  const next = nextBin(root);
   const buildStarted = Date.now();
-  const build = runLogged(root, "build.log", [nextBin, "build"]);
+  const build = runLogged(root, "build.log", [next, "build"]);
   if (!build.ok) throw new VerifyError(`next build failed (full log: ${build.log}):\n${logTail(build.log)}`);
   say(`built the app in ${String(Math.round((Date.now() - buildStarted) / 1000))}s`);
 
   const serverLog = join(verifyDirectory(root), "server.log");
   const fd = openSync(serverLog, "w");
-  const child = spawn(process.execPath, [nextBin, "start", "-p", String(port), "-H", "127.0.0.1"], {
+  const child = spawn(process.execPath, [next, "start", "-p", String(port), "-H", "127.0.0.1"], {
     cwd: root,
     detached: true,
     stdio: ["ignore", fd, fd],

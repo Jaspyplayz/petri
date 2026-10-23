@@ -1,6 +1,6 @@
 # PROGRESS
 
-**Current phase:** 3 in progress (`verify:up`, `verify:flow`, `verify:script` and `verify:all` done; the exit checks pass). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 3 in progress (`verify:up`, `verify:flow`, `verify:script`, `verify:all` and `verify:compare` done; the exit checks pass; the skill is next). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
 **Next action:** Phase 3 (verification skill), in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9). It writes protected files (`scripts/verify/`, `.claude/skills/verify-app/` and `package.json` scripts), which the hooks block in a normal session. Screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
 
@@ -32,7 +32,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 3 — Verification skill
 
-- [x] 3.1 `verify:up` (plus `verify:down`) · [x] 3.2 `verify:flow` · [x] 3.3 `verify:script` · [x] 3.4 `verify:all` (also in CI's e2e job) · [ ] 3.5 `verify:compare` · [ ] 3.6 `.claude/skills/verify-app/SKILL.md`
+- [x] 3.1 `verify:up` (plus `verify:down`) · [x] 3.2 `verify:flow` · [x] 3.3 `verify:script` · [x] 3.4 `verify:all` (also in CI's e2e job) · [x] 3.5 `verify:compare` · [ ] 3.6 `.claude/skills/verify-app/SKILL.md`
 - [ ] Exit: `verify:all` green; injected `console.error` fails; screenshots described
 
 ## Phase 4 — Feature map
@@ -67,6 +67,45 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 3: `verify:compare` (2026-10-22)
+
+`pnpm verify:compare origin/main` from `feat/verify-compare`. `origin/main` (e80d391) doesn't have #22's colour fix yet:
+
+```
+verify: installing origin/main (e80d391)'s dependencies in C:\Users\FSOS\AppData\Local\Temp\petri-verify-base\e80d3919c2c6
+verify: before is origin/main (e80d391), built in C:\Users\FSOS\AppData\Local\Temp\petri-verify-base\e80d3919c2c6
+verify: built the app in 9s
+verify: after is this working tree
+verify: the files or .next changed since verify built the app; rebuilding
+verify: built the app in 6s
+PASS blob.poke (before: fail) artifacts\verify\2026-10-23T01-54-04-479Z\compare\blob.poke
+PASS blob.feed (before: fail) …
+PASS blob.rename (before: fail) …
+PASS feedback.browse (before: fail) …
+PASS feedback.post (before: fail) …
+PASS feedback.vote (before: fail) …
+PASS timeline.browse (before: fail) …
+compare: artifacts\verify\2026-10-23T01-54-04-479Z\compare.md
+```
+
+- Every base run fails on what #22 fixed, for example `a11y serious: color-contrast … on a[data-testid="nav-home"] … contrast of 3.59 (foreground color: #f6f3e7, background color: #2f8f6b …)`. Exit 0, because every flow passes after the change.
+- Afterwards the base port (3201) doesn't answer and the working tree's app on 3200 still does.
+
+**Side-by-side images, read with the Read tool** (2608×815 each, both screenshots at full size with captions):
+- `blob.poke` step 02: both show Blobby at Size 100%, Pokes 0, Snacks 0. On the left (main) the active "Blob" nav pill and the "Feed" button are the lighter green. On the right they're the darker `culture-deep` green. Nothing else differs.
+- `feedback.post` step 07: both show "Thanks! Your feedback is on the board." with the new "tiny hat" post at the top of Newest, and the right's "Feedback" pill is darker. The second card has 1 vote on the left and 0 on the right, because the after run sees the post the before run wrote to the shared local Supabase (decisions.md).
+
+**Other paths:**
+
+| Run | Result |
+|---|---|
+| `verify:compare origin/main blob.poke` again | skips the install, reuses the worktree, rebuilds the base in 5 s, `PASS blob.poke (before: fail)` |
+| `verify:compare` / `nope` / `origin/main --base-url …` / `origin/main blob.nope` | exit 2: `expected a base ref` / `no commit for "nope"` / `doesn't take --base-url` / lists the flows |
+
+Unit tests:
+- `worktree.test.ts` uses throwaway git repos. It covers resolving branches, `HEAD~1` and short shas, and rejecting unknown refs and option-like ones such as `--output=…`. It checks out once and reuses, replaces an older base, leaves worktrees outside its folder alone, recreates a deleted one, reports git failures, and copies `.env.local`.
+- `compare.test.ts` covers step pairing when the base stopped early, HTML escaping, `compare.md`, and real Chromium composing two screenshots into a 2608 px wide PNG. That's 92 verify tests in total.
 
 ### Phase 3: the runner, `verify:flow` / `verify:script` / `verify:all` (2026-10-22)
 
