@@ -6,7 +6,7 @@ export const timelineManifest = defineFeature({
   summary: "The public changelog: every shipped change and revert, newest first, with the feedback behind it, PR link, commit, trust level and screenshots.",
   routes: ["/timeline"],
   uiLocation: "The /timeline page: a heading, a 'N changes shipped, 0 written by humans' counter, then a vertical list of change cards. Reverts have a red 'Reverted' badge.",
-  howToReach: ["Open /", "Click 'Timeline' in the top navigation (right side)"],
+  howToReach: ["Open /", "Click 'Timeline' in the top navigation (the last of the three links on the right)"],
   keyboardShortcuts: [],
   selectors: {
     panel: "timeline-panel",

@@ -6,7 +6,7 @@ export const feedbackManifest = defineFeature({
   summary: "Anonymous visitors post ideas or bug reports (max 280 characters), upvote others and follow each item's status, sorted by top votes or newest.",
   routes: ["/feedback"],
   uiLocation: "The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge and issue/PR links).",
-  howToReach: ["Open /", "Click 'Feedback' in the top navigation (middle)"],
+  howToReach: ["Open /", "Click 'Feedback' in the top navigation (the middle one of the three links on the right)"],
   keyboardShortcuts: [],
   selectors: {
     panel: "feedback-panel",
