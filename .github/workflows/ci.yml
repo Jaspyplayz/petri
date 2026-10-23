@@ -81,8 +81,10 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      # No --with-deps: ubuntu-latest already has Chromium's libraries, and the apt step (mostly fonts) took the job
+      # past its timeout whenever the Ubuntu mirror was slow. These tests check page content and image sizes, never pixels.
       - name: Install Chromium (the verify runner's tests drive a real browser)
-        run: pnpm exec playwright install --with-deps --only-shell chromium
+        run: pnpm exec playwright install --only-shell chromium
       - run: pnpm test:coverage
 
   build:
