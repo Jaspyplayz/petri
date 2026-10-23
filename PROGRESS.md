@@ -1,6 +1,6 @@
 # PROGRESS
 
-**Current phase:** 4 in progress (`pnpm featuremap` and `FEATURE_MAP.md` done; the CI check, the CLAUDE.md rule and the skill are next). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 4 in progress (`pnpm featuremap`, `FEATURE_MAP.md` and the CI `featuremap` check done; the CLAUDE.md rule, the skill and the exit check are next). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
 **Next action:** Phase 4 (feature map), from an up-to-date `main`, in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes protected files (`scripts/`, `.claude/skills/maintain-feature-map/`, CI). Use the `verify-app` skill for any UI change.
 
@@ -37,7 +37,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 4 — Feature map
 
-- [x] 4.1 Manifest type + manifests (since Phase 1) · [x] 4.2 `pnpm featuremap` → FEATURE_MAP.md · [ ] 4.3 CI `featuremap` job · [ ] 4.4 CLAUDE.md soft rule · [ ] 4.5 `maintain-feature-map` skill
+- [x] 4.1 Manifest type + manifests (since Phase 1) · [x] 4.2 `pnpm featuremap` → FEATURE_MAP.md · [x] 4.3 CI `featuremap` job · [ ] 4.4 CLAUDE.md soft rule · [ ] 4.5 `maintain-feature-map` skill
 - [ ] Exit: renaming a testid without updating the manifest fails CI
 
 ## Phase 5 — CLAUDE.md + trust ladder
@@ -67,6 +67,27 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 4: the `featuremap` CI check (2026-10-22)
+
+On the real repo, `pnpm featuremap:check` printed `featuremap: ok (FEATURE_MAP.md is current; 42 selectors match the data-testids in analytics, blob, feedback, timeline)`.
+
+**Locally:** renaming `data-testid="blob-poke-button"` to `"blob-poke-btn"` in `blob-creature.tsx`, without touching the manifest, gave exit 1 and both sides of the mismatch:
+
+```
+✖ src/features/blob/components/blob-creature.tsx:139: data-testid "blob-poke-btn" isn't in the blob manifest's selectors
+✖ blob manifest: selector pokeButton ("blob-poke-button") isn't a data-testid anywhere in src/features/blob/
+```
+
+Hand-editing `FEATURE_MAP.md` gave `✖ FEATURE_MAP.md is out of date (first difference at line 1); run pnpm featuremap and commit it instead of editing it by hand`. Both passed again after the revert.
+
+**Tests:** `testids.test.ts` and `check.test.ts` (18 tests) cover:
+- literal, conditional, object-property and template testids, with line numbers
+- what a template pattern does and doesn't match
+- computed testids being reported
+- which files count as rendered code
+- each problem message
+- CRLF-insensitive freshness
 
 ### Phase 4: `pnpm featuremap` (2026-10-22)
 

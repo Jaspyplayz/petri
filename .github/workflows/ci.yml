@@ -58,6 +58,17 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm features
 
+  featuremap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: FEATURE_MAP.md is current and every manifest selector matches a data-testid in its feature
+        run: pnpm featuremap:check
+
   unit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -169,7 +180,7 @@ jobs:
 
   ci-ok:
     if: always()
-    needs: [typecheck, lint, boundaries, features, unit, build, e2e, secrets]
+    needs: [typecheck, lint, boundaries, features, featuremap, unit, build, e2e, secrets]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

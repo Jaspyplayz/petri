@@ -15,6 +15,7 @@
     "boundaries": "node scripts/check-boundaries.ts",
     "features": "tsx scripts/check-features.ts",
     "featuremap": "tsx scripts/featuremap.ts",
+    "featuremap:check": "tsx scripts/check-featuremap.ts",
     "protected-paths": "node scripts/check-protected-paths.ts",
     "pr-size": "node scripts/check-pr-size.ts",
     "typecheck": "next typegen && tsc --noEmit",
