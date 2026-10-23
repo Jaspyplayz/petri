@@ -119,3 +119,11 @@ One line per decision, newest at the bottom. Format: `YYYY-MM-DD · phase · dec
   Post-merge has no gate: it only records what a merge already shipped. The weekly budget check comes with Phase 8.
 - 2026-10-23 · P6 · The loop's workflows ship with only event and `workflow_dispatch` triggers. The cron schedules go in after the Phase 6 dry run passes, as the spec says ("before turning on any cron"). The dry run then turns `EVOLUTION_ENABLED` on with nothing scheduled.
 - 2026-10-23 · P6 · Triage input takes feedback that is `new`, not hidden and has at least `minVotesToConsider` votes. It ranks by votes × recency (a vote loses half its weight every 7 days) and keeps the top 20. Per-feature event counts from the last 7 days go with it as context rather than into the score, because feedback isn't mapped to a feature until the agent reads it. Visitor text is neutralized (delimiters and control or format characters removed) and sits as JSON inside one `<<<FEEDBACK_DATA … FEEDBACK_DATA>>>` block, after a line saying it is data, not instructions.
+- 2026-10-23 · P6 · The triage agent returns JSON only: `issues` (title, user story, acceptance criteria as verification steps, `featureId`, `riskLevel`, `feedbackIds`) and `rejected` (`feedbackId`, a reason out of unsafe, off_topic, needs_secrets_or_payments, too_big or unclear, and a note). A strict Zod schema checks it, and the agent's `--json-schema` is generated from the same schema. `pnpm evolution:create-issues`, not the agent, decides what to file:
+  - it drops unknown features and feedback ids that weren't in the input
+  - it uses each id once
+  - risk is never below the feature manifest's `riskLevel`
+  - it files at most `maxIssuesPerTriage` issues
+  - it defangs `@` mentions and `-->`
+  Feedback the agent leaves out stays `new` for the next triage.
+- 2026-10-23 · P6 · Each evolution issue's body ends with an `<!-- evolution-issue:v1 {json} -->` data comment. The build and verify agents get their fields from that comment, re-validated with the same schema, rather than reading free text, so the builder never sees raw feedback or edits made in comments.
