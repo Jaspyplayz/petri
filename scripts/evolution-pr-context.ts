@@ -69,6 +69,12 @@ function main(): void {
   }
 
   const dir = resolve(prDir);
+  // Verify the commit that was checked out. If the PR moved on since, a newer run checks the new head.
+  const head = git(dir, ["rev-parse", "HEAD"]).trim();
+  if (head !== pr.headRefOid) {
+    output({ evolution: "true", safe: "false", reason: `the PR's head is now ${pr.headRefOid}, not the checked-out ${head}`, issue: "" });
+    return;
+  }
   const base = git(dir, ["merge-base", pr.baseRefOid, pr.headRefOid]).trim();
   const raw = parseRawZ(git(dir, ["diff", "--raw", "-z", "--no-renames", base, pr.headRefOid]));
   const entries = parseNumstatZ(git(dir, ["diff", "--numstat", "-z", "--no-renames", base, pr.headRefOid]));

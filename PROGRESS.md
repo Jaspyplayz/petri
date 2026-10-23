@@ -63,6 +63,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 - [ ] 8.1 pause/resume + `app_flags` · [ ] 8.2 rate limits + caps · [ ] 8.3 secrets/env hygiene · [ ] 8.4 `docs/costs.md` + budget gate · [ ] 8.5 guardian (Sentry spike → rollback → revert → pause) · [ ] 8.6 moderation + report button
 - [ ] Exit: kill switch stops a run, 429, gitleaks catches fake key, simulated spike → revert + pause
+- [ ] Follow-up from Phase 6: run agent-written and PR code (the builder's Bash commands, the verify `run` job) as a separate OS user, so it can't read `CLAUDE_CODE_OAUTH_TOKEN` or a runtime token from another process of the job (docs/decisions.md)
 
 ## Phase 9 — Long-run mode and handoff
 
