@@ -1,13 +1,8 @@
 # PROGRESS
 
-**Current phase:** 2 in progress. PR #8 (`chore/phase-2-guardrails`) is green in CI and the Claude Code hooks are live, but the review findings below are still open.
+**Current phase:** 3, not started. Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action (needs a human):** merge PR #8 (squash), then start Claude Code with `EVOLUTION_HUMAN=1` (see MANUAL_STEPS step 8). Then:
-- Close the findings (2.11) in a follow-up PR.
-- Rerun the protected-path throwaway against `main`, so `guardrails.yml` runs for real.
-- Restart Claude Code without `EVOLUTION_HUMAN`.
-
-Phase 3 starts only after that. Phase 3 note: screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
+**Next action:** Phase 3 (verification skill), in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9). It writes protected files (`scripts/verify/`, `.claude/skills/verify-app/` and `package.json` scripts), which the hooks block in a normal session. Screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
@@ -33,7 +28,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 - [x] 2.1 TS strict flags + bans · [x] 2.2 ESLint flat config + custom rules (useEffect, no comments, no console, env, default exports) · [x] 2.3 Import boundaries + server-only graph check · [x] 2.4 `check-features.ts` · [x] 2.5 `check-protected-paths.ts` · [x] 2.6 PR size check · [x] 2.7 gitleaks + pre-commit · [x] 2.8 Vitest coverage floor + Playwright e2e w/ console-error fixture · [x] 2.9 `ci.yml` + `ci-ok` (plus `guardrails.yml` + `guardrails-ok`) · [x] 2.10 `.claude/settings.json` hooks (live since f82cc71)
 - [x] Exit: a throwaway commit for each rule turns its CI job red. All seven are red in CI: #9–#15 against the phase branch, and the protected-path one rerun against `main` as #16 once `guardrails.yml` was there (evidence below).
-- [ ] 2.11 Close the open review findings (list below). They are all in protected files, so this needs a human-approved session (`EVOLUTION_HUMAN=1`).
+- [x] 2.11 Close the review findings (list below) from a human-approved session (`EVOLUTION_HUMAN=1`): #17 (hooks), #18 (CI gate) and #19 (lint, boundaries, test quality).
 
 ## Phase 3 — Verification skill
 
@@ -73,19 +68,19 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Evidence
 
-### Phase 2: open review findings (2026-10-22)
+### Phase 2: review findings, all closed (2026-10-22)
 
-An independent fresh-context review of f82cc71 and the automated security reviews after f82cc71 found the gaps below. Every fix is in a protected path, so the live hooks block agent edits, which is the intended behaviour. They wait for a session started with `EVOLUTION_HUMAN=1`. "V" means the reviewer reproduced it.
+An independent fresh-context review of f82cc71 and the automated security reviews after f82cc71 found the gaps below. Every fix is in a protected path, so the live hooks block agent edits, which is the intended behaviour. They were fixed in a session started with `EVOLUTION_HUMAN=1` and merged as #17, #18 and #19 (squash, in that order). Each PR was green in CI and had no automated-review findings when it merged. CI on `main` was green after each merge: d30c82e ([run](https://github.com/Jaspyplayz/petri/actions/runs/39881614714)), 87f15bf ([run](https://github.com/Jaspyplayz/petri/actions/runs/39882031153)) and 7c30736 ([run](https://github.com/Jaspyplayz/petri/actions/runs/39882359728)). "V" means the reviewer reproduced it.
 
-CI (the hard gate). **1, 4–8, the payload half of 9, the `database.types.ts` item in 2 and the nits in 10 are closed in `fix/phase-2-ci-gate`. The rest of 2, 3 and the rest of 10 (lint side doors, boundaries, test quality) are for the next PR.** Each closed item has a test in `scripts/**/*.test.ts`. 8 adds the `edited` trigger, but not the `branches: [main]` filter (see decisions.md).
+CI (the hard gate). **1, 4–8, the payload half of 9, the `database.types.ts` item in 2 and the nits in 10 are closed in #18. The rest of 2, 3 and the rest of 10 (lint side doors, boundaries, test quality) are closed in #19.** Each closed item has a test in `scripts/**/*.test.ts`. 8 adds the `edited` trigger, but not the `branches: [main]` filter (see decisions.md).
 
 1. **(V) PR code runs before the checks.** `next typegen` (in `lint`/`typecheck`) loads the unprotected `next.config.ts`, which can rewrite `eslint.config.mjs` on the runner while the git diff stays clean. `check-features.ts` imports agent-written manifests, `registry.ts` and `scripts/new-feature/templates.ts`, and a `process.exit(0)` in any of them passes. Fix: protect `next.config.*` and `scripts/**`, and read manifests statically.
-2. **(V) Lint and fixture side doors.** **Closed in `fix/phase-2-lint-and-tests`, except `database.types.ts` (closed in `fix/phase-2-ci-gate`).**
+2. **(V) Lint and fixture side doors.** **Closed in #19, except `database.types.ts` (closed in #18).**
    - `const { useEffect } = React` and `globalThis.console` / `globalThis.process`.
    - `it.fails` and `context.skip()`.
    - A default import of `@playwright/test`, `fixtureTest.extend({ problems })` and `page.removeAllListeners`.
    - The lint-ignored `database.types.ts`.
-3. **(V) A neutral folder bypasses the import boundaries.** **Closed in `fix/phase-2-lint-and-tests`.** For example, `src/bridge/` can re-export another feature. Fix: rules that list what's allowed, and only `app`, `features` and `shared` at the top of `src`.
+3. **(V) A neutral folder bypasses the import boundaries.** **Closed in #19.** For example, `src/bridge/` can re-export another feature. Fix: rules that list what's allowed, and only `app`, `features` and `shared` at the top of `src`.
 4. **(V) Repo files can hide secrets and diff size.** `.gitattributes` `-diff`, `.gitleaksignore` and `gitleaks:allow` hide secrets from gitleaks, and binary numstat hides lines from `pr-size`. Fix: protect both files, run gitleaks with `--ignore-gitleaks-allow`, use `numstat --text`, and fail on binaries that can't be measured.
 5. **Agent detection misses `claude/*` branches** and agent pushes to human PRs.
 6. **(V) Config and trust level come from the merge base, not the base tip.**
@@ -96,7 +91,7 @@ CI (the hard gate). **1, 4–8, the payload half of 9, the `database.types.ts` i
    - Glob matching is also case-sensitive.
 8. **Retargeting a PR doesn't re-run `ci.yml`.** Fix: add the `edited` type and `branches: [main]`, and make Phase 6 rulesets require the trusted workflows.
 9. **Places that fail open.** A missing event payload counts as "not an agent PR", and a typegen crash in check-file is non-blocking.
-10. **Weak proofs.** **The lint-config, `DECLARES_A_TEST`, coverage and retries items are closed in `fix/phase-2-lint-and-tests`.** Evidence there: every new lint case fails against `main`'s config (25 of 25), and `rules.test.ts` fails against `main`'s dependency-cruiser config.
+10. **Weak proofs.** **The lint-config, `DECLARES_A_TEST`, coverage and retries items are closed in #19.** Evidence there: every new lint case fails against `main`'s config (25 of 25), and `rules.test.ts` fails against `main`'s dependency-cruiser config.
     - The lint-config tests assert generic rule ids.
     - `DECLARES_A_TEST` is a regex.
     - Coverage measures only `lib/**/*.ts`.
@@ -104,7 +99,7 @@ CI (the hard gate). **1, 4–8, the payload half of 9, the `database.types.ts` i
     - `hooks.test.ts` uses the real `blob-state.ts` as its clean sample, so `unit` fails whenever that file has a lint error (seen on throwaway #10).
     - Nits: `persist-credentials` and the unpinned checkout in `claude.yml`.
 
-Claude Code hooks (the speed bump). **11, 12, the check-file half of 9 and the `hooks.test.ts` item in 10 are closed in `fix/phase-2-review-findings` (cb73d98).** Each has a regression case in `bypass.test.ts` or `hooks.test.ts`. Twelve automated security-review rounds on the branch then closed more command-guard gaps (cb73d98 … round 12), each with a test, for 304 hook tests in total. decisions.md lists the classes the guard knowingly leaves open. It was verified live: the new matcher blocks a force push through Bash and through an MCP `ctx_execute` call.
+Claude Code hooks (the speed bump). **11, 12, the check-file half of 9 and the `hooks.test.ts` item in 10 are closed in #17.** Each has a regression case in `bypass.test.ts` or `hooks.test.ts`. Twelve automated security-review rounds on the branch then closed more command-guard gaps (cb73d98 … round 12), each with a test, for 304 hook tests in total. decisions.md lists the classes the guard knowingly leaves open. It was verified live: the new matcher blocks a force push through Bash and through an MCP `ctx_execute` call.
 
 11. **(V) Regression from d387f54.** The `$(...)`/backtick scanner isn't quote- or escape-aware, so `echo $(echo ")") ; git push --force` passes. The drafted fix is quote-aware scanners that fail closed on unterminated input, plus an old-vs-new parse differential test.
 12. **(V) Gaps the guard misses:**
