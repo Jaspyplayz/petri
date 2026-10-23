@@ -222,16 +222,23 @@ jobs:
       - name: Check the patch again, from this clean checkout
         run: pnpm -s evolution:check-patch "$RUNNER_TEMP/evolution.patch"
 
+      # The patch goes on main as it is now, not on the build's base. If main's workflows changed during the build, a
+      # branch from the old base would differ from main in .github/workflows/, and GitHub refuses that push from a token
+      # without the workflow scope, which the bot token must never get (run 40031512734). CI and evolution-verify judge
+      # the PR's real head, so the verified patch only has to apply cleanly.
       - name: Push the branch (in a separate worktree, so nothing here runs the PR's code)
         env:
           BOT_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
-          BASE: ${{ needs.pick.outputs.base }}
           BRANCH: ${{ needs.pick.outputs.branch }}
           NUMBER: ${{ needs.pick.outputs.number }}
         run: |
-          git worktree add --detach "$RUNNER_TEMP/branch" "$BASE"
+          git fetch --no-tags --depth=1 origin "+refs/heads/main:refs/remotes/origin/main"
+          git worktree add --detach "$RUNNER_TEMP/branch" origin/main
           cd "$RUNNER_TEMP/branch"
-          git apply --index "$RUNNER_TEMP/evolution.patch"
+          if ! git apply --index "$RUNNER_TEMP/evolution.patch"; then
+            echo "::error::The verified patch no longer applies to main. Build the issue again."
+            exit 1
+          fi
           git -c user.name="petri-evolution" -c user.email="petri-evolution@users.noreply.github.com" commit -q -m "evolution: build #$NUMBER"
           git push "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
 
