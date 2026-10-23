@@ -39,8 +39,13 @@ export function parseScript(name: string, json: unknown): VerifyRun {
   return { name, description: parsed.data.description ?? "Ad-hoc verify script", steps: parsed.data.steps };
 }
 
-export function flowNames(manifests: readonly FeatureManifest[]): string[] {
-  return manifests.flatMap((manifest) => Object.keys(manifest.flows).map((flow) => `${manifest.id}.${flow}`));
+// readOnly leaves out flows marked writes: true, for runs against production.
+export function flowNames(manifests: readonly FeatureManifest[], options: { readonly readOnly?: boolean } = {}): string[] {
+  return manifests.flatMap((manifest) =>
+    Object.entries(manifest.flows)
+      .filter(([, flow]) => !(options.readOnly === true && flow.writes === true))
+      .map(([flow]) => `${manifest.id}.${flow}`),
+  );
 }
 
 export function resolveFlow(manifests: readonly FeatureManifest[], qualifiedName: string): VerifyRun {
