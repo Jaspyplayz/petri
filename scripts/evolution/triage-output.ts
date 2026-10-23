@@ -31,8 +31,11 @@ export type TriageOutput = z.infer<typeof triageOutputSchema>;
 export type Rejection = TriageOutput["rejected"][number];
 
 // The schema the triage agent's --json-schema gets, so its structured output is checked before we parse it again.
+// It drops the "$schema" key so the value has no "$" when it's passed through claude_args.
 export function triageJsonSchema(): string {
-  return JSON.stringify(z.toJSONSchema(triageOutputSchema));
+  const schema: Record<string, unknown> = { ...z.toJSONSchema(triageOutputSchema) };
+  delete schema.$schema;
+  return JSON.stringify(schema);
 }
 
 export type IssuePlan = { readonly issues: readonly TriageIssue[]; readonly rejected: readonly Rejection[]; readonly problems: readonly string[] };

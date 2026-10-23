@@ -21,7 +21,13 @@ Status key: ⬜ todo · ✅ done
 ## To do
 
 9. ⬜ **Keep running the setup phases (3–9) in an `EVOLUTION_HUMAN=1` session.** Most of them write protected files (`scripts/`, `.claude/`, `package.json`, workflows, `CLAUDE.md`), which the hooks block in a normal session. Start Claude Code with `$env:EVOLUTION_HUMAN = "1"; claude --continue` in PowerShell, or `EVOLUTION_HUMAN=1 claude --continue` in bash. The evolution agents never run with it, and CI still fails agent PRs that touch protected paths. Start Claude normally again after the Phase 9 handoff.
-10. ⬜ **Go live (Phase 9, after everything above).** Open the Vercel production URL and check the three pages load, then run `pnpm evolution:resume` (or set the repo variable `EVOLUTION_ENABLED=true` in the GitHub app).
+10. ⬜ **Create `EVOLUTION_BOT_TOKEN` (Phase 6; the loop needs it before the dry run).** Issues, branches and PRs made with the default `GITHUB_TOKEN` don't start other workflows, and claude-code-action revokes its own app token when it finishes. So the loop's scripts use a token of yours.
+    1. Go to GitHub → Settings → Developer settings → Fine-grained personal access tokens → Generate new token.
+    2. Name it `petri-evolution-bot`. Resource owner: Jaspyplayz. Repository access: **only `Jaspyplayz/petri`**. Expiration: 90 days or more.
+    3. Repository permissions: **Contents: Read and write**, **Issues: Read and write**, **Pull requests: Read and write** (Metadata: Read is added for you). Leave everything else, including Workflows, at No access.
+    4. Copy the token. In the repo, go to Settings → Secrets and variables → Actions → New repository secret. Name it `EVOLUTION_BOT_TOKEN` and paste the token.
+    5. Tell Claude it's done. Don't paste the token in the chat.
+11. ⬜ **Go live (Phase 9, after everything above).** Open the Vercel production URL and check the three pages load, then run `pnpm evolution:resume` (or set the repo variable `EVOLUTION_ENABLED=true` in the GitHub app).
 
 ## Good to know (Phase 2 guardrails)
 

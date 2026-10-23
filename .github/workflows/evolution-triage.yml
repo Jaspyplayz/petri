@@ -1,0 +1,84 @@
+name: evolution-triage
+
+# A read-only agent turns the top untriaged feedback into at most maxIssuesPerTriage small issues.
+# The cron schedule is added after the Phase 6 dry run (docs/decisions.md).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evolution-triage
+  cancel-in-progress: false
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      - name: Gate (EVOLUTION_ENABLED, .evolution/PAUSED, caps)
+        id: gate
+        env:
+          EVOLUTION_ENABLED: ${{ vars.EVOLUTION_ENABLED }}
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm -s evolution:gate triage
+
+      - name: Read the top untriaged feedback (read-only)
+        if: steps.gate.outputs.open == 'true'
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm -s evolution:triage-input
+
+      - name: Agent settings from .evolution/
+        if: steps.gate.outputs.open == 'true'
+        id: agent
+        run: pnpm -s evolution:agent-config triage
+
+      - name: Triage agent (read-only tools, JSON out)
+        if: steps.gate.outputs.open == 'true'
+        id: triage
+        uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.agent.outputs.prompt }}
+          claude_args: >-
+            --model ${{ steps.agent.outputs.model }}
+            --max-turns ${{ steps.agent.outputs.max_turns }}
+            --allowedTools "Read,Glob,Grep"
+            --disallowedTools "Bash,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch,Task"
+            --json-schema '${{ steps.agent.outputs.json_schema }}'
+
+      - name: Save the agent's JSON
+        if: steps.gate.outputs.open == 'true'
+        env:
+          TRIAGE_OUTPUT: ${{ steps.triage.outputs.structured_output }}
+        run: printf '%s' "$TRIAGE_OUTPUT" > artifacts/evolution/triage-output.json
+
+      - name: Create the issues and mark the feedback (script, not the agent)
+        if: steps.gate.outputs.open == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm -s evolution:create-issues
+
+      - name: Keep the triage input and output
+        if: always() && steps.gate.outputs.open == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evolution-triage
+          path: artifacts/evolution/
+          retention-days: 30
