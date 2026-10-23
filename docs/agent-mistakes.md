@@ -90,7 +90,7 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 
 ## 2026-10-22 · A git-spawning test relied on Vitest's 5 s default and flaked in CI
 
-- **What happened:** The `worktree.test.ts` test "resolves branches, relative refs and shas" timed out at 5.6 s in #25's `unit` job. It had passed in #24's CI.
+- **What happened:** The `worktree.test.ts` test "resolves branches, relative refs and shas" timed out at 5.6 s in #25's `unit` job, then passed on a rerun. It had passed in #24's CI.
 - **Evidence:** Each test in that file builds a real git repo, so it spawns several git processes. With coverage on, alongside the Chromium tests, the neighbouring cases took 0.4–1.4 s each, against a few milliseconds for the pure ones. Locally the whole file runs in 1.4 s.
 - **Root cause:** Tests that do real process I/O were given the default budget meant for pure tests. `runner.test.ts` (real Chromium) already had a 30 s budget; the new file didn't follow it.
 - **Category:** flaky test (timing under CI load)
