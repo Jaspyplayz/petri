@@ -21,7 +21,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      id-token: write # claude-code-action exchanges it for its app token
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,6 +52,7 @@ jobs:
         uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
           prompt: ${{ steps.agent.outputs.prompt }}
           claude_args: >-
             --model ${{ steps.agent.outputs.model }}
