@@ -168,7 +168,7 @@ The board lists feedback and switches between Top and Newest. Run it with `pnpm 
 
 ### `feedback.post`
 
-Posting an idea shows a confirmation and puts it on the board. Run it with `pnpm verify:flow feedback.post`.
+Posting an idea shows a confirmation and puts it on the board. Run it with `pnpm verify:flow feedback.post`. It writes data, so `verify:all --read-only` (production) skips it.
 
 1. goto `/feedback?sort=new`
 2. fill `bodyInput` with "Verification flow: give the blob a tiny hat"
@@ -180,7 +180,7 @@ Posting an idea shows a confirmation and puts it on the board. Run it with `pnpm
 
 ### `feedback.vote`
 
-Upvoting an item marks the button as voted. Run it with `pnpm verify:flow feedback.vote`.
+Upvoting an item marks the button as voted. Run it with `pnpm verify:flow feedback.vote`. It writes data, so `verify:all --read-only` (production) skips it.
 
 1. goto `/feedback?sort=new`
 2. click `voteButton`

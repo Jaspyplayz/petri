@@ -126,7 +126,7 @@ function section(manifest: FeatureManifest): string[] {
       : flows.flatMap(([name, flow]) => [
           `### ${code(`${manifest.id}.${name}`)}`,
           "",
-          `${flow.description} Run it with ${code(`pnpm verify:flow ${manifest.id}.${name}`)}.`,
+          `${flow.description} Run it with ${code(`pnpm verify:flow ${manifest.id}.${name}`)}.${flow.writes ? " It writes data, so `verify:all --read-only` (production) skips it." : ""}`,
           "",
           ...flow.steps.map((step, index) => `${String(index + 1)}. ${describeStep(step)}`),
           "",
