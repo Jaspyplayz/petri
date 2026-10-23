@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { branchName, builderJsonSchema, builderReportSchema, prDataFromBody, prTitle, renderPrBody, slugify, type BuilderReport, type BuiltIssue } from "./build";
 import { finalShots } from "./screenshots";
@@ -88,8 +88,8 @@ describe("finalShots", () => {
       "pr/evo-42",
     );
     expect(shots).toEqual({
-      before: [{ file: join("/run", "base", "blob.poke", "step-03.png"), key: "pr/evo-42/before/blob.poke/step-03.png" }],
-      after: [{ file: join("/run", "pr", "blob.poke", "step-04.png"), key: "pr/evo-42/after/blob.poke/step-04.png" }],
+      before: [{ file: resolve("/run", "base", "blob.poke", "step-03.png"), key: "pr/evo-42/before/blob.poke/step-03.png" }],
+      after: [{ file: resolve("/run", "pr", "blob.poke", "step-04.png"), key: "pr/evo-42/after/blob.poke/step-04.png" }],
     });
   });
 });

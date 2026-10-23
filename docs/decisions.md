@@ -133,3 +133,8 @@ One line per decision, newest at the bottom. Format: `YYYY-MM-DD · phase · dec
   - `pnpm evolution:pick-issue` builds an issue only if it is open, labelled `evolution` and `evolution:ready`, and has a valid triage data comment. A human-written issue can't start the builder. The builder gets `artifacts/evolution/issue.json` (structured fields only) on branch `evo/<n>-<slug>`.
   - The builder's JSON report (reproduction, what changed, flows, risk, rollback, or `blocked` with a reason) fills the PR template.
   - The script, not the agent, runs `pnpm check`, `verify:all` and `verify:compare`. It uploads the final before and after screenshot of each compared flow to the public `verification-screenshots` bucket and records those URLs in an `<!-- evolution-pr:v1 -->` data comment for post-merge.
+- 2026-10-23 · P6 · Trust boundary for the build: anything in the workspace after the builder agent ran, or after the PR's code ran, is untrusted. That includes `artifacts/`, `node_modules` and verify output. So the privileged scripts:
+  - `feedback-status` and `open-pr` take the issue number and read the issue's fields from GitHub again (`fetchIssue`, the same rules as `pick-issue`)
+  - `open-pr` takes the exact report and run folders, which must be inside `artifacts/`, rather than "the newest run"
+  - `open-pr` validates `compare.json` with a schema (flow and `step-NN.png` names), keeps every path inside its run folder, uploads only real PNGs under 5 MB, and defangs and truncates the summaries
+  The build workflow runs these in a job that never executes the PR's code (recorded with the workflow).
