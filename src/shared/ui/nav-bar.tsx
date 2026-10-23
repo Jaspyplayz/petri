@@ -26,7 +26,7 @@ export function NavBar() {
                   href={link.href}
                   data-testid={link.testId}
                   aria-current={active ? "page" : undefined}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${active ? "bg-culture text-agar" : "text-ink-soft hover:bg-agar-deep"}`}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${active ? "bg-culture-deep text-agar" : "text-ink-soft hover:bg-agar-deep"}`}
                 >
                   {link.label}
                 </Link>
