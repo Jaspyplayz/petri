@@ -21,6 +21,8 @@
     "evolution:pick-issue": "tsx scripts/evolution-pick-issue.ts",
     "evolution:feedback-status": "tsx --env-file-if-exists=.env.local scripts/evolution-feedback-status.ts",
     "evolution:open-pr": "tsx --env-file-if-exists=.env.local scripts/evolution-open-pr.ts",
+    "evolution:check-patch": "tsx scripts/evolution-check-patch.ts",
+    "evolution:build-report": "tsx scripts/evolution-build-report.ts",
     "boundaries": "node scripts/check-boundaries.ts",
     "features": "tsx scripts/check-features.ts",
     "featuremap": "tsx scripts/featuremap.ts",

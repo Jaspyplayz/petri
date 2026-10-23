@@ -138,3 +138,14 @@ One line per decision, newest at the bottom. Format: `YYYY-MM-DD · phase · dec
   - `open-pr` takes the exact report and run folders, which must be inside `artifacts/`, rather than "the newest run"
   - `open-pr` validates `compare.json` with a schema (flow and `step-NN.png` names), keeps every path inside its run folder, uploads only real PNGs under 5 MB, and defangs and truncates the summaries
   The build workflow runs these in a job that never executes the PR's code (recorded with the workflow).
+- 2026-10-23 · P6 · `evolution-build.yml` has four jobs, so the agent's code never runs where secrets are:
+  - **pick** (trusted code): gate, `pick-issue`, feedback → `building`.
+  - **agent** (only the Claude token, `contents: read`): the builder edits a checkout. It may use Read/Edit/Write, `Bash(pnpm check|verify:*|featuremap|new:feature:*|test:*|typecheck|lint)` and `git status/diff`, with no web, commit or push. Only its patch (`git diff --cached --binary --no-renames`) and its JSON report leave the job.
+  - **verify** (no secrets): validates the report and checks the patch with `pnpm evolution:check-patch`, which refuses protected paths, binaries and anything over the 400-line cap, with no human-label escape. Only then does it apply the patch and run `pnpm check`, `verify:all` and `verify:compare origin/main <flows>`.
+  - **publish** (secrets): checks the patch again from a clean checkout. It applies the patch only in a separate worktree to commit it, pushes `evo/<n>-<slug>` with `EVOLUTION_BOT_TOKEN` and runs `open-pr`. It never runs the PR's code.
+  Any failure labels the issue `evolution:stuck`, with a comment linking the run. Run text never goes in that comment.
+- 2026-10-23 · P6 · More build hardening, from the automated security review of #39:
+  - **Patch check.** `check-patch` applies the patch to a scratch index built from the base commit and checks what git recorded (`diff-index --raw` and `--numstat`, no renames). A crafted patch can't hide a rename, symlink, submodule or executable bit.
+  - **Caches.** Jobs that run agent or PR code on the default branch use the pnpm store and Chromium caches restore-only, or not at all. That way they can't write a cache that trusted jobs restore.
+  - **Tokens.** The action gets the read-only `GITHUB_TOKEN`, and no evolution workflow grants `id-token: write` (only the human-triggered `claude.yml` and `claude-code-review.yml` do, to comment), so code the builder runs can't mint a Claude App token with write access.
+  - **Known residual risk.** The builder's Bash commands run in the job that holds `CLAUDE_CODE_OAUTH_TOKEN`, so code it writes could read the token (another process of the same user can read its environment). The follow-up is to run those commands as a separate OS user, tracked in PROGRESS for Phase 8.

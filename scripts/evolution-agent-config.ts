@@ -1,6 +1,7 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { agentConfig, agents, githubOutputs, type Agent } from "./evolution/agent-config";
+import { builderJsonSchema } from "./evolution/build";
 import { readEvolutionConfig } from "./evolution/config";
 import { triageJsonSchema } from "./evolution/triage-output";
 
@@ -13,7 +14,8 @@ function main(): void {
   if (!agents.some((agent) => agent === name)) throw new Error(`usage: pnpm evolution:agent-config <${agents.join("|")}>`);
   const agent = name as Agent;
   const prompt = readFileSync(join(root, ".evolution", "prompts", `${agent}.md`), "utf8");
-  const config = agentConfig(agent, readEvolutionConfig(root), prompt, agent === "triage" ? triageJsonSchema() : undefined);
+  const schemas: Record<Agent, string | undefined> = { triage: triageJsonSchema(), build: builderJsonSchema(), verify: undefined };
+  const config = agentConfig(agent, readEvolutionConfig(root), prompt, schemas[agent]);
   const output = process.env.GITHUB_OUTPUT;
   const values = { model: config.model, max_turns: String(config.maxTurns), prompt: config.prompt, json_schema: config.jsonSchema ?? "" };
   if (output) appendFileSync(output, githubOutputs(values));
