@@ -23,17 +23,19 @@ const stepSchema = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal("wait"), ms: z.number().int().min(0).max(30_000) }),
 ]);
 
-const scriptSchema = z.union([
-  z.array(stepSchema).min(1),
-  z.strictObject({ description: z.string().optional(), steps: z.array(stepSchema).min(1) }),
-]);
+const stepsSchema = z.array(stepSchema).min(1);
+const scriptSchema = z.strictObject({ description: z.string().optional(), steps: stepsSchema });
 
 export function parseScript(name: string, json: unknown): VerifyRun {
-  const parsed = scriptSchema.safeParse(json);
-  if (!parsed.success) throw new VerifyError(`${name} isn't a valid verify script:\n${z.prettifyError(parsed.error)}`);
-  return Array.isArray(parsed.data)
-    ? { name, description: "Ad-hoc verify script", steps: parsed.data }
-    : { name, description: parsed.data.description ?? "Ad-hoc verify script", steps: parsed.data.steps };
+  const parsed = Array.isArray(json)
+    ? stepsSchema.transform((steps) => ({ description: undefined, steps })).safeParse(json)
+    : scriptSchema.safeParse(json);
+  if (!parsed.success) {
+    throw new VerifyError(
+      `${name} isn't a valid verify script (a list of steps, or { "description", "steps" }):\n${z.prettifyError(parsed.error)}`,
+    );
+  }
+  return { name, description: parsed.data.description ?? "Ad-hoc verify script", steps: parsed.data.steps };
 }
 
 export function flowNames(manifests: readonly FeatureManifest[]): string[] {

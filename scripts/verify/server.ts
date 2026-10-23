@@ -29,6 +29,11 @@ function readState(root: string): ServerState | undefined {
   return parseServerState(existsSync(statePath(root)) ? readFileSync(statePath(root), "utf8") : undefined);
 }
 
+function currentBuildId(root: string): string | undefined {
+  const path = join(root, ".next", "BUILD_ID");
+  return existsSync(path) ? readFileSync(path, "utf8").trim() || undefined : undefined;
+}
+
 function logTail(path: string): string {
   return existsSync(path) ? readFileSync(path, "utf8").split(/\r?\n/).slice(-30).join("\n") : "";
 }
@@ -130,6 +135,8 @@ async function startServer(root: string, port: number, fingerprint: string): Pro
   closeSync(fd);
   child.unref();
   if (child.pid === undefined) throw new VerifyError("next start didn't launch");
+  const buildId = currentBuildId(root);
+  if (buildId === undefined) throw new VerifyError("next build didn't write .next/BUILD_ID");
 
   const deadline = Date.now() + startupTimeoutMs;
   while (!(await healthy(url))) {
@@ -139,7 +146,7 @@ async function startServer(root: string, port: number, fingerprint: string): Pro
     }
     await sleep(500);
   }
-  const state: ServerState = { pid: child.pid, port, url, fingerprint, startedAt: new Date().toISOString() };
+  const state: ServerState = { pid: child.pid, port, url, fingerprint, buildId, startedAt: new Date().toISOString() };
   writeFileSync(statePath(root), `${JSON.stringify(state, null, 2)}\n`);
   return url;
 }
@@ -160,18 +167,19 @@ export async function ensureServer(root: string, port: number): Promise<string> 
     state,
     port,
     fingerprint,
+    buildId: currentBuildId(root),
     pidAlive: pidAlive(state?.pid),
     portAnswers: await answers(`http://127.0.0.1:${String(port)}`),
   });
   if (plan.kind === "reuse") {
-    say(`reusing the app at ${plan.url} (built from the current files)`);
+    say(`reusing the app at ${plan.url} (its build is current)`);
     return plan.url;
   }
   if (plan.kind === "port-taken") {
     throw new VerifyError(`port ${String(port)} is in use by a server verify didn't start; stop it or set VERIFY_PORT`);
   }
   if (plan.stopPid !== undefined && state) {
-    say("files changed since the last build; restarting the app");
+    say("the files or .next changed since verify built the app; rebuilding");
     await stopPid(plan.stopPid, state.url);
   }
   rmSync(statePath(root), { force: true });

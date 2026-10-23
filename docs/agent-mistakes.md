@@ -71,3 +71,19 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** Activation was treated as one more step, not as the point where agent edits to guardrails stop. A parser change to a security control also shipped without a test that compares the new parse with the old one.
 - **Category:** sequencing / verification gap
 - **Fix rung:** (c) process: turn guardrails on last, after every review of them has settled. Changes to a guard's parser need differential tests (old parse vs new parse on the same attack table) before they merge. The open findings are listed in PROGRESS.md and wait for a human-approved session.
+
+## 2026-10-22 · Low-contrast text shipped in Phase 1 because nothing checked contrast
+
+- **What happened:** Light text on the `culture` green (primary buttons, the active nav link, the voted button, the Shipped badge) and the Rejected badge's grey text were all under WCAG AA. Lint (jsx-a11y), unit and e2e tests were green.
+- **Evidence:** The first `pnpm verify:all` failed all 7 flows on axe `color-contrast`: 3.59:1 (`#f6f3e7` on `#2f8f6b`) and 4.45:1 (`#55625a` on `#dad8c7`), where 4.5:1 is needed.
+- **Root cause:** jsx-a11y checks markup, not rendered colours. No check ran axe on the rendered pages until the verify runner existed.
+- **Category:** verification gap
+- **Fix rung:** (b) hard rule: the verify runner runs axe after every step and fails on serious and critical violations, and CI's e2e job runs `pnpm verify:all`. #22 fixes the colours (`culture-deep`, 5.77:1).
+
+## 2026-10-22 · `verify:up` reused a server whose `.next` another build had replaced
+
+- **What happened:** `verify:up` reported the server as current and reused it, but every page got a 500 for a JS chunk, so all 7 flows failed.
+- **Evidence:** `pnpm e2e` (which runs `next build`) ran on another branch while the verify server was up. The source fingerprint still matched, but `.next` now held a different build.
+- **Root cause:** The reuse rule covered the inputs of the build but not the build output the server reads from disk.
+- **Category:** design gap in verification tooling (caught while developing it, before merge)
+- **Fix rung:** (a) design: the server state records `.next/BUILD_ID`, and any change means stop and rebuild. `server-plan.test.ts` covers it.

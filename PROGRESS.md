@@ -1,6 +1,6 @@
 # PROGRESS
 
-**Current phase:** 3 in progress (`verify:up` done). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 3 in progress (`verify:up`, `verify:flow`, `verify:script` and `verify:all` done; the exit checks pass). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
 **Next action:** Phase 3 (verification skill), in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9). It writes protected files (`scripts/verify/`, `.claude/skills/verify-app/` and `package.json` scripts), which the hooks block in a normal session. Screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
 
@@ -32,7 +32,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 3 — Verification skill
 
-- [x] 3.1 `verify:up` (plus `verify:down`) · [ ] 3.2 `verify:flow` · [ ] 3.3 `verify:script` · [ ] 3.4 `verify:all` · [ ] 3.5 `verify:compare` · [ ] 3.6 `.claude/skills/verify-app/SKILL.md`
+- [x] 3.1 `verify:up` (plus `verify:down`) · [x] 3.2 `verify:flow` · [x] 3.3 `verify:script` · [x] 3.4 `verify:all` (also in CI's e2e job) · [ ] 3.5 `verify:compare` · [ ] 3.6 `.claude/skills/verify-app/SKILL.md`
 - [ ] Exit: `verify:all` green; injected `console.error` fails; screenshots described
 
 ## Phase 4 — Feature map
@@ -67,6 +67,47 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 3: the runner, `verify:flow` / `verify:script` / `verify:all` (2026-10-22)
+
+**The first `verify:all` failed all 7 flows on axe `color-contrast`.** Light text on the `culture` green measured 3.59:1 and the Rejected badge 4.45:1, against the 4.5:1 that WCAG AA needs. There were no console, network or page errors. #22 fixes the colours. With it:
+
+```
+PASS blob.poke (6 steps, 1.0 s) artifacts\verify\2026-10-23T01-44-14-878Z\blob.poke\report.md
+PASS blob.feed (5 steps, 0.9 s) …
+PASS blob.rename (5 steps, 0.9 s) …
+PASS feedback.browse (6 steps, 1.3 s) …
+PASS feedback.post (7 steps, 1.4 s) …
+PASS feedback.vote (4 steps, 1.1 s) …
+PASS timeline.browse (5 steps, 0.7 s) …
+summary: artifacts\verify\2026-10-23T01-44-14-878Z\summary.md
+```
+
+**Exit check: injected `console.error` fails.**
+- With `console.error("verify exit check: deliberate error on poke")` added to the blob's poke handler, `pnpm verify:flow blob.poke` printed `FAIL blob.poke` and `✖ console.error: verify exit check: deliberate error on poke`, and exited 1.
+- After reverting the line it printed `PASS`.
+- The check-file hook also flagged the line while it was in.
+
+**Exit check: screenshots, read with the Read tool.**
+- `feedback.post` step 07: the Feedback nav pill is active and the form has reset (placeholder, "280 characters left", Post greyed out). The green confirmation reads "Thanks! Your feedback is on the board.", "Newest" is selected, and the top card is "Verification flow: give the blob a tiny hat" with 0 votes and Idea and New badges.
+- `timeline.browse` step 05: the counter reads "1 change shipped, 0 written by humans", the first card has a red "Reverted" badge ("Reverted: Bigger wobble on poke", PR #6, c3d4e5f), and "Bigger wobble on poke" (PR #5) follows.
+- `blob.rename` step 05: the heading and the input both say "Gloop", and the stats read Size 100%, Pokes 0, Snacks 0.
+
+**Other paths:**
+
+| Run | Result |
+|---|---|
+| `verify:script` with a 7-step JSON script (a blank name shows the error, then Enter saves "Wobbles") | `PASS script.rename-check (7 steps, 1.2 s)` |
+| `verify:flow blob.poke --base-url http://127.0.0.1:3200` | PASS without touching the server |
+| `pnpm build` run under a server that verify started | the next run says `the files or .next changed since verify built the app; rebuilding`. Before the `BUILD_ID` check it reused the server and every page got a 500 for a JS chunk. |
+| `verify:flow blob.nope` / `--base-url ftp://x` / `verify:script package.json` / `verify:all --nope` | exit 2: lists the flows / `isn't an http(s) URL` / names the unknown keys and the missing `steps` / `Unknown option '--nope'` |
+
+Unit tests:
+- `runner.test.ts` drives real Chromium against a local fixture server. A clean page passes, with a PNG per step, `report.json` matching the returned report, and vitals recorded.
+- One page each for console.error, page error, 404, an unnamed button (axe `button-name`, recorded once across two steps), and `class="card undefined"`. Each fails with its exact message.
+- A failed `expectText` stops the run and says what the element shows, and a missing testid is named.
+- Every `.screenshot(` call passes `screenshotOptions` with `caret: "initial"`.
+- `steps`, `problems` and `report` tests cover flow resolution, script parsing, the fail rules and the markdown. That's 77 verify tests in total.
 
 ### Phase 3: `verify:up` (2026-10-22)
 

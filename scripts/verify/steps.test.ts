@@ -94,7 +94,12 @@ describe("parseScript", () => {
     ["a wait over 30 s", [{ action: "wait", ms: 60_000 }]],
     ["an object without steps", { description: "nothing" }],
   ])("rejects %s", (_label, json) => {
-    expect(() => parseScript("check", json)).toThrow(/^check isn't a valid verify script:/);
+    expect(() => parseScript("check", json)).toThrow(/^check isn't a valid verify script \(a list of steps, or \{ "description", "steps" \}\):\n✖ /);
+  });
+
+  it("names the field that's wrong", () => {
+    expect(() => parseScript("check", [{ action: "goto", path: "/" }, { action: "click" }])).toThrow(/→ at \[1\]\.target/);
+    expect(() => parseScript("check", { name: "x", steps })).toThrow(/Unrecognized key: "name"/);
   });
 });
 
