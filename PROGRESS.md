@@ -1,8 +1,8 @@
 # PROGRESS
 
-**Current phase:** 3 in progress (`verify:up`, `verify:flow`, `verify:script`, `verify:all` and `verify:compare` done; the exit checks pass; the skill is next). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 4 not started. Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action:** Phase 3 (verification skill), in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9). It writes protected files (`scripts/verify/`, `.claude/skills/verify-app/` and `package.json` scripts), which the hooks block in a normal session. Screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
+**Next action:** Phase 4 (feature map), from an up-to-date `main`, in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes protected files (`scripts/`, `.claude/skills/maintain-feature-map/`, CI). Use the `verify-app` skill for any UI change.
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
@@ -32,8 +32,8 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 3 — Verification skill
 
-- [x] 3.1 `verify:up` (plus `verify:down`) · [x] 3.2 `verify:flow` · [x] 3.3 `verify:script` · [x] 3.4 `verify:all` (also in CI's e2e job) · [x] 3.5 `verify:compare` · [ ] 3.6 `.claude/skills/verify-app/SKILL.md`
-- [ ] Exit: `verify:all` green; injected `console.error` fails; screenshots described
+- [x] 3.1 `verify:up` (plus `verify:down`) · [x] 3.2 `verify:flow` · [x] 3.3 `verify:script` · [x] 3.4 `verify:all` (also in CI's e2e job) · [x] 3.5 `verify:compare` · [x] 3.6 `.claude/skills/verify-app/SKILL.md`
+- [x] Exit: `verify:all` green; injected `console.error` fails; screenshots described (runner evidence below)
 
 ## Phase 4 — Feature map
 
@@ -67,6 +67,18 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 3: the `verify-app` skill (2026-10-22)
+
+`.claude/skills/verify-app/SKILL.md` contains:
+- frontmatter `name: verify-app`, with a description that starts with the spec's trigger sentence
+- the protocol: reproduce with a screenshot first, change, re-run the flow and `verify:all`, read and describe the screenshots, compare for visible changes, attach the report, never claim success without a `PASS`, and after three failures comment and label the issue `evolution:stuck`
+- the command reference, the script format, the failure lines, what catches people out (`caret: "initial"`, statuses from Playwright, flows that write, previews, Windows), and the optional MCP servers
+
+Checks:
+- **Its example script was run as written** (extracted from the markdown): `PASS script.skill-example (7 steps, 1.2 s)`.
+- **Its failure lines** are the runner's exact formats, and its testids are the blob manifest's.
+- **The `evolution:stuck` label it uses** was created in the repo (`B60205`, "Verification failed three times; an agent stopped and needs a human").
 
 ### Phase 3: `verify:compare` (2026-10-22)
 
