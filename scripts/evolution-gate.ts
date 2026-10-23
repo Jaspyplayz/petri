@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PAUSED_PATH, readEvolutionConfig } from "./evolution/config";
-import { gate, gatedWorkflows, type GatedWorkflow } from "./evolution/gate";
+import { gate, gatedWorkflows, mergedTodayArgs, type GatedWorkflow } from "./evolution/gate";
 
 // pnpm evolution:gate <triage|build|verify|automerge> writes open=true|false and reason to $GITHUB_OUTPUT.
 // A closed gate isn't a failure: the workflow skips its agent steps and exits green.
@@ -32,10 +32,7 @@ function main(): void {
     now,
     config: readEvolutionConfig(root),
     openEvolutionPRs: name === "build" ? countOf(["pr", "list", "--state", "open", "--label", "evolution", "--json", "number"]) : 0,
-    mergesToday:
-      name === "automerge"
-        ? countOf(["pr", "list", "--state", "merged", "--label", "evolution", "--search", `merged:>=${now.toISOString().slice(0, 10)}`, "--json", "number"])
-        : 0,
+    mergesToday: name === "automerge" ? countOf(mergedTodayArgs(now)) : 0,
   });
   const line = `evolution gate (${name}): ${result.open ? "open" : "closed"}: ${result.reason}`;
   process.stdout.write(`${line}\n`);

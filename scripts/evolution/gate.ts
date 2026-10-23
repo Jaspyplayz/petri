@@ -16,6 +16,11 @@ export type GateInput = {
 
 export type GateResult = { readonly open: boolean; readonly reason: string };
 
+// gh arguments that list the evolution PRs merged today (UTC). maxMergesPerDay counts these.
+export function mergedTodayArgs(now: Date): string[] {
+  return ["pr", "list", "--state", "merged", "--label", "evolution", "--search", `merged:>=${now.toISOString().slice(0, 10)}`, "--json", "number"];
+}
+
 // undefined: not paused. null: paused until a human resumes. A date: paused until then.
 export function pauseState(paused: string | undefined, now: Date): { readonly paused: boolean; readonly reason: string } {
   if (paused === undefined) return { paused: false, reason: "not paused" };
