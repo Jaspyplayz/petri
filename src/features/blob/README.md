@@ -8,6 +8,7 @@ The home page shows the Blob, a squishy SVG creature. Visitors can:
 
 - **Poke** it (click the creature or the Poke button): it wobbles and squints, then settles back to calm breathing; the poke counter goes up.
 - **Feed** it: it gulps (open mouth, short wobble) and grows by 5% per snack, up to 200%. At full size the Feed button says "Too full".
+- **Colour** it: pick a swatch (green, pink, blue, orange, purple); the choice is stored with the rest of the state.
 - **Name** it: 1–24 characters after trimming. Invalid names show an inline error.
 
 ## Invariants
