@@ -27,6 +27,7 @@
     "evolution:verify-plan": "tsx scripts/evolution-verify-plan.ts",
     "evolution:verdict": "tsx scripts/evolution-verdict.ts",
     "evolution:automerge": "tsx scripts/evolution-automerge.ts",
+    "evolution:post-merge": "tsx --env-file-if-exists=.env.local scripts/evolution-post-merge.ts",
     "boundaries": "node scripts/check-boundaries.ts",
     "features": "tsx scripts/check-features.ts",
     "featuremap": "tsx scripts/featuremap.ts",
