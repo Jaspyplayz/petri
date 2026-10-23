@@ -1,6 +1,6 @@
 # PROGRESS
 
-**Current phase:** 3, not started. Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 3 in progress (`verify:up` done). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
 **Next action:** Phase 3 (verification skill), in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9). It writes protected files (`scripts/verify/`, `.claude/skills/verify-app/` and `package.json` scripts), which the hooks block in a normal session. Screenshots must use `caret: "initial"` (see `docs/agent-mistakes.md`).
 
@@ -32,7 +32,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 3 — Verification skill
 
-- [ ] 3.1 `verify:up` · [ ] 3.2 `verify:flow` · [ ] 3.3 `verify:script` · [ ] 3.4 `verify:all` · [ ] 3.5 `verify:compare` · [ ] 3.6 `.claude/skills/verify-app/SKILL.md`
+- [x] 3.1 `verify:up` (plus `verify:down`) · [ ] 3.2 `verify:flow` · [ ] 3.3 `verify:script` · [ ] 3.4 `verify:all` · [ ] 3.5 `verify:compare` · [ ] 3.6 `.claude/skills/verify-app/SKILL.md`
 - [ ] Exit: `verify:all` green; injected `console.error` fails; screenshots described
 
 ## Phase 4 — Feature map
@@ -67,6 +67,22 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 3: `verify:up` (2026-10-22)
+
+Run on this machine against the real app and local Supabase (Docker):
+
+| Situation | Result |
+|---|---|
+| Nothing running | `verify: built the app in 6s` → `http://127.0.0.1:3200`; `/`, `/feedback` and `/timeline` return 200 |
+| Run again, no changes | `verify: reusing the app at http://127.0.0.1:3200 (built from the current files)`, 1.1 s |
+| A new untracked file in `src/` | `verify: files changed since the last build; restarting the app` → rebuilt |
+| `verify:down`, twice | `verify: stopped the app` (the port stops answering), then `verify: no app was running` |
+| Supabase stopped (`pnpm db:stop`) | `verify: starting local Supabase …` → app up in 31 s; `supabase.log` has 0 lines with "key" |
+| Port held by another server (`VERIFY_PORT=3201`) | exit 2: `port 3201 is in use by a server verify didn't start; stop it or set VERIFY_PORT` |
+| `VERIFY_PORT=abc` / unknown command | exit 2 with the error / the usage text |
+
+The build is fast because Turbopack reuses its cache in `.next`. Unit tests: `fingerprint.test.ts` (a real temp git repo: tracked, untracked and env-file changes count; tests, markdown and ignored files don't; a deleted tracked file counts) and `server-plan.test.ts` (reuse, rebuild, port taken, the never-kill-a-stale-pid case, bad state files).
 
 ### Phase 2: review findings, all closed (2026-10-22)
 

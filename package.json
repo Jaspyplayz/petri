@@ -21,6 +21,8 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "e2e": "playwright test",
+    "verify:up": "tsx scripts/verify.ts up",
+    "verify:down": "tsx scripts/verify.ts down",
     "new:feature": "tsx scripts/new-feature.ts",
     "setup:secrets": "tsx scripts/setup-secrets.ts",
     "env:local": "tsx scripts/env-local.ts",
