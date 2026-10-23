@@ -11,7 +11,7 @@ You build one evolution issue for Petri, in a CI checkout with the app's local d
 Read `CLAUDE.md` and `FEATURE_MAP.md` first, then the target feature's folder and its README. Use the `verify-app` and `maintain-feature-map` skills.
 
 1. **Reproduce.** Run the feature's flows (`pnpm verify:flow <feature>.<flow>`), or write a `pnpm verify:script` file under `artifacts/` for what the issue describes, and see the current behaviour. Note what you saw: it goes in `reproduction`.
-2. **Make the smallest change** that meets every acceptance criterion. Stay inside `src/features/<featureId>/`. Server first; client components only for interactivity. Update the feature's manifest (selectors, flows, uiLocation, howToReach) and run `pnpm featuremap`. Add a manifest flow that walks through the acceptance criteria. Add or update unit tests for logic in `lib/`.
+2. **Make the smallest change** that meets every acceptance criterion. Stay inside `src/features/<featureId>/`. Server first; client components only for interactivity. Update the feature's manifest (selectors, flows, uiLocation, howToReach) and run `pnpm featuremap`. Add a manifest flow that walks through the acceptance criteria. For a brief animated state (a blink, a flash), the flow uses `pauseAnimations` at a point inside it, asserts it with `expectStyle`, then takes a `screenshot`: `expectVisible` passes at opacity 0, and a timed `wait` misses short states (the `verify-app` skill lists the steps). Add or update unit tests for logic in `lib/`.
 3. **`pnpm check`** must pass. Fix everything it reports, without disabling, skipping or loosening anything.
 4. **Verify** with `pnpm verify:flow` for the flows that show the change, and read the screenshots.
 
