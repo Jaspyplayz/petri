@@ -1,8 +1,12 @@
 # PROGRESS
 
-**Current phase:** 5 not started. Phase 4 is done: #27 (generator, 0120ab6), #28 (CI check, 34ff736) and #30 (the `maintain-feature-map` skill and the CLAUDE.md rule) are on `main`. The exit check passed on throwaway #29 (evidence below). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 5 is done once #31 (`pnpm check` and the PR template), #32 (`.evolution/config.json` at level 0 and `pnpm trust-report`) and #33 (CLAUDE.md) are on `main`; the exit checks pass (evidence below). Phase 4 is done: #27 (generator, 0120ab6), #28 (CI check, 34ff736) and #30 (the `maintain-feature-map` skill and the CLAUDE.md rule) are on `main`. The exit check passed on throwaway #29 (evidence below). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action:** Phase 5 (CLAUDE.md and the trust ladder) in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes protected files (`CLAUDE.md`, `.github/`, `.evolution/`, `scripts/`). Read `FEATURE_MAP.md` first; use the `verify-app` and `maintain-feature-map` skills for any UI change.
+**Next action:** Phase 6 (the evolution loop) in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes `.github/workflows/`, `.evolution/` and `scripts/`. Read `CLAUDE.md` and `FEATURE_MAP.md` first. Phase 6 adds:
+
+- the caps, models and Sentry thresholds to `.evolution/config.json`
+- the `evolution:revert` label for the guardian's PRs (`pnpm trust-report` counts it)
+- enforcement of "never lower `riskLevel`" in the automerge policy
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
@@ -42,8 +46,8 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 5 — CLAUDE.md + trust ladder
 
-- [ ] 5.1 CLAUDE.md (<150 lines) · [ ] 5.2 PR template · [ ] 5.3 `.evolution/config.json` level 0 · [ ] 5.4 `scripts/trust-report.ts`
-- [ ] Exit: CLAUDE.md < 150 lines, template exists, level 0
+- [x] 5.0 `pnpm check` (every local gate) · [x] 5.1 CLAUDE.md (<150 lines) · [x] 5.2 PR template · [x] 5.3 `.evolution/config.json` level 0 · [x] 5.4 `scripts/trust-report.ts`
+- [x] Exit: CLAUDE.md < 150 lines, template exists, level 0 (evidence below)
 
 ## Phase 6 — Evolution loop
 
@@ -67,6 +71,17 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 5 exit: CLAUDE.md, the PR template and level 0 (2026-10-22)
+
+- `CLAUDE.md` is 59 lines (`wc -l`). It covers:
+  - what Petri is, plus the links
+  - the workflow and conventions
+  - PRs and guarding against hallucination
+  - the trust ladder, with its promotion criteria and rules
+- `.github/pull_request_template.md` has the six sections: Why (feedback ids), What changed, Feature(s) touched, Verification report + screenshots, Risk, Rollback.
+- `.evolution/config.json` is `{"trustLevel": 0}`. `pnpm trust-report` reads it: "Trust report: level 0 … No promotion: not yet: 0 of 3 evolution PRs merged".
+- `pnpm check` ends with `check: ok (6 gates)`. In an earlier run, a type error in a test made it report `✖ typecheck` and `✖ unit`. It still ran the other four gates and exited 1.
 
 ### Phase 4 exit: renaming a testid fails CI (2026-10-22)
 
