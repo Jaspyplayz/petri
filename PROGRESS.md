@@ -54,6 +54,8 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 - [x] Follow-up: closing an evolution PR left its feedback at `building` with that PR's `pr_url` (the blink item still pointed at the closed #49). `evolution-pr-closed.yml` now puts it back to `triaged` and clears the link. #49 is backfilled with `workflow_dispatch`.
 - [x] Follow-up: the loop's labels (`evolution:ready`, `risk:*`, `needs-human`, `evolution:revert`) were never created, so the first triage failed. They were made by hand on 2026-10-23. `pnpm setup:labels --apply` now creates them (MANUAL_STEPS step 11), and a unit test fails if a workflow or the guardrails config uses a label that isn't on the list.
 - [ ] Follow-up: label-triggered builds are lossy. Two `evolution:ready` labels in one triage start two build runs, and the concurrency group cancels the pending one (#48's). Build has no schedule yet. Something (a cron, or triage dispatching with no issue number) should pick up any ready issue with no open PR.
+- [x] Follow-up: a build that produces no PR left its feedback at `building`. The rebuild of #47 (run 40031512734) failed in `publish`, and the `stuck` job labeled the issue but left the blink item `building`. The `stuck` job now runs `evolution:feedback-status triaged`, which moves only rows still `building`.
+- [ ] Follow-up: a closed evolution PR's branch blocks a rebuild of the same issue. That same run's `publish` was rejected because `evo/47-…` from the closed #49 still existed. GitHub only deletes branches on merge. Deleting the branch when an evolution PR closes unmerged would fix it, but deleting branches is a human call.
 
 ## Phase 7 — Skills, postmortems, evals
 

@@ -269,6 +269,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: read
       issues: write
     steps:
       - name: Label the issue evolution:stuck
@@ -279,3 +280,19 @@ jobs:
         run: |
           gh issue edit "$NUMBER" --repo "$GITHUB_REPOSITORY" --add-label evolution:stuck --remove-label evolution:ready
           gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "The build didn't produce a PR. The run has the builder's report, the patch and the verify output: $RUN_URL"
+      # main's code only: this job never sees the agent's checkout or patch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.pick.outputs.base }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      # pick marked the feedback building. With no PR, put it back, so the board doesn't show work that stopped.
+      - name: Put the linked feedback back to triaged
+        env:
+          NUMBER: ${{ needs.pick.outputs.number }}
+          GH_TOKEN: ${{ github.token }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm -s evolution:feedback-status triaged "$NUMBER"
