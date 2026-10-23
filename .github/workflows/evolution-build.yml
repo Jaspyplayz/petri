@@ -85,9 +85,10 @@ jobs:
     if: needs.pick.outputs.found == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # No id-token: the action gets the read-only GITHUB_TOKEN instead of minting a Claude App token that code the
+    # builder runs could also mint.
     permissions:
       contents: read
-      id-token: write # claude-code-action exchanges it for its app token
     outputs:
       report: ${{ steps.builder.outputs.structured_output }}
     steps:
@@ -96,6 +97,8 @@ jobs:
           ref: ${{ needs.pick.outputs.base }}
           persist-credentials: false
       - uses: ./.github/actions/setup
+        with:
+          cache: "false"
       - uses: ./.github/actions/app-stack
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -110,6 +113,7 @@ jobs:
         uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
           prompt: ${{ steps.agent.outputs.prompt }}
           claude_args: >-
             --model ${{ steps.agent.outputs.model }}
@@ -144,6 +148,8 @@ jobs:
           fetch-depth: 0 # verify:compare builds origin/main
           persist-credentials: false
       - uses: ./.github/actions/setup
+        with:
+          cache: "false"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: evolution-patch

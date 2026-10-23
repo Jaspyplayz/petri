@@ -1,10 +1,10 @@
 name: App stack
-description: Chromium for the verify runner, local Supabase (migrations + seed) and .env.local, so verify and e2e can run the app.
+description: Chromium for the verify runner, local Supabase (migrations + seed) and .env.local, so verify can run the app. Jobs using it run agent or PR code, so the Chromium cache is only restored here, never saved.
 
 runs:
   using: composite
   steps:
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
