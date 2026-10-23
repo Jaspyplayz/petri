@@ -13,6 +13,7 @@ export const blobManifest = defineFeature({
     name: "blob-name",
     creature: "blob-creature",
     body: "blob-body",
+    eyelid: "blob-eyelid",
     size: "blob-size",
     pokes: "blob-pokes",
     feeds: "blob-feeds",
@@ -32,6 +33,16 @@ export const blobManifest = defineFeature({
         { action: "click", target: "pokeButton" },
         { action: "expectText", target: "pokes", text: "1" },
         { action: "screenshot", name: "after-poke" },
+      ],
+    },
+    blink: {
+      description: "The blob blinks (eyelids close briefly) every few seconds.",
+      steps: [
+        { action: "goto", path: "/" },
+        { action: "expectVisible", target: "creature" },
+        { action: "expectVisible", target: "eyelid" },
+        { action: "wait", ms: 4700 },
+        { action: "screenshot", name: "during-blink" },
       ],
     },
     feed: {

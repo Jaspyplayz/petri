@@ -27,7 +27,23 @@
   50% { transform: scale(1.02, 0.98); }
 }
 
+.eyelid {
+  fill: var(--color-culture);
+  opacity: 0;
+  animation: blink 5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes blink {
+  0%, 92%, 100% { opacity: 0; }
+  94%, 97% { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .eyelid {
+    animation: none;
+  }
+
   .wobble {
     animation-duration: 1ms;
   }
