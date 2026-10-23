@@ -12,8 +12,9 @@ export type VerifyRun = {
 
 const testId = z.string().min(1);
 
-const stepSchema = z.discriminatedUnion("action", [
-  z.strictObject({ action: z.literal("goto"), path: z.string().startsWith("/") }),
+export const verifyStepSchema = z.discriminatedUnion("action", [
+  // Same-origin paths only: "//host" and "/\host" would leave the app, and so could a backslash or whitespace.
+  z.strictObject({ action: z.literal("goto"), path: z.string().regex(/^\/(?![/\\])[^\\\s]*$/, "a path on this app, like /feedback") }),
   z.strictObject({ action: z.literal("click"), target: testId }),
   z.strictObject({ action: z.literal("fill"), target: testId, value: z.string() }),
   z.strictObject({ action: z.literal("press"), target: testId, key: z.string().min(1) }),
@@ -23,7 +24,7 @@ const stepSchema = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal("wait"), ms: z.number().int().min(0).max(30_000) }),
 ]);
 
-const stepsSchema = z.array(stepSchema).min(1);
+const stepsSchema = z.array(verifyStepSchema).min(1);
 const scriptSchema = z.strictObject({ description: z.string().optional(), steps: stepsSchema });
 
 export function parseScript(name: string, json: unknown): VerifyRun {

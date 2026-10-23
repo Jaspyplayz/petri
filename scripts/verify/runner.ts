@@ -26,9 +26,12 @@ function firstLine(error: unknown): string {
 
 async function perform(page: Page, step: VerifyStep, baseUrl: string): Promise<void> {
   switch (step.action) {
-    case "goto":
-      await page.goto(new URL(step.path, baseUrl).href);
+    case "goto": {
+      const url = new URL(step.path, baseUrl);
+      if (url.origin !== new URL(baseUrl).origin) throw new Error(`goto ${step.path} leaves ${baseUrl}`);
+      await page.goto(url.href);
       return;
+    }
     case "click":
       await page.getByTestId(step.target).first().click();
       return;
