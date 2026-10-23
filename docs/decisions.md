@@ -147,5 +147,5 @@ One line per decision, newest at the bottom. Format: `YYYY-MM-DD · phase · dec
 - 2026-10-23 · P6 · More build hardening, from the automated security review of #39:
   - **Patch check.** `check-patch` applies the patch to a scratch index built from the base commit and checks what git recorded (`diff-index --raw` and `--numstat`, no renames). A crafted patch can't hide a rename, symlink, submodule or executable bit.
   - **Caches.** Jobs that run agent or PR code on the default branch use the pnpm store and Chromium caches restore-only, or not at all. That way they can't write a cache that trusted jobs restore.
-  - **Tokens.** The action gets the read-only `GITHUB_TOKEN`, and no workflow grants `id-token: write`, so code the builder runs can't mint a Claude App token with write access.
+  - **Tokens.** The action gets the read-only `GITHUB_TOKEN`, and no evolution workflow grants `id-token: write` (only the human-triggered `claude.yml` and `claude-code-review.yml` do, to comment), so code the builder runs can't mint a Claude App token with write access.
   - **Known residual risk.** The builder's Bash commands run in the job that holds `CLAUDE_CODE_OAUTH_TOKEN`, so code it writes could read the token (another process of the same user can read its environment). The follow-up is to run those commands as a separate OS user, tracked in PROGRESS for Phase 8.
