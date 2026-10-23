@@ -15,7 +15,7 @@ export default function GlobalError({ error, retry }: { readonly error: unknown;
           <button
             type="button"
             onClick={retry}
-            className="rounded-full bg-culture px-4 py-2 text-sm font-semibold text-agar"
+            className="rounded-full bg-culture-deep px-4 py-2 text-sm font-semibold text-agar hover:bg-ink"
           >
             Try again
           </button>
