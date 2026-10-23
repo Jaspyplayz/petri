@@ -47,7 +47,7 @@ function folderProblems(folder: FeatureFolder): string[] {
   if (byPath.has("feature.manifest.ts")) {
     if (folder.manifestIds.length !== 1) {
       problems.push(
-        `${where}/feature.manifest.ts: must export exactly one manifest (found ${String(folder.manifestIds.length)})`,
+        `${where}/feature.manifest.ts: must define exactly one manifest with defineFeature (found ${String(folder.manifestIds.length)})`,
       );
     } else if (folder.manifestIds[0] !== folder.name) {
       problems.push(
@@ -90,13 +90,4 @@ export function checkFeatures(listing: FeaturesListing): string[] {
     if (!folderNames.has(id)) problems.push(`src/features/registry.ts lists "${id}" but src/features/${id}/ does not exist`);
   }
   return problems;
-}
-
-export function manifestIdsOf(moduleExports: Readonly<Record<string, unknown>>): string[] {
-  return Object.values(moduleExports).flatMap((value) => {
-    if (typeof value !== "object" || value === null) return [];
-    const id: unknown = Reflect.get(value, "id");
-    const looksLikeManifest = "flows" in value && "selectors" in value && "riskLevel" in value;
-    return looksLikeManifest && typeof id === "string" ? [id] : [];
-  });
 }

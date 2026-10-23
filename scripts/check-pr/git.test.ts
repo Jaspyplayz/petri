@@ -3,7 +3,17 @@ import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { changedFiles, mergeBase, numstat, parseNameStatusZ, parseNumstatZ, readAt, resolveCommit } from "./git";
+import {
+  changedFiles,
+  commitIdentities,
+  mergeBase,
+  numstat,
+  parseCommitIdentities,
+  parseNameStatusZ,
+  parseNumstatZ,
+  readAt,
+  resolveCommit,
+} from "./git";
 
 describe("parsers", () => {
   it("parses NUL-separated name-status output", () => {
@@ -21,6 +31,14 @@ describe("parsers", () => {
       { path: "a.ts", added: 3, deleted: 1 },
       { path: "image.png", added: null, deleted: null },
     ]);
+  });
+
+  it("parses separator-delimited commit identities", () => {
+    expect(parseCommitIdentities("A\x1fa@x\x1fC\x1fc@x\x1e\nB b\x1fb@x\x1fB b\x1fb@x\x1e\n")).toEqual([
+      { authorName: "A", authorEmail: "a@x", committerName: "C", committerEmail: "c@x" },
+      { authorName: "B b", authorEmail: "b@x", committerName: "B b", committerEmail: "b@x" },
+    ]);
+    expect(parseCommitIdentities("")).toEqual([]);
   });
 });
 
@@ -65,5 +83,13 @@ describe("against a real repository", () => {
     ]);
     expect(readAt(dir, base, "gone.txt")).toBe("bye\n");
     expect(readAt(dir, head, "gone.txt")).toBeUndefined();
+  });
+
+  it("lists who wrote the branch's own commits", () => {
+    const head = resolveCommit(dir, "feature");
+    const base = mergeBase(dir, resolveCommit(dir, "main"), head);
+    expect(commitIdentities(dir, base, head)).toEqual([
+      { authorName: "Test", authorEmail: "test@example.com", committerName: "Test", committerEmail: "test@example.com" },
+    ]);
   });
 });

@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # "edited" includes a base-branch change, so a retargeted PR is checked against its new base.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
@@ -100,6 +102,13 @@ jobs:
         run: pnpm exec playwright install --with-deps --only-shell chromium
       - name: Start local Supabase (migrations + seed)
         run: pnpm db:start -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: Generated database types match the migrations
+        run: |
+          pnpm db:types
+          git diff --exit-code -- src/shared/supabase/database.types.ts || {
+            echo "::error file=src/shared/supabase/database.types.ts::This file must be exactly what pnpm db:types generates from the migrations. Regenerate it instead of editing it."
+            exit 1
+          }
       - name: Write .env.local from supabase status
         run: pnpm env:local
       - name: Playwright against next build && next start
@@ -147,7 +156,7 @@ jobs:
             range="$PUSH_BEFORE..$PUSH_AFTER"
           fi
           echo "Scanning $range"
-          gitleaks git --log-opts="$range" --redact --no-banner --verbose
+          gitleaks git --log-opts="--text $range" --ignore-gitleaks-allow --redact --no-banner --verbose
 
   ci-ok:
     if: always()

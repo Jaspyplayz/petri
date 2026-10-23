@@ -7,6 +7,13 @@ export type ChangedFile = {
   readonly status: ChangeStatus;
 };
 
+export type CommitIdentity = {
+  readonly authorName: string;
+  readonly authorEmail: string;
+  readonly committerName: string;
+  readonly committerEmail: string;
+};
+
 export type NumstatEntry = {
   readonly path: string;
   readonly added: number | null;
@@ -51,6 +58,21 @@ export function parseNumstatZ(output: string): NumstatEntry[] {
         deleted: deleted === "-" ? null : Number(deleted),
       };
     });
+}
+
+export function parseCommitIdentities(output: string): CommitIdentity[] {
+  return output
+    .split("\x1e")
+    .map((record) => record.replace(/^\n/, ""))
+    .filter((record) => record !== "")
+    .map((record) => {
+      const [authorName = "", authorEmail = "", committerName = "", committerEmail = ""] = record.split("\x1f");
+      return { authorName, authorEmail, committerName, committerEmail };
+    });
+}
+
+export function commitIdentities(cwd: string, from: string, to: string): CommitIdentity[] {
+  return parseCommitIdentities(gitOrThrow(cwd, ["log", "--format=%an%x1f%ae%x1f%cn%x1f%ce%x1e", `${from}..${to}`]));
 }
 
 export function resolveCommit(cwd: string, ref: string): string {

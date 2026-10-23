@@ -2,10 +2,11 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { type GuardrailsConfig, guardrailsConfigAt } from "./config.ts";
-import { mergeBase, readAt, resolveCommit } from "./git.ts";
+import { commitIdentities, mergeBase, readAt, resolveCommit } from "./git.ts";
 import type { FileReader } from "./protected-paths.ts";
 import {
   agentReasons,
+  botCommitReasons,
   fetchLabelEvents,
   fetchLastHeadUpdate,
   humanMaintainers,
@@ -20,6 +21,7 @@ export type CheckContext = {
   readonly root: string;
   readonly config: GuardrailsConfig;
   readonly base: string;
+  readonly baseTip: string;
   readonly head: string;
   readonly pullRequest: PullRequest | undefined;
   readonly agentReasons: readonly string[];
@@ -31,11 +33,20 @@ export type CheckContext = {
 
 export const repoRoot = join(import.meta.dirname, "..", "..");
 
-function pullRequestFromEnv(env: Env): PullRequest | undefined {
+const pullRequestEvents = new Set(["pull_request", "pull_request_target"]);
+
+export function pullRequestFromEnv(env: Env): PullRequest | undefined {
+  const eventName = env.GITHUB_EVENT_NAME ?? "";
   const eventPath = env.GITHUB_EVENT_PATH;
-  if (!eventPath || !existsSync(eventPath)) return undefined;
+  const expected = pullRequestEvents.has(eventName);
+  if (!eventPath || !existsSync(eventPath)) {
+    if (expected) throw new Error(`${eventName} run without a readable event payload: can't tell who opened the PR, so the check fails`);
+    return undefined;
+  }
   const payload: unknown = JSON.parse(readFileSync(eventPath, "utf8"));
-  return pullRequestFromEvent(payload);
+  const pullRequest = pullRequestFromEvent(payload);
+  if (expected && !pullRequest) throw new Error(`the ${eventName} payload has no usable pull_request, so the check fails`);
+  return pullRequest;
 }
 
 export function loadCheckContext(argv: readonly string[], env: Env): CheckContext {
@@ -52,10 +63,12 @@ export function loadCheckContext(argv: readonly string[], env: Env): CheckContex
   const baseRef = values.base ?? pullRequest?.baseSha ?? "origin/main";
   const headRef = values.head ?? pullRequest?.headSha ?? "HEAD";
   const head = resolveCommit(root, headRef);
-  const base = mergeBase(root, resolveCommit(root, baseRef), head);
-  const config = guardrailsConfigAt(root, (path) => readAt(root, base, path));
+  const baseTip = resolveCommit(root, baseRef);
+  const base = mergeBase(root, baseTip, head);
+  const config = guardrailsConfigAt(root, (path) => readAt(root, baseTip, path));
   const reasons = [
     ...(pullRequest ? agentReasons(pullRequest, config) : []),
+    ...botCommitReasons(commitIdentities(root, base, head), config),
     ...(values["as-agent"] ? ["--as-agent"] : []),
   ];
   const humans = humanMaintainers(env);
@@ -66,11 +79,12 @@ export function loadCheckContext(argv: readonly string[], env: Env): CheckContex
     root,
     config,
     base,
+    baseTip,
     head,
     pullRequest,
     agentReasons: reasons,
     humans,
-    read: (side, path) => readAt(root, side === "base" ? base : head, path),
+    read: (side, path) => readAt(root, { base, tip: baseTip, head }[side], path),
     humanLabel: async (label) => {
       if (!pullRequest?.labels.includes(label) || !token || !repository) return false;
       if (pullRequest.headRepository !== repository) return false;

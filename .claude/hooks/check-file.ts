@@ -40,7 +40,11 @@ async function check(name: string, args: readonly string[]): Promise<string | un
 }
 
 if (!existsSync(join(root, ".next/types/routes.d.ts"))) {
-  await run(process.execPath, [binOf("next", "next"), "typegen"], { cwd: root });
+  try {
+    await run(process.execPath, [binOf("next", "next"), "typegen"], { cwd: root });
+  } catch (error) {
+    block(`check-file couldn't generate the Next route types (${String(error)}), so ${repoPath} wasn't checked. Run \`pnpm typecheck\` and fix what it reports.`);
+  }
 }
 
 const failures = (

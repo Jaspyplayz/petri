@@ -1,4 +1,5 @@
 import type { GuardrailsConfig } from "./config.ts";
+import type { CommitIdentity } from "./git.ts";
 import { asRecord } from "./json.ts";
 
 export type PullRequest = {
@@ -9,6 +10,8 @@ export type PullRequest = {
   readonly labels: readonly string[];
   readonly headRef: string;
   readonly headRepository: string | undefined;
+  readonly baseRef: string | undefined;
+  readonly defaultBranch: string | undefined;
   readonly baseSha: string;
   readonly headSha: string;
 };
@@ -63,6 +66,8 @@ export function pullRequestFromEvent(payload: unknown): PullRequest | undefined 
     }),
     headRef,
     headRepository: stringAt(asRecord(head?.repo), "full_name"),
+    baseRef: stringAt(base, "ref"),
+    defaultBranch: stringAt(asRecord(event?.repository), "default_branch"),
     baseSha,
     headSha,
   };
@@ -79,6 +84,18 @@ export function agentReasons(pullRequest: PullRequest, config: GuardrailsConfig)
   const prefix = branchPrefixes.find((candidate) => pullRequest.headRef.startsWith(candidate));
   if (prefix !== undefined) reasons.push(`branch ${pullRequest.headRef}`);
   return reasons;
+}
+
+export function botCommitReasons(identities: readonly CommitIdentity[], config: GuardrailsConfig): string[] {
+  const agents = config.agentPullRequests.authors.map((author) => author.toLowerCase());
+  const bots = new Set<string>();
+  for (const identity of identities) {
+    for (const name of [identity.authorName, identity.authorEmail, identity.committerName, identity.committerEmail]) {
+      const lower = name.toLowerCase();
+      if (lower.includes("[bot]") || agents.includes(lower)) bots.add(name);
+    }
+  }
+  return [...bots].sort().map((name) => `bot commit by ${name}`);
 }
 
 export function humanMaintainers(env: Readonly<Record<string, string | undefined>>): string[] {

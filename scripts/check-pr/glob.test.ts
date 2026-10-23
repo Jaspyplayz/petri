@@ -37,4 +37,10 @@ describe("matchesAny", () => {
     expect(matchesAny("./.claude/settings.json", [".claude/settings.json"])).toBe(true);
     expect(matchesAny("src/app/page.tsx", [".github/**", "CLAUDE.md"])).toBe(false);
   });
+
+  it("matches case-sensitively unless asked not to", () => {
+    expect(matchesAny(".GitHub/workflows/ci.yml", [".github/**"])).toBe(false);
+    expect(matchesAny(".GitHub/workflows/ci.yml", [".github/**"], { ignoreCase: true })).toBe(true);
+    expect(globToRegExp("eslint.config.*", { ignoreCase: true }).test("ESLINT.CONFIG.MJS")).toBe(true);
+  });
 });

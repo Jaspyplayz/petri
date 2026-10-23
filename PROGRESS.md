@@ -32,7 +32,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ## Phase 2 — Hard guardrails
 
 - [x] 2.1 TS strict flags + bans · [x] 2.2 ESLint flat config + custom rules (useEffect, no comments, no console, env, default exports) · [x] 2.3 Import boundaries + server-only graph check · [x] 2.4 `check-features.ts` · [x] 2.5 `check-protected-paths.ts` · [x] 2.6 PR size check · [x] 2.7 gitleaks + pre-commit · [x] 2.8 Vitest coverage floor + Playwright e2e w/ console-error fixture · [x] 2.9 `ci.yml` + `ci-ok` (plus `guardrails.yml` + `guardrails-ok`) · [x] 2.10 `.claude/settings.json` hooks (live since f82cc71)
-- [ ] Exit: a throwaway commit for each rule turns its CI job red. Six of the seven are red in CI. The protected-path one is red when the check runs on its real event payload, and its CI run waits for `guardrails.yml` to reach `main` (evidence below).
+- [x] Exit: a throwaway commit for each rule turns its CI job red. All seven are red in CI: #9–#15 against the phase branch, and the protected-path one rerun against `main` as #16 once `guardrails.yml` was there (evidence below).
 - [ ] 2.11 Close the open review findings (list below). They are all in protected files, so this needs a human-approved session (`EVOLUTION_HUMAN=1`).
 
 ## Phase 3 — Verification skill
@@ -77,7 +77,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 An independent fresh-context review of f82cc71 and the automated security reviews after f82cc71 found the gaps below. Every fix is in a protected path, so the live hooks block agent edits, which is the intended behaviour. They wait for a session started with `EVOLUTION_HUMAN=1`. "V" means the reviewer reproduced it.
 
-CI (the hard gate):
+CI (the hard gate). **1, 4–8, the payload half of 9, the `database.types.ts` item in 2 and the nits in 10 are closed in `fix/phase-2-ci-gate`. The rest of 2, 3 and the rest of 10 (lint side doors, boundaries, test quality) are for the next PR.** Each closed item has a test in `scripts/**/*.test.ts`. 8 adds the `edited` trigger, but not the `branches: [main]` filter (see decisions.md).
 
 1. **(V) PR code runs before the checks.** `next typegen` (in `lint`/`typecheck`) loads the unprotected `next.config.ts`, which can rewrite `eslint.config.mjs` on the runner while the git diff stays clean. `check-features.ts` imports agent-written manifests, `registry.ts` and `scripts/new-feature/templates.ts`, and a `process.exit(0)` in any of them passes. Fix: protect `next.config.*` and `scripts/**`, and read manifests statically.
 2. **(V) Lint and fixture side doors.** **Closed in `fix/phase-2-lint-and-tests`, except `database.types.ts` (closed in `fix/phase-2-ci-gate`).**
@@ -104,7 +104,7 @@ CI (the hard gate):
     - `hooks.test.ts` uses the real `blob-state.ts` as its clean sample, so `unit` fails whenever that file has a lint error (seen on throwaway #10).
     - Nits: `persist-credentials` and the unpinned checkout in `claude.yml`.
 
-Claude Code hooks (the speed bump):
+Claude Code hooks (the speed bump). **11, 12, the check-file half of 9 and the `hooks.test.ts` item in 10 are closed in `fix/phase-2-review-findings` (cb73d98).** Each has a regression case in `bypass.test.ts` or `hooks.test.ts`. Twelve automated security-review rounds on the branch then closed more command-guard gaps (cb73d98 … round 12), each with a test, for 304 hook tests in total. decisions.md lists the classes the guard knowingly leaves open. It was verified live: the new matcher blocks a force push through Bash and through an MCP `ctx_execute` call.
 
 11. **(V) Regression from d387f54.** The `$(...)`/backtick scanner isn't quote- or escape-aware, so `echo $(echo ")") ; git push --force` passes. The drafted fix is quote-aware scanners that fail closed on unterminated input, plus an old-vs-new parse differential test.
 12. **(V) Gaps the guard misses:**
@@ -133,7 +133,12 @@ Each throwaway is one commit on c2cbd66, made in a scratch clone without lefthoo
 | [#14](https://github.com/Jaspyplayz/petri/pull/14) ([run](https://github.com/Jaspyplayz/petri/actions/runs/39825951675)) | agent PR (label `evolution`) sets `no-console` to `"warn"` | `protected-paths`: exit 1 on its real payload (below). `ci.yml` is green, as expected, because `guardrails.yml` can't run before it's on `main`. | `✖ eslint.config.mjs: guardrail file: agents can't change their own guardrails` |
 | [#15](https://github.com/Jaspyplayz/petri/pull/15) ([run](https://github.com/Jaspyplayz/petri/actions/runs/39825957992)) | a random 40-char key in `docs/` | `secrets` → `ci-ok` | `leaks found: 1 · RuleID: generic-api-key` |
 
-Follow-up after PR #8 merges: open the protected-path throwaway against `main`, so `guardrails-ok` goes red in CI, and add the run link here.
+After PR #8 merged (1254574), the protected-path throwaway was rebuilt on `main` as [#16](https://github.com/Jaspyplayz/petri/pull/16) (label `evolution`). `guardrails.yml` ran from `main` ([run 39829398860](https://github.com/Jaspyplayz/petri/actions/runs/39829398860)): `protected-paths` failed, `guardrails-ok` failed, and `pr-size` passed:
+
+```
+protected-paths: PR #16 1254574...32c3f86 is an agent PR (label "evolution") and touches 1 protected path(s):
+- ✖ eslint.config.mjs: guardrail file: agents can't change their own guardrails
+```
 
 ### Phase 2: protected-paths and pr-size on real PR payloads (2026-10-22)
 

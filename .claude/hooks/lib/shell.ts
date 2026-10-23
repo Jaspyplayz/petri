@@ -11,29 +11,86 @@ export type Segment = {
   readonly heredocs: readonly string[];
 };
 
-type OpenSegment = Segment & { readonly heredocs: string[] };
+type OpenSegment = Segment & { readonly heredocs: string[]; readonly substitutions: string[] };
 
-type Heredoc = { readonly delimiter: string; readonly stripTabs: boolean };
+type Heredoc = { readonly delimiter: string; readonly stripTabs: boolean; readonly expands: boolean };
 
 const doubleQuoteEscapes = new Set(["$", "`", '"', "\\", "\n"]);
 const delimiterEnd = /[\s;&|<>()]/;
 
-function substitutionEnd(command: string, start: number): number {
-  if (command.charAt(start) === "`") {
-    const end = command.indexOf("`", start + 1);
-    return end === -1 ? command.length : end + 1;
-  }
-  let depth = 0;
-  for (let cursor = start + 1; cursor < command.length; cursor += 1) {
+function backtickClose(command: string, start: number): number {
+  let cursor = start + 1;
+  while (cursor < command.length) {
     const char = command.charAt(cursor);
-    if (char === "(") depth += 1;
-    if (char === ")") depth -= 1;
-    if (depth === 0) return cursor + 1;
+    if (char === "`") return cursor;
+    cursor += char === "\\" ? 2 : 1;
   }
   return command.length;
 }
 
-export function parseShell(command: string): Segment[] {
+function doubleQuoteClose(command: string, start: number): number {
+  let cursor = start + 1;
+  while (cursor < command.length) {
+    const char = command.charAt(cursor);
+    if (char === '"') return cursor;
+    if (char === "\\") cursor += 2;
+    else if (char === "`") cursor = backtickClose(command, cursor) + 1;
+    else if (char === "$" && command.charAt(cursor + 1) === "(") cursor = substitutionClose(command, cursor) + 1;
+    else cursor += 1;
+  }
+  return command.length;
+}
+
+function substitutionClose(command: string, start: number): number {
+  let depth = 0;
+  let cursor = start + 1;
+  while (cursor < command.length) {
+    const char = command.charAt(cursor);
+    if (char === "\\") {
+      cursor += 2;
+    } else if (char === "'") {
+      const end = command.indexOf("'", cursor + 1);
+      cursor = end === -1 ? command.length : end + 1;
+    } else if (char === '"') {
+      cursor = doubleQuoteClose(command, cursor) + 1;
+    } else if (char === "`") {
+      cursor = backtickClose(command, cursor) + 1;
+    } else {
+      if (char === "(") depth += 1;
+      if (char === ")") depth -= 1;
+      if (depth === 0) return cursor;
+      cursor += 1;
+    }
+  }
+  return command.length;
+}
+
+function plainDoubleQuoteClose(command: string, start: number): number {
+  let cursor = start + 1;
+  while (cursor < command.length && command.charAt(cursor) !== '"') cursor += command.charAt(cursor) === "\\" ? 2 : 1;
+  return Math.min(cursor, command.length);
+}
+
+function bodySubstitutions(body: string): string[] {
+  const found: string[] = [];
+  let cursor = 0;
+  while (cursor < body.length) {
+    const char = body.charAt(cursor);
+    if (char === "\\") {
+      cursor += 2;
+    } else if (char === "`" || (char === "$" && body.charAt(cursor + 1) === "(")) {
+      const backtick = char === "`";
+      const close = backtick ? backtickClose(body, cursor) : substitutionClose(body, cursor);
+      found.push(body.slice(cursor + (backtick ? 1 : 2), close));
+      cursor = close + 1;
+    } else {
+      cursor += 1;
+    }
+  }
+  return found;
+}
+
+export function parseShell(command: string, splitSubstitutions = false): Segment[] {
   const segments: OpenSegment[] = [];
   let lineStart = 0;
   let words: Word[] = [];
@@ -67,6 +124,7 @@ export function parseShell(command: string): Segment[] {
   };
   const readHeredocBodies = (): void => {
     const bodies: string[] = [];
+    const expanded: string[] = [];
     for (const heredoc of heredocs) {
       const lines: string[] = [];
       while (index < command.length) {
@@ -77,8 +135,12 @@ export function parseShell(command: string): Segment[] {
         lines.push(line);
       }
       bodies.push(lines.join("\n"));
+      if (heredoc.expands) expanded.push(...bodySubstitutions(lines.join("\n")));
     }
-    for (const segment of segments.slice(lineStart)) segment.heredocs.push(...bodies);
+    for (const segment of segments.slice(lineStart)) {
+      segment.heredocs.push(...bodies);
+      segment.substitutions.push(...expanded);
+    }
     heredocs = [];
     lineStart = segments.length;
   };
@@ -101,9 +163,10 @@ export function parseShell(command: string): Segment[] {
       inWord = true;
       index = end === -1 ? command.length : end + 1;
     } else if (char === '"') {
+      const close = splitSubstitutions ? plainDoubleQuoteClose(command, index) : doubleQuoteClose(command, index);
       let content = "";
       let cursor = index + 1;
-      while (cursor < command.length && command.charAt(cursor) !== '"') {
+      while (cursor < close) {
         const current = command.charAt(cursor);
         const escaped = command.charAt(cursor + 1);
         if (current === "\\" && doubleQuoteEscapes.has(escaped)) {
@@ -118,7 +181,7 @@ export function parseShell(command: string): Segment[] {
       expandable += content;
       quoted.push(content);
       inWord = true;
-      index = cursor + 1;
+      index = close + 1;
     } else if (char === "#" && !inWord) {
       const end = command.indexOf("\n", index);
       index = end === -1 ? command.length : end;
@@ -136,12 +199,14 @@ export function parseShell(command: string): Segment[] {
         if (stripTabs) index += 1;
         while (command.charAt(index) === " " || command.charAt(index) === "\t") index += 1;
         let delimiter = "";
+        let expands = true;
         while (index < command.length && !delimiterEnd.test(command.charAt(index))) {
           const current = command.charAt(index);
-          if (current !== "'" && current !== '"' && current !== "\\") delimiter += current;
+          if (current === "'" || current === '"' || current === "\\") expands = false;
+          else delimiter += current;
           index += 1;
         }
-        heredocs.push({ delimiter, stripTabs });
+        heredocs.push({ delimiter, stripTabs, expands });
       } else {
         index += 1;
       }
@@ -161,15 +226,15 @@ export function parseShell(command: string): Segment[] {
       } else {
         nextIsWriteTarget = true;
       }
-    } else if (char === "`" || (char === "$" && next === "(")) {
-      const end = substitutionEnd(command, index);
-      const substitution = command.slice(index, end);
-      text += substitution;
-      expandable += substitution;
-      substitutions.push(substitution.replace(/^(`|\$\()/, "").replace(/(`|\))$/, ""));
+    } else if (!splitSubstitutions && (char === "`" || (char === "$" && next === "("))) {
+      const backtick = char === "`";
+      const close = backtick ? backtickClose(command, index) : substitutionClose(command, index);
+      text += command.slice(index, close + 1);
+      expandable += command.slice(index, close + 1);
+      substitutions.push(command.slice(index + (backtick ? 1 : 2), close));
       inWord = true;
-      index = end;
-    } else if (char === "&" || char === ";" || char === "|" || char === "(" || char === ")") {
+      index = close + 1;
+    } else if (char === "&" || char === ";" || char === "|" || char === "(" || char === ")" || char === "`") {
       flushSegment();
       index += 1;
     } else if (char === " " || char === "\t" || char === "\r") {
