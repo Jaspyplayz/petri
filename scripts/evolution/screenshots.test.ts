@@ -56,4 +56,10 @@ describe("buildableIssue", () => {
     expect(buildableIssue(issue({ labels: [{ name: "evolution" }] }), { requireReady: false })).toHaveProperty("issue");
     expect(buildableIssue(issue({ body: "please add a hat" }), { requireReady: true })).toEqual({ problem: "its body has no valid evolution-issue data comment (only triage files buildable issues)" });
   });
+
+  it("takes a closed issue only when post-merge asks, and still checks everything else", () => {
+    expect(buildableIssue(issue({ state: "CLOSED" }), { requireReady: false, allowClosed: true })).toHaveProperty("issue");
+    expect(buildableIssue(issue({ state: "CLOSED", labels: [] }), { requireReady: false, allowClosed: true })).toEqual({ problem: "it doesn't have the evolution label" });
+    expect(buildableIssue(issue({ state: "CLOSED", body: "hat" }), { requireReady: false, allowClosed: true })).toHaveProperty("problem");
+  });
 });

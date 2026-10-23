@@ -1,0 +1,78 @@
+name: evolution-post-merge
+
+# After a push to main: if the commit is a merged evolution PR, wait for Vercel's production deployment, put the change
+# on the Timeline (changelog row, feedback shipped, a comment on the issue), then verify production with the flows that
+# don't write (verify:all --read-only) and record the run in agent_runs. Any other push stops after the first step.
+# The row goes in before verification because the change shipped either way, and timeline.browse needs an entry.
+# No gate: it only records what a merge already shipped. Reverts are the guardian's job, not this workflow's.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evolution-post-merge-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  post-merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      statuses: read
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+
+      - name: Put the merged evolution PR on the Timeline
+        id: record
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm -s evolution:post-merge record
+
+      # No --with-deps: ubuntu-latest has Chromium's libraries, and these flows check content, not pixels.
+      - name: Install Chromium
+        if: steps.record.outcome == 'success' && steps.record.outputs.skip == 'false'
+        run: pnpm exec playwright install --only-shell chromium
+
+      - name: Verify production (flows that don't write)
+        id: verify
+        if: steps.record.outcome == 'success' && steps.record.outputs.skip == 'false'
+        continue-on-error: true
+        env:
+          PRODUCTION_URL: ${{ steps.record.outputs.production-url }}
+        run: pnpm -s verify:all --read-only --base-url "$PRODUCTION_URL"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && steps.record.outputs.skip == 'false'
+        with:
+          name: post-merge-verify
+          path: artifacts/verify/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Record the run in agent_runs
+        if: always() && steps.record.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PR: ${{ steps.record.outputs.pr }}
+          ISSUE: ${{ steps.record.outputs.issue }}
+          STARTED_AT: ${{ steps.record.outputs.started-at }}
+          RECORD_OUTCOME: ${{ steps.record.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+        run: pnpm -s evolution:post-merge finish

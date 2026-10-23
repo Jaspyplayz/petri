@@ -1,5 +1,6 @@
 {
   "trustLevel": 0,
+  "productionUrl": "https://petri-pi.vercel.app",
   "maxIssuesPerTriage": 3,
   "maxOpenEvolutionPRs": 1,
   "maxMergesPerDay": 6,

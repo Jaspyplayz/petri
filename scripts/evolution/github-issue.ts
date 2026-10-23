@@ -19,10 +19,13 @@ export function gh(root: string, args: readonly string[]): string {
   return result.stdout.trim();
 }
 
+export type IssueOptions = { readonly requireReady: boolean; readonly allowClosed?: boolean };
+
 // An issue is buildable only if triage filed it: open, labelled evolution and evolution:ready, with a valid data comment.
-export function buildableIssue(issue: GhIssue, options: { requireReady: boolean }): { issue: BuiltIssue } | { problem: string } {
+// Post-merge passes allowClosed, because the merged PR's "Closes #n" has already closed it.
+export function buildableIssue(issue: GhIssue, options: IssueOptions): { issue: BuiltIssue } | { problem: string } {
   const labels = issue.labels.map((label) => label.name);
-  if (issue.state !== "OPEN") return { problem: "it isn't open" };
+  if (issue.state !== "OPEN" && options.allowClosed !== true) return { problem: "it isn't open" };
   if (!labels.includes("evolution")) return { problem: "it doesn't have the evolution label" };
   if (options.requireReady && !labels.includes("evolution:ready")) return { problem: "it doesn't have the evolution:ready label" };
   const fields = issueFromBody(issue.body);
@@ -31,7 +34,7 @@ export function buildableIssue(issue: GhIssue, options: { requireReady: boolean 
 }
 
 // Privileged steps read the issue from GitHub again rather than trusting a file in the workspace.
-export function fetchIssue(root: string, issueNumber: number, options: { requireReady: boolean }): BuiltIssue {
+export function fetchIssue(root: string, issueNumber: number, options: IssueOptions): BuiltIssue {
   const issue = JSON.parse(gh(root, ["issue", "view", String(issueNumber), "--json", ISSUE_FIELDS])) as GhIssue;
   const result = buildableIssue(issue, options);
   if ("problem" in result) throw new Error(`#${String(issueNumber)} can't be used: ${result.problem}`);

@@ -11,6 +11,8 @@ const perAgent = <T extends z.ZodType>(value: T) => z.object({ triage: value, bu
 export const evolutionConfigSchema = z
   .object({
     trustLevel: z.number().int().min(0).max(4),
+    // Post-merge verifies this deployment once Vercel reports the merge commit deployed.
+    productionUrl: z.url({ protocol: /^https$/ }),
     maxIssuesPerTriage: count,
     maxOpenEvolutionPRs: count,
     maxMergesPerDay: count,
