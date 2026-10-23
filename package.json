@@ -16,6 +16,7 @@
     "trust-report": "tsx scripts/trust-report.ts",
     "evolution:gate": "tsx scripts/evolution-gate.ts",
     "evolution:triage-input": "tsx --env-file-if-exists=.env.local scripts/evolution-triage-input.ts",
+    "evolution:create-issues": "tsx --env-file-if-exists=.env.local scripts/evolution-create-issues.ts",
     "boundaries": "node scripts/check-boundaries.ts",
     "features": "tsx scripts/check-features.ts",
     "featuremap": "tsx scripts/featuremap.ts",
