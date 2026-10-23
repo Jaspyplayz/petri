@@ -139,7 +139,7 @@ export function BlobCreature() {
         <Button onClick={handlePoke} variant="secondary" data-testid="blob-poke-button">
           Poke
         </Button>
-        <Button onClick={handleFeed} disabled={full} data-testid="blob-feed-button">
+        <Button onClick={handleFeed} disabled={full} data-testid="blob-feed-btn">
           {full ? "Too full" : "Feed"}
         </Button>
       </div>
