@@ -21,7 +21,7 @@ Status key: ⬜ todo · ✅ done
 ## To do
 
 9. ⬜ **Keep running the setup phases (3–9) in an `EVOLUTION_HUMAN=1` session.** Most of them write protected files (`scripts/`, `.claude/`, `package.json`, workflows, `CLAUDE.md`), which the hooks block in a normal session. Start Claude Code with `$env:EVOLUTION_HUMAN = "1"; claude --continue` in PowerShell, or `EVOLUTION_HUMAN=1 claude --continue` in bash. The evolution agents never run with it, and CI still fails agent PRs that touch protected paths. Start Claude normally again after the Phase 9 handoff.
-10. ⬜ **Create `EVOLUTION_BOT_TOKEN` (Phase 6; the loop needs it before the dry run).** Issues, branches and PRs made with the default `GITHUB_TOKEN` don't start other workflows, and claude-code-action revokes its own app token when it finishes. So the loop's scripts use a token of yours.
+10. ✅ **Create `EVOLUTION_BOT_TOKEN` (Phase 6; the loop needs it before the dry run).** Done 2026-10-23 (repo secret added at 18:14 UTC; it expires after 90 days, so make a new one before then). Issues, branches and PRs made with the default `GITHUB_TOKEN` don't start other workflows, and claude-code-action revokes its own app token when it finishes. So the loop's scripts use a token of yours.
     1. Go to GitHub → Settings → Developer settings → Fine-grained personal access tokens → Generate new token.
     2. Name it `petri-evolution-bot`. Resource owner: Jaspyplayz. Repository access: **only `Jaspyplayz/petri`**. Expiration: 90 days or more.
     3. Repository permissions: **Contents: Read and write**, **Issues: Read and write**, **Pull requests: Read and write** (Metadata: Read is added for you). Leave everything else, including Workflows, at No access.
@@ -31,7 +31,7 @@ Status key: ⬜ todo · ✅ done
 
 ## Good to know (Phase 2 guardrails)
 
-- **Merging phase PRs.** `ci.yml` (aggregate check `ci-ok`) and `guardrails.yml` (`guardrails-ok`) now run on every PR. Until Phase 6 turns on branch protection, you still merge Claude's phase PRs yourself: wait for both checks to be green, then use **Squash and merge**.
+- **Merging phase PRs.** Branch protection on `main` (since 2026-10-23) requires `ci-ok`, `guardrails-ok` and `evolution-verify` from GitHub Actions, for admins too, and squash is the only merge method. You can check it under Settings → Branches. Claude merges phase PRs once you OK a batch.
 - **Editing guardrails with Claude.** Claude Code hooks stop agents from editing protected paths (the list is in `.github/guardrails.json`). To have Claude change them for you, start Claude Code with `EVOLUTION_HUMAN=1` in its environment: `EVOLUTION_HUMAN=1 claude` in bash, or `$env:EVOLUTION_HUMAN = "1"; claude` in PowerShell. Agents can't set this themselves, because the hooks block any command that names it. Your own PRs are never blocked by `protected-paths`. Only agent PRs are (label `evolution`, a bot author or an `evo/` branch).
 - **Approving an agent PR that touches guardrails or is over 400 lines.** Add the label `protected-ok` or `size-ok` yourself. It only counts when you add it after the latest push, so if new commits arrive, remove the label and add it again. To let other people approve too, set the repo variable `HUMAN_MAINTAINERS` (comma-separated GitHub logins). It defaults to the repo owner.
 - **Pre-commit hook.** `pnpm install` installs lefthook, which runs gitleaks, typecheck and lint on every commit. gitleaks must be on your PATH: `winget install Gitleaks.Gitleaks` or `brew install gitleaks`.

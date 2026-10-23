@@ -1,12 +1,8 @@
 # PROGRESS
 
-**Current phase:** 5 is done once #31 (`pnpm check` and the PR template), #32 (`.evolution/config.json` at level 0 and `pnpm trust-report`) and #33 (CLAUDE.md) are on `main`; the exit checks pass (evidence below). Phase 4 is done: #27 (generator, 0120ab6), #28 (CI check, 34ff736) and #30 (the `maintain-feature-map` skill and the CLAUDE.md rule) are on `main`. The exit check passed on throwaway #29 (evidence below). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 6 is in progress. Parts 1–9 (#34–#42, 14009db…2e47b27) and the `unit` job fix (#43) are on `main`, `EVOLUTION_BOT_TOKEN` is set, and branch protection is on (2026-10-23). Post-merge (6.6) is on `main` as #45 (`verify:all --read-only`) and #46 (2f3b72c), not yet run end to end. 6.7 is left. Phase 5 is done once #31 (`pnpm check` and the PR template), #32 (`.evolution/config.json` at level 0 and `pnpm trust-report`) and #33 (CLAUDE.md) are on `main`; the exit checks pass (evidence below). Phase 4 is done: #27 (generator, 0120ab6), #28 (CI check, 34ff736) and #30 (the `maintain-feature-map` skill and the CLAUDE.md rule) are on `main`. The exit check passed on throwaway #29 (evidence below). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action:** Phase 6 (the evolution loop) in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes `.github/workflows/`, `.evolution/` and `scripts/`. Read `CLAUDE.md` and `FEATURE_MAP.md` first. Phase 6 adds:
-
-- the caps, models and Sentry thresholds to `.evolution/config.json`
-- the `evolution:revert` label for the guardian's PRs (`pnpm trust-report` counts it)
-- enforcement of "never lower `riskLevel`" in the automerge policy
+**Next action:** the Phase 6.7 dry run (STARTER_PROMPT step 7): seed 5 feedback items (one vague, one prompt injection, one oversized), run the loop at level 0 with `workflow_dispatch`, merge one verified PR by hand, and show its Timeline entry. That is also post-merge's (6.6) first end-to-end run. Use a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9). Read `CLAUDE.md` and `FEATURE_MAP.md` first.
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
@@ -51,7 +47,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 6 — Evolution loop
 
-- [ ] 6.1 config + gate step · [ ] 6.2 triage · [ ] 6.3 build · [ ] 6.4 verify · [ ] 6.5 automerge + branch protection · [ ] 6.6 post-merge changelog · [ ] 6.7 local dry run (5 seeded items incl. vague, injection, oversized) → level 1
+- [x] 6.1 config + gate step (#34) · [x] 6.2 triage (#35–#37) · [x] 6.3 build (#38, #39) · [x] 6.4 verify (#40, #41) · [x] 6.5 automerge (#42) + branch protection (applied 2026-10-23: `ci-ok`, `guardrails-ok` and `evolution-verify` required from GitHub Actions, admins included, squash only) · [ ] 6.6 post-merge changelog (#45, #46 merged; ticked once the dry run shows a Timeline entry) · [ ] 6.7 local dry run (5 seeded items incl. vague, injection, oversized) → level 1
 - [ ] Exit: one full feedback → Timeline loop with links
 
 ## Phase 7 — Skills, postmortems, evals
@@ -280,7 +276,7 @@ CI (the hard gate). **1, 4–8, the payload half of 9, the `database.types.ts` i
    - `lefthook-local.yml`, `STARTER_PROMPT.md`
    - `server-env-schema.ts`, `supabase/config.toml`, `seed.sql`
    - Glob matching is also case-sensitive.
-8. **Retargeting a PR doesn't re-run `ci.yml`.** Fix: add the `edited` type and `branches: [main]`, and make Phase 6 rulesets require the trusted workflows.
+8. **Retargeting a PR doesn't re-run `ci.yml`.** Fix: add the `edited` type and `branches: [main]`, and make Phase 6 rulesets require the trusted workflows. **Closed in Phase 6 without a ruleset:** `ci.yml` has the `edited` type, and the other two required checks (`guardrails-ok`, `evolution-verify`) run on `pull_request_target`, so they come from main. An agent PR that changes anything `ci-ok` runs (`.github/**`, `package.json`, `scripts/**`, the test and lint configs) fails `guardrails-ok` until a human adds `protected-ok` (decisions.md, 2026-10-23).
 9. **Places that fail open.** A missing event payload counts as "not an agent PR", and a typegen crash in check-file is non-blocking.
 10. **Weak proofs.** **The lint-config, `DECLARES_A_TEST`, coverage and retries items are closed in #19.** Evidence there: every new lint case fails against `main`'s config (25 of 25), and `rules.test.ts` fails against `main`'s dependency-cruiser config.
     - The lint-config tests assert generic rule ids.
