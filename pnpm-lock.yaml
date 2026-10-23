@@ -206,6 +206,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: 5.0.5
         version: 5.0.5(vitest@5.0.5)
+      axe-core:
+        specifier: 4.14.0
+        version: 4.14.0
       dependency-cruiser:
         specifier: 18.5.0
         version: 18.5.0

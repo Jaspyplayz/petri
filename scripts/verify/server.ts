@@ -6,12 +6,12 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { supabaseCli, writeEnvLocal } from "../env-local/write";
 import { sourceFingerprint } from "./fingerprint";
 import { parseServerState, planServer, type ServerState } from "./server-plan";
+import { VerifyError } from "./verify-error";
 
 const nextBin = createRequire(import.meta.url).resolve("next/dist/bin/next");
 const supabaseServicesVerifyDoesNotUse = "realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor";
 const startupTimeoutMs = 90_000;
 
-export class VerifyServerError extends Error {}
 
 export function verifyDirectory(root: string): string {
   return join(root, "artifacts", "verify");
@@ -86,7 +86,7 @@ function ensureSupabase(root: string): void {
   say("starting local Supabase (first start can take a few minutes)");
   const started = runLogged(root, "supabase.log", [supabaseCli, "start", "-x", supabaseServicesVerifyDoesNotUse], false);
   if (!started.ok) {
-    throw new VerifyServerError(`local Supabase didn't start; is Docker running? See ${started.log}`);
+    throw new VerifyError(`local Supabase didn't start; is Docker running? See ${started.log}`);
   }
 }
 
@@ -116,7 +116,7 @@ async function startServer(root: string, port: number, fingerprint: string): Pro
   const url = `http://127.0.0.1:${String(port)}`;
   const buildStarted = Date.now();
   const build = runLogged(root, "build.log", [nextBin, "build"]);
-  if (!build.ok) throw new VerifyServerError(`next build failed (full log: ${build.log}):\n${logTail(build.log)}`);
+  if (!build.ok) throw new VerifyError(`next build failed (full log: ${build.log}):\n${logTail(build.log)}`);
   say(`built the app in ${String(Math.round((Date.now() - buildStarted) / 1000))}s`);
 
   const serverLog = join(verifyDirectory(root), "server.log");
@@ -129,13 +129,13 @@ async function startServer(root: string, port: number, fingerprint: string): Pro
   });
   closeSync(fd);
   child.unref();
-  if (child.pid === undefined) throw new VerifyServerError("next start didn't launch");
+  if (child.pid === undefined) throw new VerifyError("next start didn't launch");
 
   const deadline = Date.now() + startupTimeoutMs;
   while (!(await healthy(url))) {
     if (child.exitCode !== null || Date.now() > deadline) {
       await stopPid(child.pid, url);
-      throw new VerifyServerError(`the app didn't become healthy at ${url} (log: ${serverLog}):\n${logTail(serverLog)}`);
+      throw new VerifyError(`the app didn't become healthy at ${url} (log: ${serverLog}):\n${logTail(serverLog)}`);
     }
     await sleep(500);
   }
@@ -146,7 +146,7 @@ async function startServer(root: string, port: number, fingerprint: string): Pro
 
 export function verifyPort(): number {
   const port = Number(process.env.VERIFY_PORT ?? 3200);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new VerifyServerError("VERIFY_PORT must be a port number");
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new VerifyError("VERIFY_PORT must be a port number");
   return port;
 }
 
@@ -168,7 +168,7 @@ export async function ensureServer(root: string, port: number): Promise<string> 
     return plan.url;
   }
   if (plan.kind === "port-taken") {
-    throw new VerifyServerError(`port ${String(port)} is in use by a server verify didn't start; stop it or set VERIFY_PORT`);
+    throw new VerifyError(`port ${String(port)} is in use by a server verify didn't start; stop it or set VERIFY_PORT`);
   }
   if (plan.stopPid !== undefined && state) {
     say("files changed since the last build; restarting the app");
