@@ -1,3 +1,10 @@
 {
-  "trustLevel": 0
+  "trustLevel": 0,
+  "maxIssuesPerTriage": 3,
+  "maxOpenEvolutionPRs": 1,
+  "maxMergesPerDay": 6,
+  "maxAgentTurns": { "triage": 15, "build": 80, "verify": 40 },
+  "minVotesToConsider": 2,
+  "models": { "triage": "claude-sonnet-5-5", "build": "claude-sonnet-5-5", "verify": "claude-opus-5-5" },
+  "sentry": { "windowMinutes": 60, "spikeMultiplier": 3, "minEvents": 5 }
 }
