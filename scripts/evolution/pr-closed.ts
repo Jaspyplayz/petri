@@ -16,8 +16,13 @@ export function skipReason(pr: ClosedGhPr, config: GuardrailsConfig): string | u
 // next build of the same issue (same branch name). Only an evo/ branch of this repository, and only while it still
 // points at the PR's last commit, so nothing pushed after the close is lost. The PR keeps its commits (refs/pull/N/head).
 export function branchToDelete(pr: ClosedGhPr, branchSha: string | undefined): string | undefined {
-  if (pr.isCrossRepository || !pr.headRefName.startsWith("evo/")) return undefined;
+  if (pr.isCrossRepository || !pr.headRefName.startsWith("evo/") || !safeBranchName(pr.headRefName)) return undefined;
   return branchSha === pr.headRefOid ? pr.headRefName : undefined;
+}
+
+// A branch name is pasted into REST paths, so it may only hold characters that can't change the path: no # % ? or "..".
+export function safeBranchName(name: string): boolean {
+  return /^[A-Za-z0-9._/-]+$/.test(name) && !name.includes("..");
 }
 
 export function resetComment(pr: number, count: number): string {

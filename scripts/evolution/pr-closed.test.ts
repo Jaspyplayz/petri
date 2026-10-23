@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadGuardrailsConfig } from "../check-pr/config";
-import { branchToDelete, resetComment, skipReason, type ClosedGhPr } from "./pr-closed";
+import { branchToDelete, resetComment, safeBranchName, skipReason, type ClosedGhPr } from "./pr-closed";
 
 const config = loadGuardrailsConfig(join(import.meta.dirname, "..", ".."));
 
@@ -50,6 +50,17 @@ describe("branchToDelete", () => {
     expect(branchToDelete(pr({}), "c".repeat(40))).toBeUndefined();
     expect(branchToDelete(pr({ headRefName: "feat/blink" }), head)).toBeUndefined();
     expect(branchToDelete(pr({ isCrossRepository: true }), head)).toBeUndefined();
+    expect(branchToDelete(pr({ headRefName: "evo/47-x#y" }), head)).toBeUndefined();
+  });
+});
+
+describe("safeBranchName", () => {
+  it.each(["evo/47-make-the-blob-blink-every-few-seconds", "evo/1_a.b"])("accepts %s", (name) => {
+    expect(safeBranchName(name)).toBe(true);
+  });
+
+  it.each(["evo/47#main", "evo/47%2Fmain", "evo/47?x=1", "evo/../main", "evo/a b", ""])("rejects %j, which could change the REST path", (name) => {
+    expect(safeBranchName(name)).toBe(false);
   });
 });
 

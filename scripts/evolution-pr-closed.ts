@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { loadGuardrailsConfig } from "./check-pr/config";
 import { gh, issueNumberArg } from "./evolution/github-issue";
 import { linkedIssue } from "./evolution/github-pr";
-import { branchToDelete, CLOSED_PR_FIELDS, resetComment, skipReason, type ClosedGhPr } from "./evolution/pr-closed";
+import { branchToDelete, CLOSED_PR_FIELDS, resetComment, safeBranchName, skipReason, type ClosedGhPr } from "./evolution/pr-closed";
 import { loopSupabase } from "./evolution/supabase";
 
 // pnpm evolution:pr-closed <pr number>: when an evolution PR was closed without merging, the feedback the build marked
@@ -20,8 +20,10 @@ function branchSha(branch: string): string | undefined {
   }
 }
 
+// Only after linkedIssue has checked the branch is the one the build derives from the issue, and safeBranchName has
+// ruled out anything (# % ? ..) that would change the REST path the name is pasted into.
 function deleteBranch(pr: ClosedGhPr): void {
-  const branch = branchToDelete(pr, branchSha(pr.headRefName));
+  const branch = safeBranchName(pr.headRefName) ? branchToDelete(pr, branchSha(pr.headRefName)) : undefined;
   if (branch === undefined) {
     process.stdout.write(`pr-closed: keeping ${pr.headRefName} (gone already, moved on since the close, or not an evo/ branch here)\n`);
     return;
@@ -38,9 +40,9 @@ async function main(): Promise<void> {
     process.stdout.write(`pr-closed: ${skip}, so nothing changes\n`);
     return;
   }
-  deleteBranch(pr);
   const issue = linkedIssue(root, pr, { allowClosed: true });
   if (typeof issue === "string") throw new Error(`pr-closed: can't trust #${String(number)}'s issue: ${issue}`);
+  deleteBranch(pr);
   const update = await loopSupabase()
     .from("feedback")
     .update({ status: "triaged", pr_url: null })
