@@ -10,6 +10,10 @@ export type FeedbackItem = Pick<
 
 const FEEDBACK_LIMIT = 100;
 
+export function boardTimestamp(): number {
+  return Date.now();
+}
+
 export async function listFeedback(sort: FeedbackSort): Promise<readonly FeedbackItem[]> {
   let query = publicSupabase()
     .from("feedback")
