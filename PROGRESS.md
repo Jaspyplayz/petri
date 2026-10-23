@@ -1,8 +1,8 @@
 # PROGRESS
 
-**Current phase:** 3 done once its PRs merge: #21 (`verify:up`), #22 (contrast fix), #23 (runner), #24 (`verify:compare`) and the `verify-app` skill PR, in that order. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 4 not started. Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action:** merge the Phase 3 PRs in order, retargeting each stacked PR to `main` and merging `main` into it as the one below lands. Then start Phase 4 (feature map) in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes protected files (`scripts/`, `.claude/skills/maintain-feature-map/`, CI). Use the `verify-app` skill for any UI change.
+**Next action:** Phase 4 (feature map), from an up-to-date `main`, in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes protected files (`scripts/`, `.claude/skills/maintain-feature-map/`, CI). Use the `verify-app` skill for any UI change.
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
