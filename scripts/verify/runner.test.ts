@@ -23,6 +23,9 @@ const pages: Record<string, string> = {
   "/missing-image": page(`${counter}<img src="/missing.png" alt="A picture that isn't there">`),
   "/unnamed-button": page(`${counter}<button type="button" data-testid="mystery"></button>`),
   "/undefined-class": page(`${counter}<div class="card undefined" data-testid="card">Card</div>`),
+  "/blink": page(
+    `<style>@keyframes blink { 0%, 90%, 100% { opacity: 0 } 94%, 97% { opacity: 1 } } .lid { width: 40px; height: 10px; background: #2f8f6b; opacity: 0; animation: blink 5s linear infinite }</style><div class="lid" data-testid="lid"></div>`,
+  ),
 };
 
 let server: Server;
@@ -112,6 +115,22 @@ describe("runVerification", { timeout: 30_000 }, () => {
     expect(report.steps).toHaveLength(2);
     expect(existsSync(join(outDir, "step-02.png"))).toBe(true);
     expect(readdirSync(outDir)).not.toContain("step-03.png");
+  });
+
+  it("holds a brief animation still, so its closed state can be asserted", async () => {
+    const { report } = await verify("/blink", [
+      { action: "pauseAnimations", atMs: 4750 },
+      { action: "expectStyle", target: "lid", property: "opacity", value: "1" },
+    ]);
+    expect(report.failures).toEqual([]);
+  });
+
+  it("says which style an element has when expectStyle fails", async () => {
+    const { report } = await verify("/blink", [
+      { action: "pauseAnimations", atMs: 1000 },
+      { action: "expectStyle", target: "lid", property: "opacity", value: "1" },
+    ]);
+    expect(report.failures).toEqual(['step 3 (expectStyle lid opacity "1"): expected data-testid="lid" to have opacity "1"; it has "0"']);
   });
 
   it("names a data-testid that isn't on the page", async () => {

@@ -50,7 +50,7 @@ Every user-visible behaviour gets a flow, so `pnpm verify:flow <feature>.<flow>`
 1. Starts with `goto`, using the route, plus a query string if the page needs one.
 2. Checks the starting state (`expectVisible` or `expectText`).
 3. Does the action (`click`, `fill`, `press`).
-4. Asserts the result with `expectText` or `expectVisible`. A screenshot alone isn't an assertion.
+4. Asserts the result with `expectText`, `expectVisible` or `expectStyle`. A screenshot alone isn't an assertion. `expectVisible` passes at opacity 0, so assert a fade or blink with `expectStyle`, after `pauseAnimations` holds it in place (the `verify-app` skill's step table).
 5. Ends with a `screenshot` named after the state it shows.
 
 Targets are selector names from the same manifest; the types reject anything else. A flow that writes, like `feedback.post`, adds a row on every run, so assert on the text you wrote rather than on counts. Run the new flow with the `verify-app` skill, and read its screenshots, before you call it done.

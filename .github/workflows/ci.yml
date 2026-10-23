@@ -117,8 +117,10 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      # No --with-deps, as in unit: the apt step took 10-12 minutes of this job's 15 in 4 of 14 runs on 2026-10-23.
+      # Nothing here compares pixels (no toHaveScreenshot anywhere in the repo).
       - name: Install Chromium
-        run: pnpm exec playwright install --with-deps --only-shell chromium
+        run: pnpm exec playwright install --only-shell chromium
       - name: Start local Supabase (migrations + seed)
         run: pnpm db:start -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       - name: Generated database types match the migrations

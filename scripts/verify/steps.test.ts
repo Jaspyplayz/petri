@@ -81,6 +81,8 @@ describe("parseScript", () => {
     { action: "fill", target: "feedback-body-input", value: "hi" },
     { action: "press", target: "feedback-body-input", key: "Enter" },
     { action: "wait", ms: 200 },
+    { action: "pauseAnimations", atMs: 4750 },
+    { action: "expectStyle", target: "blob-eyelid", property: "opacity", value: "1" },
   ];
 
   it("accepts a bare list of steps", () => {
@@ -100,6 +102,10 @@ describe("parseScript", () => {
     ["a missing target", [{ action: "click" }]],
     ["an extra field", [{ action: "click", target: "x", force: true }]],
     ["a wait over 30 s", [{ action: "wait", ms: 60_000 }]],
+    ["a negative pause point", [{ action: "pauseAnimations", atMs: -1 }]],
+    ["a fractional pause point", [{ action: "pauseAnimations", atMs: 0.5 }]],
+    ["a camelCase style property", [{ action: "expectStyle", target: "x", property: "backgroundColor", value: "red" }]],
+    ["an empty style value", [{ action: "expectStyle", target: "x", property: "opacity", value: "" }]],
     ["an object without steps", { description: "nothing" }],
   ])("rejects %s", (_label, json) => {
     expect(() => parseScript("check", json)).toThrow(/^check isn't a valid verify script \(a list of steps, or \{ "description", "steps" \}\):\n✖ /);
@@ -119,6 +125,8 @@ describe("describeStep", () => {
     [{ action: "press", target: "a", key: "Enter" }, "press a Enter"],
     [{ action: "expectVisible", target: "a" }, "expectVisible a"],
     [{ action: "expectText", target: "a", text: "1" }, 'expectText a "1"'],
+    [{ action: "expectStyle", target: "a", property: "opacity", value: "1" }, 'expectStyle a opacity "1"'],
+    [{ action: "pauseAnimations", atMs: 4750 }, "pauseAnimations at 4750ms"],
     [{ action: "screenshot", name: "after" }, "screenshot after"],
     [{ action: "wait", ms: 250 }, "wait 250ms"],
   ])("describes %j", (step, text) => {
