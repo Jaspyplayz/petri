@@ -23,6 +23,9 @@ type GhPr = {
   labels: { name: string }[];
 };
 
+// A PR as the REST API returns it (GET /repos/{repo}/commits/{sha}/pulls).
+type RestPr = { number: number; state: string; head: { ref: string }; labels: { name: string }[] };
+
 function output(values: Record<string, string>): void {
   const file = process.env.GITHUB_OUTPUT;
   if (file) appendFileSync(file, Object.entries(values).map(([name, value]) => `${name}=${value.replace(/\n/g, " ")}\n`).join(""));
@@ -59,7 +62,20 @@ function main(): void {
   const evolution =
     labels.some((label) => config.agentPullRequests.labels.includes(label)) || pr.headRefName.startsWith("evo/");
   if (!evolution) {
-    output({ evolution: "false", safe: "true", reason: "not an evolution PR", issue: "" });
+    // evolution-verify is a commit status, keyed by SHA. If this commit is also the head of an evolution PR, a
+    // "not an evolution PR" success here would count for that PR too, so it isn't safe to report one.
+    const shared = (JSON.parse(gh(root, ["api", `repos/${process.env.GITHUB_REPOSITORY ?? ""}/commits/${pr.headRefOid}/pulls`])) as RestPr[]).filter(
+      (other) =>
+        other.number !== pr.number &&
+        other.state === "open" &&
+        (other.head.ref.startsWith("evo/") || other.labels.some((label) => config.agentPullRequests.labels.includes(label.name))),
+    );
+    output({
+      evolution: "false",
+      safe: String(shared.length === 0),
+      reason: shared.length === 0 ? "not an evolution PR" : `its head commit is also the head of evolution PR #${shared.map((other) => String(other.number)).join(", #")}`,
+      issue: "",
+    });
     return;
   }
   const issue = linkedIssue(pr);
@@ -69,6 +85,12 @@ function main(): void {
   }
 
   const dir = resolve(prDir);
+  // Verify the commit that was checked out. If the PR moved on since, a newer run checks the new head.
+  const head = git(dir, ["rev-parse", "HEAD"]).trim();
+  if (head !== pr.headRefOid) {
+    output({ evolution: "true", safe: "false", reason: `the PR's head is now ${pr.headRefOid}, not the checked-out ${head}`, issue: "" });
+    return;
+  }
   const base = git(dir, ["merge-base", pr.baseRefOid, pr.headRefOid]).trim();
   const raw = parseRawZ(git(dir, ["diff", "--raw", "-z", "--no-renames", base, pr.headRefOid]));
   const entries = parseNumstatZ(git(dir, ["diff", "--numstat", "-z", "--no-renames", base, pr.headRefOid]));

@@ -1,0 +1,306 @@
+name: evolution-verify
+
+# Checks an evolution PR independently of the agent that built it, and sets the required `evolution-verify` commit
+# status on the PR's head for every PR (success right away for PRs that aren't evolution PRs).
+# pull_request_target runs this file as it is on main, so a PR can't change its own check.
+#   context  trusted code: gate, is it an evolution PR, re-fetch its issue, check the diff's footprint
+#   plan     trusted code + a read-only agent: verify scripts per acceptance criterion, before any PR code runs
+#   run      no secrets: the PR's app, the planned scripts and verify:all; only the evidence leaves the job
+#   judge    a read-only agent on a fresh runner: issue, diff and evidence in, a verdict out
+#   verdict  trusted code: the sticky comment and the commit status
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evolution-verify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  PR: ${{ github.event.pull_request.number }}
+  SHA: ${{ github.event.pull_request.head.sha }}
+
+jobs:
+  context:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      statuses: write
+    outputs:
+      evolution: ${{ steps.context.outputs.evolution }}
+      open: ${{ steps.gate.outputs.open }}
+      gate: ${{ steps.gate.outputs.reason }}
+      safe: ${{ steps.context.outputs.safe }}
+      reason: ${{ steps.context.outputs.reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - name: Check out the PR (only read by git here, never run)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Gate (EVOLUTION_ENABLED, .evolution/PAUSED)
+        id: gate
+        env:
+          EVOLUTION_ENABLED: ${{ vars.EVOLUTION_ENABLED }}
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm -s evolution:gate verify
+      - name: Is it an evolution PR, and what does its issue ask for
+        id: context
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm -s evolution:pr-context "$PR" pr
+      # Only for evolution PRs: another PR with the same head commit must not be able to reset this commit's status.
+      - name: Mark evolution-verify pending
+        if: steps.context.outputs.evolution == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=pending -f context=evolution-verify -f description="Checking the PR" -f target_url="$RUN_URL" > /dev/null
+      - if: steps.context.outputs.evolution == 'true' && steps.context.outputs.safe == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evolution-context
+          path: |
+            artifacts/evolution/issue.json
+            artifacts/evolution/pr.diff
+          retention-days: 30
+
+  plan:
+    needs: context
+    if: needs.context.outputs.evolution == 'true' && needs.context.outputs.open == 'true' && needs.context.outputs.safe == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # No id-token, as in the build workflow: the action gets the read-only GITHUB_TOKEN.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - name: Check out the PR (the planner reads it; nothing runs it)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evolution-context
+          path: artifacts/evolution
+      - name: Agent settings from .evolution/
+        id: agent
+        run: pnpm -s evolution:agent-config verify-plan
+
+      - name: Planner agent (read-only)
+        id: planner
+        uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.agent.outputs.prompt }}
+          claude_args: >-
+            --model ${{ steps.agent.outputs.model }}
+            --max-turns ${{ steps.agent.outputs.max_turns }}
+            --allowedTools "Read,Glob,Grep"
+            --disallowedTools "Bash,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch,Task"
+            --json-schema '${{ steps.agent.outputs.json_schema }}'
+
+      - name: Check the plan and write the verify scripts
+        env:
+          PLAN: ${{ steps.planner.outputs.structured_output }}
+        run: |
+          printf '%s' "$PLAN" > "$RUNNER_TEMP/plan.json"
+          pnpm -s evolution:verify-plan "$RUNNER_TEMP/plan.json" artifacts/evolution/issue.json "$RUNNER_TEMP/verify-scripts"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evolution-verify-scripts
+          path: ${{ runner.temp }}/verify-scripts/
+          retention-days: 30
+
+  run:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The PR's code runs here, so the job has no secrets, and it never saves a cache into main's cache scope (setup's
+    # cache is off, app-stack only restores). No evolution job restores the pnpm store either: code left running here
+    # could read a later action step's runtime token and write a cache entry, and jobs that hold secrets mustn't load it.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evolution-verify-scripts
+          path: ${{ runner.temp }}/verify-scripts
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - uses: ./.github/actions/app-stack
+
+      - name: The planned scripts, then verify:all (failures are evidence for the judge, not a stop)
+        run: |
+          evidence="$RUNNER_TEMP/evidence"
+          mkdir -p "$evidence"
+          for script in "$RUNNER_TEMP"/verify-scripts/*.json; do
+            pnpm verify:script "$script" || echo "::warning::$(basename "$script") failed"
+          done
+          pnpm verify:all || echo "::warning::verify:all failed"
+          for run in artifacts/verify/*/script.*; do
+            name=$(basename "$run")
+            mv "$run" "$evidence/${name#script.}"
+          done
+          mapfile -t summaries < <(find artifacts/verify -mindepth 2 -maxdepth 2 -name summary.md)
+          if [ "${#summaries[@]}" -ne 1 ]; then
+            echo "::error::expected one verify:all run, got ${#summaries[@]}"
+            exit 1
+          fi
+          mv "$(dirname "${summaries[0]}")" "$evidence/all"
+          find "$evidence" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | sort
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evolution-evidence
+          path: ${{ runner.temp }}/evidence/
+          retention-days: 30
+
+  judge:
+    needs: run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      verdict: ${{ steps.judge.outputs.structured_output }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evolution-context
+          path: artifacts/evolution
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evolution-evidence
+          path: artifacts/evolution/evidence
+      - name: Agent settings from .evolution/
+        id: agent
+        run: pnpm -s evolution:agent-config verify-judge
+
+      - name: Judge agent (read-only)
+        id: judge
+        uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.agent.outputs.prompt }}
+          claude_args: >-
+            --model ${{ steps.agent.outputs.model }}
+            --max-turns ${{ steps.agent.outputs.max_turns }}
+            --allowedTools "Read,Glob,Grep"
+            --disallowedTools "Bash,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch,Task"
+            --json-schema '${{ steps.agent.outputs.json_schema }}'
+
+  verdict:
+    needs: [context, plan, run, judge]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: What to report
+        id: decide
+        env:
+          CONTEXT: ${{ needs.context.result }}
+          EVOLUTION: ${{ needs.context.outputs.evolution }}
+          OPEN: ${{ needs.context.outputs.open }}
+          GATE: ${{ needs.context.outputs.gate }}
+          SAFE: ${{ needs.context.outputs.safe }}
+          REASON: ${{ needs.context.outputs.reason }}
+          JOBS: ${{ needs.plan.result }} ${{ needs.run.result }} ${{ needs.judge.result }}
+        run: |
+          report() { printf 'state=%s\ndescription=%s\n' "$1" "${2:0:139}" >> "$GITHUB_OUTPUT"; }
+          if [ "$CONTEXT" != "success" ]; then report failure "Couldn't read the PR or its issue"
+          elif [ "$EVOLUTION" != "true" ] && [ "$SAFE" = "true" ]; then report success "Not an evolution PR"
+          elif [ "$EVOLUTION" != "true" ]; then echo "skip=$REASON" >> "$GITHUB_OUTPUT"
+          elif [ "$OPEN" != "true" ]; then report failure "Not verified, the loop is off: $GATE"
+          elif [ "$SAFE" != "true" ]; then report failure "$REASON"
+          elif [ "$JOBS" != "success success success" ]; then report failure "The verifier didn't finish (plan, run, judge: $JOBS)"
+          else echo "judge=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.decide.outputs.judge == 'true'
+        uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - if: steps.decide.outputs.judge == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: evolution-context
+          path: artifacts/evolution
+      - name: The verdict (sticky comment; fails unless every criterion passed and nothing else changed)
+        if: steps.decide.outputs.judge == 'true'
+        id: verdict
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERDICT: ${{ needs.judge.outputs.verdict }}
+        run: |
+          printf '%s' "$VERDICT" > "$RUNNER_TEMP/verdict.json"
+          pnpm -s evolution:verdict "$RUNNER_TEMP/verdict.json" artifacts/evolution/issue.json "$PR" "$SHA"
+
+      - name: Set the evolution-verify status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JUDGED: ${{ steps.decide.outputs.judge }}
+          OUTCOME: ${{ steps.verdict.outcome }}
+          STATE: ${{ steps.decide.outputs.state }}
+          DESCRIPTION: ${{ steps.decide.outputs.description }}
+          SKIP: ${{ steps.decide.outputs.skip }}
+        run: |
+          if [ -n "$SKIP" ]; then
+            echo "::error::No evolution-verify status for this PR: $SKIP"
+            exit 1
+          fi
+          if [ "$JUDGED" = "true" ]; then
+            if [ "$OUTCOME" = "success" ]; then STATE=success DESCRIPTION="Every acceptance criterion passed"
+            else STATE=failure DESCRIPTION="The verifier found a problem, see the PR comment"
+            fi
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state="$STATE" -f context=evolution-verify -f description="$DESCRIPTION" -f target_url="$RUN_URL" > /dev/null
+          echo "evolution-verify: $STATE ($DESCRIPTION)"
+          [ "$STATE" = "success" ]

@@ -26,6 +26,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+        with:
+          cache: "false"
 
       - name: Gate (EVOLUTION_ENABLED, .evolution/PAUSED, caps)
         id: gate

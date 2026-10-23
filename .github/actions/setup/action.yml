@@ -3,7 +3,7 @@ description: Install pnpm (version from package.json), Node 24 and the locked de
 
 inputs:
   cache:
-    description: Use the pnpm store cache (restored, then saved at the end of the job). Jobs that run agent or PR code on the default branch pass "false", so they can't write a cache that trusted jobs restore later.
+    description: Use the pnpm store cache (restored, then saved at the end of the job). Every evolution job passes "false". Jobs that run agent or PR code mustn't write a cache that trusted jobs restore, and jobs that hold secrets don't restore one that code left running in such a job could have written.
     default: "true"
 
 runs:
