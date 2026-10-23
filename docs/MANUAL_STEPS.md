@@ -16,14 +16,12 @@ Status key: ⬜ todo · ✅ done
 6. ✅ **Claude GitHub App + Vercel token.** `/install-github-app` installed the app (workflows merged in PR #4) and stored `CLAUDE_CODE_OAUTH_TOKEN` directly as a repo secret, so `.env.setup` doesn't need it. Claude created the empty Vercel project `petri` in Jaspy's Team so the token could be limited to it. `VERCEL_TOKEN` (`petri-guardian`, Jaspy's Team, petri only, no expiry) is in `.env.setup`, and reading the project and its deployments returned 200 (2026-10-22).
 7. ✅ **Link and push** (2026-10-22). The Vercel project `jaspy-s-team/petri` is linked and connected to `Jaspyplayz/petri` (Vercel GitHub app, this repo only). `pnpm setup:secrets --apply` pushed 22 values: GitHub has 7 secrets plus the variables `SENTRY_ORG`, `SENTRY_PROJECT` and `EVOLUTION_ENABLED=false`. Vercel has 14 env entries, and the service-role key and salt are production-only and hidden. Branch protection and auto-merge are configured by Claude in Phase 6, and then you only check Settings → Branches.
 
+8. ✅ **Finish Phase 2** (2026-10-22). PR #8 is merged, and the review fixes went in from an `EVOLUTION_HUMAN=1` session as #17, #18 and #19.
+
 ## To do
 
-8. ⬜ **Finish Phase 2 (now).**
-   - **Squash-merge PR #8** once `ci-ok` is green. Until then `guardrails.yml` can't run on any PR, because `pull_request_target` always uses `main`'s copy.
-   - **Start Claude Code with `EVOLUTION_HUMAN=1`:** `$env:EVOLUTION_HUMAN = "1"; claude --continue` in PowerShell, or `EVOLUTION_HUMAN=1 claude --continue` in bash.
-   - The hooks now block Claude from editing guardrail files, and every remaining review fix (PROGRESS.md, step 2.11) is in one. Claude does those fixes in a follow-up PR for you to review.
-   - Afterwards, start Claude normally again.
-9. ⬜ **Go live (Phase 9, after everything above).** Open the Vercel production URL and check the three pages load, then run `pnpm evolution:resume` (or set the repo variable `EVOLUTION_ENABLED=true` in the GitHub app).
+9. ⬜ **Keep running the setup phases (3–9) in an `EVOLUTION_HUMAN=1` session.** Most of them write protected files (`scripts/`, `.claude/`, `package.json`, workflows, `CLAUDE.md`), which the hooks block in a normal session. Start Claude Code with `$env:EVOLUTION_HUMAN = "1"; claude --continue` in PowerShell, or `EVOLUTION_HUMAN=1 claude --continue` in bash. The evolution agents never run with it, and CI still fails agent PRs that touch protected paths. Start Claude normally again after the Phase 9 handoff.
+10. ⬜ **Go live (Phase 9, after everything above).** Open the Vercel production URL and check the three pages load, then run `pnpm evolution:resume` (or set the repo variable `EVOLUTION_ENABLED=true` in the GitHub app).
 
 ## Good to know (Phase 2 guardrails)
 
