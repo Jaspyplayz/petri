@@ -1,6 +1,6 @@
 # PROGRESS
 
-**Current phase:** 4 not started. Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 4 in progress (`pnpm featuremap` and `FEATURE_MAP.md` done; the CI check, the CLAUDE.md rule and the skill are next). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
 **Next action:** Phase 4 (feature map), from an up-to-date `main`, in a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9), because it writes protected files (`scripts/`, `.claude/skills/maintain-feature-map/`, CI). Use the `verify-app` skill for any UI change.
 
@@ -37,7 +37,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 4 — Feature map
 
-- [ ] 4.1 Manifest type + manifests · [ ] 4.2 `pnpm featuremap` → FEATURE_MAP.md · [ ] 4.3 CI `featuremap` job · [ ] 4.4 CLAUDE.md soft rule · [ ] 4.5 `maintain-feature-map` skill
+- [x] 4.1 Manifest type + manifests (since Phase 1) · [x] 4.2 `pnpm featuremap` → FEATURE_MAP.md · [ ] 4.3 CI `featuremap` job · [ ] 4.4 CLAUDE.md soft rule · [ ] 4.5 `maintain-feature-map` skill
 - [ ] Exit: renaming a testid without updating the manifest fails CI
 
 ## Phase 5 — CLAUDE.md + trust ladder
@@ -67,6 +67,19 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 4: `pnpm featuremap` (2026-10-22)
+
+- **4.1:** `src/shared/lib/feature-manifest.ts` has had every field Phase 4 lists since Phase 1, and all four manifests fill them in. The only change is blob's `howToReach`: it listed an alternative as step 2 ("Or click 'Blob'…"), which reads wrong once the map numbers the steps.
+- **4.2:** `pnpm featuremap` printed `featuremap: wrote FEATURE_MAP.md (analytics, blob, feedback, timeline)`. The file has:
+  - an overview table: feature, routes, where it is on screen, how to reach it, `data-testid`s, flows and risk
+  - a mermaid page layout: the top navigation, a box per route holding its features, and analytics in "No page of its own"
+  - a section per feature, with its selector table and the numbered steps of each flow
+- **Tests:** `render.test.ts` checks the exact output for a two-feature fixture, including:
+  - escaping of `|` in tables and `"` in mermaid
+  - route order (`/` first) and a feature that appears on two routes
+  - GitHub heading anchors
+  - that the real manifests render the same way twice
 
 ### Phase 3: the `verify-app` skill (2026-10-22)
 

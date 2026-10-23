@@ -1,0 +1,155 @@
+import type { FeatureManifest, FlowStep } from "@/shared/lib/feature-manifest";
+
+export const featureMapFile = "FEATURE_MAP.md";
+
+function cell(text: string): string {
+  return text.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+}
+
+function code(text: string): string {
+  return `\`${text}\``;
+}
+
+export function headingAnchor(heading: string): string {
+  return heading
+    .toLowerCase()
+    .replace(/[^a-z0-9 _-]/g, "")
+    .replace(/ /g, "-");
+}
+
+function featureHeading(manifest: FeatureManifest): string {
+  return `${manifest.title} (${code(manifest.id)})`;
+}
+
+function list(items: readonly string[], none: string): string {
+  return items.length === 0 ? none : items.map(code).join(", ");
+}
+
+function routesOf(manifests: readonly FeatureManifest[]): string[] {
+  const routes = [...new Set(manifests.flatMap((manifest) => manifest.routes))];
+  return routes.sort((a, b) => (a === "/" ? -1 : b === "/" ? 1 : a.localeCompare(b)));
+}
+
+function describeStep(step: FlowStep<string>): string {
+  switch (step.action) {
+    case "goto":
+      return `goto ${code(step.path)}`;
+    case "click":
+    case "expectVisible":
+      return `${step.action} ${code(step.target)}`;
+    case "fill":
+      return `fill ${code(step.target)} with ${JSON.stringify(step.value)}`;
+    case "press":
+      return `press ${step.key} in ${code(step.target)}`;
+    case "expectText":
+      return `expectText ${code(step.target)} contains ${JSON.stringify(step.text)}`;
+    case "screenshot":
+      return `screenshot ${JSON.stringify(step.name)}`;
+    case "wait":
+      return `wait ${String(step.ms)} ms`;
+  }
+}
+
+function overview(manifests: readonly FeatureManifest[]): string[] {
+  return [
+    "| Feature | Routes | Where it is on screen | How to reach it | Selectors (`data-testid`) | Flows | Risk |",
+    "|---|---|---|---|---|---|---|",
+    ...manifests.map((manifest) =>
+      [
+        "",
+        `[${cell(featureHeading(manifest))}](#${headingAnchor(featureHeading(manifest))})`,
+        list(manifest.routes, "none"),
+        cell(manifest.uiLocation),
+        cell(manifest.howToReach.join(" → ")),
+        list(Object.values(manifest.selectors), "none"),
+        list(Object.keys(manifest.flows).map((flow) => `${manifest.id}.${flow}`), "none"),
+        manifest.riskLevel,
+        "",
+      ].join(" | ").trim(),
+    ),
+  ];
+}
+
+function mermaidLabel(text: string): string {
+  return `"${text.replace(/"/g, "#quot;")}"`;
+}
+
+function layout(manifests: readonly FeatureManifest[]): string[] {
+  const routes = routesOf(manifests);
+  const node = (manifest: FeatureManifest): string => `  feature_${manifest.id}[${mermaidLabel(`${manifest.title} (${manifest.id})`)}]`;
+  const unrouted = manifests.filter((manifest) => manifest.routes.length === 0);
+  return [
+    "```mermaid",
+    "flowchart TB",
+    `  nav[${mermaidLabel("Top navigation (every page)")}]`,
+    ...routes.flatMap((route, index) => [
+      `  subgraph page_${String(index)}[${mermaidLabel(route)}]`,
+      ...manifests.filter((manifest) => manifest.routes.includes(route)).map((manifest) => `  ${node(manifest)}`),
+      "  end",
+      `  nav --> page_${String(index)}`,
+    ]),
+    ...(unrouted.length === 0
+      ? []
+      : [`  subgraph unrouted[${mermaidLabel("No page of its own")}]`, ...unrouted.map((manifest) => `  ${node(manifest)}`), "  end"]),
+    "```",
+  ];
+}
+
+function section(manifest: FeatureManifest): string[] {
+  const selectors = Object.entries(manifest.selectors);
+  const flows = Object.entries(manifest.flows);
+  return [
+    `## ${featureHeading(manifest)}`,
+    "",
+    manifest.summary,
+    "",
+    `- **Folder:** ${code(`src/features/${manifest.id}/`)}`,
+    `- **Routes:** ${list(manifest.routes, "none (it has no page of its own)")}`,
+    `- **Where it is on screen:** ${manifest.uiLocation}`,
+    `- **Keyboard shortcuts:** ${
+      manifest.keyboardShortcuts.length === 0
+        ? "none"
+        : manifest.keyboardShortcuts.map((shortcut) => `${code(shortcut.keys)} ${shortcut.description}`).join("; ")
+    }`,
+    `- **Data tables:** ${list(manifest.dataTables, "none")}`,
+    `- **Risk level:** ${manifest.riskLevel}`,
+    "",
+    "How to reach it:",
+    "",
+    ...manifest.howToReach.map((step, index) => `${String(index + 1)}. ${step}`),
+    "",
+    ...(selectors.length === 0
+      ? ["No selectors.", ""]
+      : ["| Selector | `data-testid` |", "|---|---|", ...selectors.map(([name, testId]) => `| ${name} | ${code(testId)} |`), ""]),
+    ...(flows.length === 0
+      ? ["No flows.", ""]
+      : flows.flatMap(([name, flow]) => [
+          `### ${code(`${manifest.id}.${name}`)}`,
+          "",
+          `${flow.description} Run it with ${code(`pnpm verify:flow ${manifest.id}.${name}`)}.`,
+          "",
+          ...flow.steps.map((step, index) => `${String(index + 1)}. ${describeStep(step)}`),
+          "",
+        ])),
+  ];
+}
+
+export function renderFeatureMap(manifests: readonly FeatureManifest[]): string {
+  return [
+    "# Feature map",
+    "",
+    "<!-- Generated by `pnpm featuremap` from each src/features/*/feature.manifest.ts. Don't edit it by hand: CI fails when it's out of date. -->",
+    "",
+    "Read this before any task. It maps what's on screen to a feature folder, its `data-testid` selectors and the flows that `pnpm verify:flow <feature>.<flow>` runs.",
+    "",
+    "## Features",
+    "",
+    ...overview(manifests),
+    "",
+    "## Page layout",
+    "",
+    ...layout(manifests),
+    "",
+    ...manifests.flatMap(section),
+  ].join("\n");
+}
