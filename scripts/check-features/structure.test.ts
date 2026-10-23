@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { featureFiles } from "../new-feature/templates";
-import { checkFeatures, type FeatureFolder, manifestIdsOf } from "./structure";
+import { checkFeatures, type FeatureFolder } from "./structure";
 
 function generatedFolder(id: string): FeatureFolder {
   const prefix = `src/features/${id}/`;
@@ -75,7 +75,7 @@ describe("checkFeatures", () => {
       'src/features/sparkles/feature.manifest.ts: manifest id "glitter" must match the folder name "sparkles"',
     ]);
     expect(checkFeatures({ folders: [twoManifests], strayFiles: [], registryIds: ["sparkles"] })).toContain(
-      "src/features/sparkles/feature.manifest.ts: must export exactly one manifest (found 2)",
+      "src/features/sparkles/feature.manifest.ts: must define exactly one manifest with defineFeature (found 2)",
     );
   });
 
@@ -105,15 +105,3 @@ describe("checkFeatures", () => {
   });
 });
 
-describe("manifestIdsOf", () => {
-  it("finds manifest-shaped exports only", () => {
-    expect(
-      manifestIdsOf({
-        blobManifest: { id: "blob", flows: {}, selectors: {}, riskLevel: "low" },
-        helper: () => 1,
-        notAManifest: { id: "x" },
-        nothing: null,
-      }),
-    ).toEqual(["blob"]);
-  });
-});

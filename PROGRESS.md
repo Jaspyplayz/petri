@@ -77,7 +77,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 An independent fresh-context review of f82cc71 and the automated security reviews after f82cc71 found the gaps below. Every fix is in a protected path, so the live hooks block agent edits, which is the intended behaviour. They wait for a session started with `EVOLUTION_HUMAN=1`. "V" means the reviewer reproduced it.
 
-CI (the hard gate):
+CI (the hard gate). **1, 4–8, the payload half of 9, the `database.types.ts` item in 2 and the nits in 10 are closed in `fix/phase-2-ci-gate`. The rest of 2, 3 and the rest of 10 (lint side doors, boundaries, test quality) are for the next PR.** Each closed item has a test in `scripts/**/*.test.ts`. 8 adds the `edited` trigger, but not the `branches: [main]` filter (see decisions.md).
 
 1. **(V) PR code runs before the checks.** `next typegen` (in `lint`/`typecheck`) loads the unprotected `next.config.ts`, which can rewrite `eslint.config.mjs` on the runner while the git diff stays clean. `check-features.ts` imports agent-written manifests, `registry.ts` and `scripts/new-feature/templates.ts`, and a `process.exit(0)` in any of them passes. Fix: protect `next.config.*` and `scripts/**`, and read manifests statically.
 2. **(V) Lint and fixture side doors.**
