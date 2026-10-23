@@ -5,7 +5,7 @@ export const feedbackManifest = defineFeature({
   title: "Feedback board",
   summary: "Anonymous visitors post ideas or bug reports (max 280 characters), upvote others and follow each item's status, sorted by top votes or newest.",
   routes: ["/feedback"],
-  uiLocation: "The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge and issue/PR links).",
+  uiLocation: "The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, and issue/PR links).",
   howToReach: ["Open /", "Click 'Feedback' in the top navigation (the middle one of the three links on the right)"],
   keyboardShortcuts: [],
   selectors: {
@@ -15,6 +15,7 @@ export const feedbackManifest = defineFeature({
     empty: "feedback-empty",
     item: "feedback-item",
     itemBody: "feedback-item-body",
+    itemAge: "feedback-item-age",
     itemStatus: "feedback-item-status",
     itemIssueLink: "feedback-item-issue-link",
     itemPrLink: "feedback-item-pr-link",
@@ -54,6 +55,21 @@ export const feedbackManifest = defineFeature({
         { action: "expectText", target: "formMessage", text: "Thanks! Your feedback is on the board." },
         { action: "expectText", target: "list", text: "Verification flow: give the blob a tiny hat" },
         { action: "screenshot", name: "after-post" },
+      ],
+    },
+    age: {
+      description: "Each feedback card shows how long ago it was posted; a new post reads 'just now'.",
+      writes: true,
+      steps: [
+        { action: "goto", path: "/feedback?sort=new" },
+        { action: "expectVisible", target: "item" },
+        { action: "expectVisible", target: "itemAge" },
+        { action: "fill", target: "bodyInput", value: "Age label check" },
+        { action: "click", target: "categoryIdea" },
+        { action: "click", target: "submit" },
+        { action: "expectText", target: "list", text: "Age label check" },
+        { action: "expectText", target: "itemAge", text: "just now" },
+        { action: "screenshot", name: "age-labels" },
       ],
     },
     vote: {
