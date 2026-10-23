@@ -4,8 +4,9 @@ import { agentConfig, agents, githubOutputs, type Agent } from "./evolution/agen
 import { builderJsonSchema } from "./evolution/build";
 import { readEvolutionConfig } from "./evolution/config";
 import { triageJsonSchema } from "./evolution/triage-output";
+import { planJsonSchema, verdictJsonSchema } from "./evolution/verdict";
 
-// pnpm evolution:agent-config <triage|build|verify> writes model, max_turns, prompt (from .evolution/prompts/<agent>.md)
+// pnpm evolution:agent-config <agent> writes model, max_turns, prompt (from .evolution/prompts/<agent>.md)
 // and json_schema to $GITHUB_OUTPUT, so a workflow never hard-codes what lives in .evolution/.
 const root = join(import.meta.dirname, "..");
 
@@ -14,7 +15,12 @@ function main(): void {
   if (!agents.some((agent) => agent === name)) throw new Error(`usage: pnpm evolution:agent-config <${agents.join("|")}>`);
   const agent = name as Agent;
   const prompt = readFileSync(join(root, ".evolution", "prompts", `${agent}.md`), "utf8");
-  const schemas: Record<Agent, string | undefined> = { triage: triageJsonSchema(), build: builderJsonSchema(), verify: undefined };
+  const schemas: Record<Agent, string> = {
+    triage: triageJsonSchema(),
+    build: builderJsonSchema(),
+    "verify-plan": planJsonSchema(),
+    "verify-judge": verdictJsonSchema(),
+  };
   const config = agentConfig(agent, readEvolutionConfig(root), prompt, schemas[agent]);
   const output = process.env.GITHUB_OUTPUT;
   const values = { model: config.model, max_turns: String(config.maxTurns), prompt: config.prompt, json_schema: config.jsonSchema ?? "" };

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { agentConfig, githubOutputs } from "./agent-config";
+import { agentConfig, agents, githubOutputs } from "./agent-config";
 import { readEvolutionConfig } from "./config";
 
 const root = join(import.meta.dirname, "..", "..");
@@ -9,12 +9,16 @@ const root = join(import.meta.dirname, "..", "..");
 describe("agentConfig", () => {
   it("takes the model and turn limit from .evolution/config.json", () => {
     const config = readEvolutionConfig(root);
-    expect(agentConfig("verify", config, "prompt", undefined)).toEqual({
+    expect(agentConfig("verify-judge", config, "prompt", undefined)).toEqual({
       model: config.models.verify,
       maxTurns: config.maxAgentTurns.verify,
       prompt: "prompt",
       jsonSchema: undefined,
     });
+  });
+
+  it("has a prompt for every agent", () => {
+    for (const agent of agents) expect(existsSync(join(root, ".evolution", "prompts", `${agent}.md`)), agent).toBe(true);
   });
 
   it("has a triage prompt that says the feedback is data", () => {
