@@ -20,6 +20,13 @@ export const verifyStepSchema = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal("press"), target: testId, key: z.string().min(1) }),
   z.strictObject({ action: z.literal("expectVisible"), target: testId }),
   z.strictObject({ action: z.literal("expectText"), target: testId, text: z.string().min(1) }),
+  z.strictObject({
+    action: z.literal("expectStyle"),
+    target: testId,
+    property: z.string().regex(/^[a-z][a-z-]*$/, "a CSS property in kebab-case, like opacity or background-color"),
+    value: z.string().min(1),
+  }),
+  z.strictObject({ action: z.literal("pauseAnimations"), atMs: z.number().int().min(0).max(600_000) }),
   z.strictObject({ action: z.literal("screenshot"), name: z.string().min(1) }),
   z.strictObject({ action: z.literal("wait"), ms: z.number().int().min(0).max(30_000) }),
 ]);
@@ -77,6 +84,10 @@ export function describeStep(step: VerifyStep): string {
       return `press ${step.target} ${step.key}`;
     case "expectText":
       return `expectText ${step.target} ${JSON.stringify(step.text)}`;
+    case "expectStyle":
+      return `expectStyle ${step.target} ${step.property} ${JSON.stringify(step.value)}`;
+    case "pauseAnimations":
+      return `pauseAnimations at ${String(step.atMs)}ms`;
     case "screenshot":
       return `screenshot ${step.name}`;
     case "wait":
