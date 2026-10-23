@@ -47,6 +47,24 @@ async function perform(page: Page, step: VerifyStep, baseUrl: string): Promise<v
     case "expectText":
       await page.getByTestId(step.target).filter({ hasText: step.text }).first().waitFor({ state: "visible" });
       return;
+    case "expectStyle": {
+      const element = await page.getByTestId(step.target).first().elementHandle();
+      await page.waitForFunction(
+        ([node, property, value]) => getComputedStyle(node as Element).getPropertyValue(property) === value,
+        [element, step.property, step.value] as const,
+      );
+      return;
+    }
+    case "pauseAnimations":
+      // Holds every running CSS animation and transition at atMs into its timeline, so a brief state (a blink)
+      // can be asserted and screenshotted instead of caught by timing a wait.
+      await page.evaluate((atMs) => {
+        for (const animation of document.getAnimations()) {
+          animation.pause();
+          animation.currentTime = atMs;
+        }
+      }, step.atMs);
+      return;
     case "screenshot":
       return;
     case "wait":
@@ -60,6 +78,13 @@ async function explainFailure(page: Page, step: VerifyStep, error: unknown): Pro
   const matches = page.getByTestId(step.target);
   const count = await matches.count().catch(() => 0);
   if (count === 0) return `no element with data-testid="${step.target}" on the page`;
+  if (step.action === "expectStyle") {
+    const actual = await matches
+      .first()
+      .evaluate((node, property) => getComputedStyle(node).getPropertyValue(property), step.property)
+      .catch(() => null);
+    return `expected data-testid="${step.target}" to have ${step.property} ${JSON.stringify(step.value)}; it has ${JSON.stringify(actual ?? "")}`;
+  }
   if (step.action !== "expectText") return firstLine(error);
   const shown = await matches.first().textContent({ timeout: 1_000 }).catch(() => null);
   return `expected data-testid="${step.target}" to contain ${JSON.stringify(step.text)}; it shows ${JSON.stringify((shown ?? "").trim().slice(0, 200))}`;

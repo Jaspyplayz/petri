@@ -69,6 +69,8 @@ A script is a JSON list of steps, or `{ "description": "…", "steps": [ … ] }
 | `fill` | `target`, `value` | Replaces the field's text. |
 | `press` | `target`, `key` | Playwright key names: `Enter`, `Escape`, `ArrowDown` and so on. |
 | `expectText` | `target`, `text` | Waits for an element with that testid whose text contains `text`. |
+| `expectStyle` | `target`, `property`, `value` | Waits until the element's computed `property` (kebab-case) equals `value` exactly, as the browser reports it: `"1"` for opacity, `"rgb(47, 143, 107)"` for a colour. |
+| `pauseAnimations` | `atMs` | Pauses every running CSS animation and transition at `atMs` into its timeline. Use it for brief states, such as a blink at 94–97% of a 5 s loop: `pauseAnimations` 4750, then `expectStyle`, then `screenshot`. Don't time a `wait` for it. |
 | `screenshot` | `name` | Labels the step. Every step is screenshotted anyway. |
 | `wait` | `ms` | At most 30000. Prefer `expectVisible` or `expectText`. |
 

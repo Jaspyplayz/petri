@@ -43,6 +43,10 @@ function describeStep(step: FlowStep<string>): string {
       return `press ${step.key} in ${code(step.target)}`;
     case "expectText":
       return `expectText ${code(step.target)} contains ${JSON.stringify(step.text)}`;
+    case "expectStyle":
+      return `expectStyle ${code(step.target)} has ${step.property} ${JSON.stringify(step.value)}`;
+    case "pauseAnimations":
+      return `pauseAnimations at ${String(step.atMs)} ms`;
     case "screenshot":
       return `screenshot ${JSON.stringify(step.name)}`;
     case "wait":

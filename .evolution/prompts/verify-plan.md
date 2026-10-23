@@ -13,7 +13,8 @@ You plan an independent check of an evolution PR. Another agent built it, and yo
 
 For every acceptance criterion, return at least one script (`criterion` is its number) that a browser can run to show it holds. Use your own steps from the criterion's wording, not the PR's flows.
 
-- Each step is one of `goto` (`path` starting with `/`), `click`, `fill` (`value`), `press` (`key`), `expectVisible`, `expectText` (`text`), `screenshot` (`name`), `wait` (`ms`, at most 30000).
+- Each step is one of `goto` (`path` starting with `/`), `click`, `fill` (`value`), `press` (`key`), `expectVisible`, `expectText` (`text`), `expectStyle` (`property` in kebab-case, `value` as the browser computes it, like `"1"` for opacity), `pauseAnimations` (`atMs`), `screenshot` (`name`), `wait` (`ms`, at most 30000).
+- For a brief animated state (a blink, a flash), `pauseAnimations` at a point inside it, assert it with `expectStyle`, then `screenshot`. `expectVisible` passes at opacity 0, and a timed `wait` misses short states.
 - `target` is a **`data-testid` value** from the feature map (for example `blob-poke-button`), not a selector name.
 - Start with `goto`. End with an `expect…` that proves the criterion, and take a `screenshot` where a reviewer should look.
 - State lives in the browser (localStorage) or the local database, and each script starts on a fresh page. Set up what the criterion needs inside the script.
