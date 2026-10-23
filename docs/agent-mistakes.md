@@ -142,3 +142,11 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** `build.md` never pointed to `pauseAnimations`/`expectStyle`, and the builder couldn't run the verify tool, so nothing caught the timed check. `evolution-verify` judged the change with its own flows, which did pause (9/10), so the PR's real behaviour was right and only its flow was wrong.
 - **Category:** flaky verification (caught by post-merge)
 - **Fix rung:** prompt (#64) and the flow itself (pause at 1000 and 3350 ms, `expectStyle` on `visibility`; 3 of 3 pass). Why the builder's verify commands were denied is still open.
+
+## 2026-10-23 · The builder's `--allowedTools` never allowed a verify command
+
+- **What happened:** The build agent couldn't run `pnpm verify:flow` in any build, so no builder ever reproduced or verified its own change in a browser, and the #63 flow shipped unrun.
+- **Evidence:** A local headless run with the exact list from `evolution-build.yml` (`--setting-sources project`) refused all five ways of running a flow, including a plain `pnpm verify:flow blob.poke`. With `Bash(pnpm verify:flow:*)` or `Bash(pnpm verify:flow *)` the same command ran, and so did an exact rule from the same list.
+- **Root cause:** `Bash(pnpm verify:*)` matches `pnpm verify` followed by a space, not `pnpm verify:flow`. The rule was written when the workflow was built and never tested against a real command, and the builder's report only said "needed approval".
+- **Category:** permission config that was never exercised (caught while looking into the post-merge failure)
+- **Fix rung:** config. The list names each verify script, with a comment on the matching rule. The headless test is how to check a change to it.

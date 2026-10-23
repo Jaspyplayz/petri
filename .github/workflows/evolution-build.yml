@@ -120,10 +120,12 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           prompt: ${{ steps.agent.outputs.prompt }}
+          # A `:*` rule matches its prefix followed by a space, so `Bash(pnpm verify:*)` never allowed
+          # `pnpm verify:flow …`, and the builder of #63 couldn't run a single flow. Name each verify script.
           claude_args: >-
             --model ${{ steps.agent.outputs.model }}
             --max-turns ${{ steps.agent.outputs.max_turns }}
-            --allowedTools "Read,Glob,Grep,Edit,MultiEdit,Write,TodoWrite,Task,Bash(pnpm check),Bash(pnpm verify:*),Bash(pnpm featuremap),Bash(pnpm new:feature:*),Bash(pnpm test:*),Bash(pnpm typecheck),Bash(pnpm lint),Bash(git status),Bash(git diff:*)"
+            --allowedTools "Read,Glob,Grep,Edit,MultiEdit,Write,TodoWrite,Task,Bash(pnpm check),Bash(pnpm verify:flow:*),Bash(pnpm verify:script:*),Bash(pnpm verify:all),Bash(pnpm verify:compare:*),Bash(pnpm featuremap),Bash(pnpm new:feature:*),Bash(pnpm test:*),Bash(pnpm typecheck),Bash(pnpm lint),Bash(git status),Bash(git diff:*)"
             --disallowedTools "WebFetch,WebSearch"
             --json-schema '${{ steps.agent.outputs.json_schema }}'
 
