@@ -84,4 +84,16 @@ describe("renderVerdictComment", () => {
     expect(body).toContain("ok @​octocat");
     expect(body).toContain("- the diff does more than the issue asked for");
   });
+
+  it("shows the judge's text without links, images, HTML or autolinked URLs", () => {
+    const body = renderVerdictComment({
+      verdict: verdict({ summary: "See ![x](https://evil.example/t.png) <img src=x> [here](http://a.b) www.c.d # Big" }),
+      criteria: ["The blob wears a hat", "The hat stays"],
+      passed: true,
+      reasons: [],
+      runUrl: "https://github.com/o/r/actions/runs/1",
+      sha: "a".repeat(40),
+    });
+    expect(body).toContain("See \\!\\[x\\]\\(https:​//evil.example/t.png\\) \\<img src=x\\> \\[here\\]\\(http:​//a.b\\) www​.c.d \\# Big");
+  });
 });

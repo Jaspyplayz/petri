@@ -13,7 +13,8 @@ export type VerifyRun = {
 const testId = z.string().min(1);
 
 export const verifyStepSchema = z.discriminatedUnion("action", [
-  z.strictObject({ action: z.literal("goto"), path: z.string().startsWith("/") }),
+  // Same-origin paths only: "//host" and "/\host" would leave the app, and so could a backslash or whitespace.
+  z.strictObject({ action: z.literal("goto"), path: z.string().regex(/^\/(?![/\\])[^\\\s]*$/, "a path on this app, like /feedback") }),
   z.strictObject({ action: z.literal("click"), target: testId }),
   z.strictObject({ action: z.literal("fill"), target: testId, value: z.string() }),
   z.strictObject({ action: z.literal("press"), target: testId, key: z.string().min(1) }),

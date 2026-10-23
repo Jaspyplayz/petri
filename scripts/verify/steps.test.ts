@@ -89,6 +89,8 @@ describe("parseScript", () => {
     ["an empty list", []],
     ["an unknown action", [{ action: "hover", target: "x" }]],
     ["a relative goto path", [{ action: "goto", path: "feedback" }]],
+    ["a goto to another host", [{ action: "goto", path: "//evil.example/x" }]],
+    ["a goto with a backslash", [{ action: "goto", path: "/\\evil.example" }]],
     ["a missing target", [{ action: "click" }]],
     ["an extra field", [{ action: "click", target: "x", force: true }]],
     ["a wait over 30 s", [{ action: "wait", ms: 60_000 }]],

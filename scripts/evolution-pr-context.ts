@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadGuardrailsConfig } from "./check-pr/config";
 import { parseNumstatZ } from "./check-pr/git";
-import { prDataFromBody } from "./evolution/build";
+import { branchName, prDataFromBody, type BuiltIssue } from "./evolution/build";
 import { fetchIssue, gh, issueNumberArg } from "./evolution/github-issue";
 import { parseRawZ, patchProblems } from "./evolution/patch";
 
@@ -13,7 +13,15 @@ import { parseRawZ, patchProblems } from "./evolution/patch";
 const root = join(import.meta.dirname, "..");
 const usage = "usage: pnpm evolution:pr-context <pr number> <pr checkout dir>";
 
-type GhPr = { number: number; body: string; headRefName: string; headRefOid: string; baseRefOid: string; labels: { name: string }[] };
+type GhPr = {
+  number: number;
+  body: string;
+  headRefName: string;
+  headRefOid: string;
+  baseRefOid: string;
+  isCrossRepository: boolean;
+  labels: { name: string }[];
+};
 
 function output(values: Record<string, string>): void {
   const file = process.env.GITHUB_OUTPUT;
@@ -27,12 +35,26 @@ function git(dir: string, args: readonly string[]): string {
   return result.stdout;
 }
 
+// The issue an evolution PR implements, or why it can't be trusted to name one.
+function linkedIssue(pr: GhPr): BuiltIssue | string {
+  // The build workflow pushes evolution branches to this repository, never to a fork.
+  if (pr.isCrossRepository) return "an evolution PR has to come from a branch of this repository";
+  const data = prDataFromBody(pr.body);
+  if (data === undefined) return "the PR body has no valid evolution-pr data comment";
+  const issue = fetchIssue(root, data.issueNumber, { requireReady: false });
+  // The body names the issue, but anyone who can edit the PR can edit the body. The branch is the one the build
+  // workflow derived from that issue, so a PR can't borrow another issue's criteria.
+  const expected = branchName(issue.number, issue.title);
+  if (pr.headRefName !== expected) return `the branch ${pr.headRefName} isn't ${expected}, the one built for #${String(issue.number)}`;
+  return issue;
+}
+
 function main(): void {
   const number = issueNumberArg(process.argv[2], usage);
   const prDir = process.argv[3];
   if (prDir === undefined) throw new Error(usage);
   const config = loadGuardrailsConfig(root);
-  const pr = JSON.parse(gh(root, ["pr", "view", String(number), "--json", "number,body,headRefName,headRefOid,baseRefOid,labels"])) as GhPr;
+  const pr = JSON.parse(gh(root, ["pr", "view", String(number), "--json", "number,body,headRefName,headRefOid,baseRefOid,isCrossRepository,labels"])) as GhPr;
   const labels = pr.labels.map((label) => label.name);
   const evolution =
     labels.some((label) => config.agentPullRequests.labels.includes(label)) || pr.headRefName.startsWith("evo/");
@@ -40,12 +62,11 @@ function main(): void {
     output({ evolution: "false", safe: "true", reason: "not an evolution PR", issue: "" });
     return;
   }
-  const data = prDataFromBody(pr.body);
-  if (data === undefined) {
-    output({ evolution: "true", safe: "false", reason: "the PR body has no valid evolution-pr data comment", issue: "" });
+  const issue = linkedIssue(pr);
+  if (typeof issue === "string") {
+    output({ evolution: "true", safe: "false", reason: issue, issue: "" });
     return;
   }
-  const issue = fetchIssue(root, data.issueNumber, { requireReady: false });
 
   const dir = resolve(prDir);
   const base = git(dir, ["merge-base", pr.baseRefOid, pr.headRefOid]).trim();

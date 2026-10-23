@@ -85,6 +85,16 @@ export function finalVerdict(verdict: Verdict, criteriaCount: number): { passed:
 
 export const VERDICT_MARKER = "<!-- evolution-verify -->";
 
+// The judge's text is shown as plain text: no links, images, HTML, headings or autolinked URLs it could be talked
+// into adding. Markdown punctuation is backslash-escaped, and a zero-width space breaks URL schemes and "www.".
+export function inert(value: string): string {
+  return defang(value)
+    .replace(/\r?\n/g, " ")
+    .replace(/[\\`*_[\]()!<>#|~]/g, "\\$&")
+    .replace(/\b([a-z][a-z0-9+.-]*):\/\//gi, "$1:​//")
+    .replace(/\bwww\./gi, "www​.");
+}
+
 export function renderVerdictComment(input: {
   readonly verdict: Verdict;
   readonly criteria: readonly string[];
@@ -100,19 +110,19 @@ export function renderVerdictComment(input: {
     "",
     `Commit \`${input.sha.slice(0, 7)}\`, checked by an independent agent against the issue's acceptance criteria. Evidence (screenshots and reports): [workflow run](${input.runUrl}).`,
     "",
-    defang(verdict.summary),
+    inert(verdict.summary),
     "",
     "| # | Criterion | Score | Result | Note |",
     "|---|---|---|---|---|",
     ...input.criteria.map((criterion, index) => {
       const scored = verdict.criteria.find((item) => item.criterion === index + 1);
-      const cell = (value: string) => defang(value).replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+      const cell = inert;
       return scored === undefined
         ? `| ${String(index + 1)} | ${cell(criterion)} | – | not scored | |`
         : `| ${String(index + 1)} | ${cell(criterion)} | ${String(scored.score)}/10 | ${scored.passed ? "pass" : "fail"} | ${cell(scored.note)} |`;
     }),
     "",
-    `**Scope:** ${verdict.scopeCreep.found ? "❌ " : ""}${defang(verdict.scopeCreep.note)}`,
+    `**Scope:** ${verdict.scopeCreep.found ? "❌ " : ""}${inert(verdict.scopeCreep.note)}`,
     ...(input.reasons.length === 0 ? [] : ["", "Why it fails:", ...input.reasons.map((reason) => `- ${reason}`)]),
     "",
   ].join("\n");
