@@ -110,3 +110,27 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** I wrote the line from memory instead of copying it from an existing workflow. Nothing local checks action pins, so CI would have been the first to fail (the action can't be resolved).
 - **Category:** hallucinated identifier (a commit SHA)
 - **Fix rung:** none yet, logged only. The working rule is to copy `uses:` lines from an existing workflow. If it happens again, the next rung is (b) a hard rule: a guardrail test that resolves every pinned `uses:` SHA in `.github/workflows/`.
+
+## 2026-10-23 · The build agent guessed the timing of a screenshot meant to prove a blink
+
+- **What happened:** For #47 (the blob blinks), the build agent wrote a `blob.blink` flow that waits 4700 ms and takes a "during-blink" screenshot, aiming for 94% of the 5 s cycle. `evolution-verify` failed PR #49, because no screenshot showed the eyes closed.
+- **Evidence:** Paused at 95% of its cycle, the eyelid's computed opacity is 1. A local `verify:flow blob.blink` passes, but its step-05 screenshot shows the eyes open: `goto` and the two `expectVisible` steps use up time first, so the screenshot misses the ~0.4 s closed window. `expectVisible blob-eyelid` also passes at opacity 0.
+- **Root cause:** The step language has no way to hold a brief state, so the agent timed the screenshot with a fixed wait. Its flow passed without proving anything.
+- **Category:** evidence that doesn't prove the claim (caught by the verifier, not merged)
+- **Fix rung:** none yet, logged only. A follow-up in PROGRESS adds a step that pauses CSS animations at a chosen point.
+
+## 2026-10-23 · The loop's labels were never created, so the first triage failed
+
+- **What happened:** The first dry-run triage failed with `could not add label: 'evolution:ready' not found`.
+- **Evidence:** Triage run 40014373428, attempt 1. After `evolution:ready`, `risk:low|medium|high`, `needs-human` and `evolution:revert` were created by hand, attempt 2 passed.
+- **Root cause:** The workflows assume the labels exist, but neither MANUAL_STEPS nor any script creates them, and every test mocks the GitHub API.
+- **Category:** setup gap (caught by the dry run)
+- **Fix rung:** none yet, logged only. A follow-up in PROGRESS adds them to a setup script and to MANUAL_STEPS.
+
+## 2026-10-23 · `guardrails.yml`'s concurrency group left the required `guardrails-ok` "expected"
+
+- **What happened:** PR #50 had all 22 checks green, but `gh pr merge` was refused: `Required status check "guardrails-ok" is expected`.
+- **Evidence:** The PR opened with its labels, so `opened` and two `labeled` events started three guardrails runs in the same second. `group: guardrails-<pr>` cancelled the pending one (run 40020288714), which left a cancelled check suite with no check runs as the newest suite. Rerunning that run made the PR `CLEAN`. #46 had a single run and merged normally.
+- **Root cause:** A concurrency group on a workflow that produces a required check. Only one pending run is kept, so a burst of events produces a cancelled suite that branch protection reads as the check never reported.
+- **Category:** design gap in CI (caught by the dry run)
+- **Fix rung:** none yet, logged only. A follow-up in PROGRESS removes the concurrency group or the label triggers. Without it, auto-merge would stall on every agent PR.

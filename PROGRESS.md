@@ -1,8 +1,8 @@
 # PROGRESS
 
-**Current phase:** 6 is in progress. Parts 1–9 (#34–#42, 14009db…2e47b27) and the `unit` job fix (#43) are on `main`, `EVOLUTION_BOT_TOKEN` is set, and branch protection is on (2026-10-23). Post-merge (6.6) is on `main` as #45 (`verify:all --read-only`) and #46 (2f3b72c), not yet run end to end. 6.7 is left. Phase 5 is done once #31 (`pnpm check` and the PR template), #32 (`.evolution/config.json` at level 0 and `pnpm trust-report`) and #33 (CLAUDE.md) are on `main`; the exit checks pass (evidence below). Phase 4 is done: #27 (generator, 0120ab6), #28 (CI check, 34ff736) and #30 (the `maintain-feature-map` skill and the CLAUDE.md rule) are on `main`. The exit check passed on throwaway #29 (evidence below). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 6's exit check passed on 2026-10-23 (the dry run below): feedback → triage → #48 → PR #50 → verified → merged by hand (b4d7a38) → on the Timeline. Parts 1–9 (#34–#42), the `unit` fix (#43) and post-merge (#45, #46) are on `main`. The level is still 0. Fix the `guardrails-ok` follow-up below before a human raises it, or auto-merge stalls on every evolution PR. Phase 5 is done once #31 (`pnpm check` and the PR template), #32 (`.evolution/config.json` at level 0 and `pnpm trust-report`) and #33 (CLAUDE.md) are on `main`; the exit checks pass (evidence below). Phase 4 is done: #27 (generator, 0120ab6), #28 (CI check, 34ff736) and #30 (the `maintain-feature-map` skill and the CLAUDE.md rule) are on `main`. The exit check passed on throwaway #29 (evidence below). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action:** the Phase 6.7 dry run (STARTER_PROMPT step 7): seed 5 feedback items (one vague, one prompt injection, one oversized), run the loop at level 0 with `workflow_dispatch`, merge one verified PR by hand, and show its Timeline entry. That is also post-merge's (6.6) first end-to-end run. Use a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9). Read `CLAUDE.md` and `FEATURE_MAP.md` first.
+**Next action:** the Phase 6 follow-ups below, `guardrails-ok` first, each as its own human PR from a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9). Then a human decides on level 1, and Phase 7 starts. Read `CLAUDE.md` and `FEATURE_MAP.md` first.
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
@@ -47,8 +47,13 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 6 — Evolution loop
 
-- [x] 6.1 config + gate step (#34) · [x] 6.2 triage (#35–#37) · [x] 6.3 build (#38, #39) · [x] 6.4 verify (#40, #41) · [x] 6.5 automerge (#42) + branch protection (applied 2026-10-23: `ci-ok`, `guardrails-ok` and `evolution-verify` required from GitHub Actions, admins included, squash only) · [ ] 6.6 post-merge changelog (#45, #46 merged; ticked once the dry run shows a Timeline entry) · [ ] 6.7 local dry run (5 seeded items incl. vague, injection, oversized) → level 1
-- [ ] Exit: one full feedback → Timeline loop with links
+- [x] 6.1 config + gate step (#34) · [x] 6.2 triage (#35–#37) · [x] 6.3 build (#38, #39) · [x] 6.4 verify (#40, #41) · [x] 6.5 automerge (#42) + branch protection (applied 2026-10-23: `ci-ok`, `guardrails-ok` and `evolution-verify` required from GitHub Actions, admins included, squash only) · [x] 6.6 post-merge changelog (#45, #46) · [x] 6.7 dry run (5 seeded items incl. vague, injection, oversized; evidence below) → level 1 is a human's call
+- [x] Exit: one full feedback → Timeline loop with links (PR #50, evidence below)
+- [ ] Follow-up: `guardrails-ok` stalls as "expected". The build agent opens a PR with labels, so `opened` and two `labeled` events arrive at once. The `guardrails-${{ pr }}` concurrency group cancels the pending middle run, and branch protection then reads the required check from that newest, empty, cancelled suite. #50 merged only after rerunning that run (40020288714). Fix: drop the concurrency group (the job is read-only), or stop running on `labeled`/`unlabeled` events that can't change the verdict.
+- [ ] Follow-up: the verify step language can't prove a brief animation. #49 (blob blink) worked when paused at 95% of its cycle, but its `wait 4700` screenshot showed the eyes open, and `expectVisible` passes at opacity 0. The verifier was right to fail it, and #47 is still open. Fix: a step that pauses CSS animations at a chosen point, or `expectStyle`.
+- [ ] Follow-up: closing an evolution PR leaves its feedback at `building` with that PR's `pr_url` (the blink item still points at the closed #49). Something should return it to `triaged` when the PR closes unmerged.
+- [ ] Follow-up: the loop's labels (`evolution:ready`, `risk:*`, `needs-human`, `evolution:revert`) were never created, so the first triage failed. They were made by hand on 2026-10-23. Add them to a setup script and to MANUAL_STEPS.
+- [ ] Follow-up: label-triggered builds are lossy. Two `evolution:ready` labels in one triage start two build runs, and the concurrency group cancels the pending one (#48's). Build has no schedule yet. Something (a cron, or triage dispatching with no issue number) should pick up any ready issue with no open PR.
 
 ## Phase 7 — Skills, postmortems, evals
 
@@ -69,6 +74,34 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 6 exit: the dry run, feedback → Timeline (2026-10-23)
+
+The level was 0 and `EVOLUTION_ENABLED` was `true`. Every run was started with `workflow_dispatch`.
+
+- **Seed:** 5 feedback items with 19 votes in production, tagged `author_hash = 'dry-run-seed'`:
+  - the blob should blink (5 votes)
+  - "make it better" (4, vague)
+  - a prompt injection with a crypto link (4)
+  - a multiplayer game with payments (3, oversized)
+  - show how long ago each idea was posted (3)
+- **Triage** (run 40014373428, attempt 2; attempt 1 failed on the missing labels, see the follow-up):
+  - filed #47 (blink, `risk:low`) and #48 (relative age, `risk:medium`)
+  - rejected the vague item as unclear, the injection as unsafe and the multiplayer item as too big
+- **#47 → PR #49 (closed unmerged):** build run 40014788615. `evolution-verify` failed at 2/10 on "the blob blinks", because no screenshot showed the eyes closed.
+  - Checked by hand: paused at 95% of the 5 s cycle, the eyelid's opacity is 1 and the eyes are closed. A local `verify:flow blob.blink` passes, but its "during-blink" screenshot shows them open.
+  - So the code worked and the evidence didn't prove it. #49 was closed with that explanation, and #47 stays open (follow-up above).
+- **#48 → PR #50:** build run 40017537385.
+  - Scope: +99 −6, all in `src/features/feedback/` plus FEATURE_MAP.md. A pure `feedbackAgeLabel` with unit tests, a `<time data-testid="feedback-item-age">` on each card, and a `feedback.age` flow marked `writes: true`.
+  - 22/22 checks green. `evolution-verify` passed at 9/10 on both criteria (run 40020287965). Its screenshots show "just now" on a new post and "6 days ago" / "3 days ago" on older cards, under both sorts.
+  - Automerge labeled it `needs-human` (level 0). It was squash-merged by hand as b4d7a38, after rerunning the cancelled guardrails run (follow-up above).
+- **Post-merge** (run 40023192622, success):
+  - `changelog` row: "Show how long ago each feedback item was posted", PR 50, commit b4d7a38, `trust_level` 0, linked to the seeded feedback id
+  - `agent_runs` row: `post-merge`, `pass`, 53 s
+  - the feedback item is `shipped` with `pr_url` …/pull/50
+  - issue #48 closed with "Shipped in #50 (b4d7a38). It's on the Timeline"
+  - `verify:all --read-only` against production passed
+- **Live:** https://petri-pi.vercel.app/timeline lists the entry, and https://petri-pi.vercel.app/feedback shows "1 hour ago" on the seeded items.
 
 ### Phase 5 exit: CLAUDE.md, the PR template and level 0 (2026-10-22)
 
