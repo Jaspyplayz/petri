@@ -102,6 +102,11 @@ export function BlobCreature() {
               <ellipse cx="122" cy="96" rx="9" ry={mood === "poked" ? 3 : 11} className="fill-blob-face" />
               <circle cx="81" cy="91" r="3" className="fill-white" />
               <circle cx="125" cy="91" r="3" className="fill-white" />
+              <g data-testid="blob-eyelid" className={styles.eyelid}>
+                <ellipse cx="78" cy="96" rx="11" ry="12" className="fill-culture" />
+                <ellipse cx="122" cy="96" rx="11" ry="12" className="fill-culture" />
+                <path d="M69 98q9 5 18 0M113 98q9 5 18 0" className="fill-none stroke-blob-face" strokeWidth="3" strokeLinecap="round" />
+              </g>
               {mood === "fed" ? (
                 <ellipse cx="100" cy="128" rx="12" ry="10" className="fill-blob-face" />
               ) : (
