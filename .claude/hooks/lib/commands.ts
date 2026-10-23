@@ -1,8 +1,9 @@
-import { basename } from "node:path";
+import { basename, posix } from "node:path";
 import { parseShell, type Segment, type Word } from "./shell.ts";
 
 export type CommandGuard = {
   readonly evolutionHuman: boolean;
+  readonly powershell?: boolean;
   readonly protectedTarget: (path: string) => string | undefined;
   readonly secretPath: (path: string) => boolean;
 };
@@ -16,6 +17,38 @@ const dataSinks = new Set([
 const gitDataSubcommands = new Set(["commit", "tag", "notes", "hash-object", "log", "show", "grep", "diff", "status"]);
 const gitValueOptions = new Set(["-C", "-c", "--config-env", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--attr-source"]);
 const patchPrograms = new Set(["patch", "gpatch"]);
+const forceOptions = ["--force", "--force-with-lease", "--force-if-includes", "--mirror"];
+const harmlessGitConfig = /^(user\.(name|email)|color\..+|advice\..+|core\.(quotepath|autocrlf|safecrlf)|init\.defaultbranch|pull\.rebase|push\.autosetupremote)$/i;
+const gitConfigValueOptions = new Set(["--file", "--blob", "--type", "--default", "--comment", "--value", "--url"]);
+const gitConfigWriteFlags = new Set(["--add", "--replace-all", "--unset", "--unset-all", "--append"]);
+const gitConfigSectionActions = new Set(["edit", "rename-section", "remove-section", "--edit", "--rename-section", "--remove-section"]);
+const gitConfigSubcommands = new Set(["get", "set", "unset", "list", "edit", "rename-section", "remove-section"]);
+const gitConfigReadFlags = new Set(["--get", "--get-all", "--get-regexp", "--get-urlmatch", "--get-color", "--get-colorbool", "--list"]);
+const gitConfigOtherFlags = [
+  "--global", "--system", "--local", "--worktree", "--show-origin", "--show-scope", "--name-only", "--null", "--bool", "--int",
+  "--bool-or-int", "--bool-or-str", "--path", "--expiry-date", "--no-type", "--fixed-value", "--includes", "--no-includes", "--all", "--regexp",
+];
+const gitConfigLongOptions = [...gitConfigValueOptions, ...gitConfigWriteFlags, ...gitConfigSectionActions, ...gitConfigReadFlags, ...gitConfigOtherFlags].filter((option) => option.startsWith("--"));
+const gitConfigShortOptions: Readonly<Record<string, string>> = { e: "--edit", l: "--list", z: "--null", f: "--file", t: "--type" };
+const configHomes = "(HOME|HOMEDRIVE|HOMEPATH|USERPROFILE|XDG_CONFIG_HOME|CLAUDE_CONFIG_DIR)";
+const envSetters = "(SetEnvironmentVariable|putenv|setenv)";
+const configHomeOverrides = [
+  new RegExp(`(^|[^\\w$])${configHomes}['"\\]}]*\\s*[-+.?*/|&]*=(?!=)`, "i"),
+  new RegExp(`\\b(read|printf|declare|typeset|local|export|readonly|mapfile|readarray|getopts|setx|rename-item|rni|ren)\\b[^;&|\\n]*?[\\s'"=]${configHomes}(?!\\w)`, "i"),
+  new RegExp(`\\b(for|select|foreach)\\s*\\(?\\s*\\$?(env:)?${configHomes}(?!\\w)`, "i"),
+  new RegExp(`${envSetters}\\s*\\(\\s*(?!(["'])[A-Za-z_]\\w*(=[^"'\\n]*)?\\2\\s*[,)])`, "i"),
+  new RegExp(`${envSetters}\\s*\\(\\s*["']${configHomes}[="']`, "i"),
+  new RegExp(`(^|[^\\w$\\{])env:\\\\?${configHomes}(?!\\w)`, "i"),
+  new RegExp(`(^|[^\\w$:])(["']?)${configHomes}\\2\\s*:(?!:)`, "i"),
+  /\b(export|declare|typeset|local|readonly|setx)\b[^;&|\n]*?[\s'"]\$[^\s=;&|]*=/i,
+  /\bprintf\s+(-\S+\s+)*-v\s*["']?[$`]/,
+  /\b(read|mapfile|readarray)\b[^;&|<\n]*?[\s'"]\$/,
+  /\beval\b[^;&|\n]*\$\{?\w+\}?\w*\s*[-+]?=/,
+  /(process\.env|os\.environ|\bENV)\s*\[\s*(?!(["'])\w+\2\s*\])|\$ENV\{\s*\$|Object\.assign\s*\(\s*process\.env|os\.environ\s*(\.(update|setdefault|__setitem__)|\|=)/,
+  /\b(spawn|exec|execFile|fork|Popen|run|call|check_call|check_output|system)\w*\s*\([^;\n]*?\benv["']?\s*[=:,}]/,
+  /\.env\s*=(?!=)|\[\s*["']env["']\s*\]\s*=(?!=)/,
+  /\b(exec[lv]p?e|spawn[lv]p?e|posix_spawnp?)\s*\(/,
+];
 const unresolvedPath = /[$`%]|^~/;
 const printers = new Set(["echo", "printf", "print", "cat", "write-output", "write-host", "write-information", "out-host"]);
 const envDrivers = new Set(["get-childitem", "gci", "ls", "dir", "get-item", "gi", "get-content", "gc", "cat", "type"]);
@@ -25,19 +58,34 @@ const movers = new Set(["mv", "move-item", "mi", "ln", "mkdir", "touch", "new-it
 const inPlaceEditors = new Set(["sed", "perl"]);
 const secretName = /(SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|PRIVATE|CREDENTIAL|SALT|COOKIE|SESSION|APIKEY|(^|_)O?AUTH($|_)|(^|_)KEYS?($|_))/i;
 const variableReference = /\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%/gi;
+const interpreterNames = "(node(js)?|deno|bun|tsx|ts-node(-esm)?|python[\\d.]*w?|py|pypy[\\d.]*|ruby|perl|php|lua|rscript|julia|osascript)";
+const interpreterName = new RegExp(`^${interpreterNames}$`);
+const shellPrograms = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish", "busybox", "pwsh", "powershell", "cmd"]);
+const expansion = /\$(?!\/|$)|`/;
+const interpreters = new RegExp(`(^|[\\s;&|(\`'"/\\\\<>])${interpreterNames}(\\.exe)?(?=$|[\\s;&|)\`'"<>])`, "i");
+const powershellValueStatement = /^([-+*/%]?=|\?\?=|-(eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|replace|split|join|is|isnot|as|and|or|xor|not|band|bor|f)|[.[].*)$/i;
+const dynamicPrograms = [
+  /(^|[;&|({\n]\s*)(&\s*[($]|\$\{?\w+\}?\s+(?![-+*/.]?=|-)[\w"'./]|\$\([^)]*\)\s+[\w"'./-]|`[^`]*`\s+[\w"'./-])/,
+  /\b(iex|Invoke-Expression|Invoke-Command|icm|Start-Process|saps)\b/i,
+  /\beval\b[^;&|\n]*\$\{?\w/,
+];
+const spawnsProcess = /child_process|subprocess|os\.(system|popen|exec|spawn)|Popen|Deno\.Command|Bun\.spawn|\b(spawn|exec|execFile)(Sync)?\s*\(|\bsystem\s*\(/;
 const maxNesting = 3;
 
 const messages = {
   forcePush: "Blocked: force pushes (-f, --force, --force-with-lease, --mirror, +refspec) rewrite shared history. Push a new commit instead.",
   skipHooks: "Blocked: git hooks are guardrails. Don't skip them (--no-verify, commit -n, LEFTHOOK=0, core.hooksPath); fix what the hook reports.",
-  removeRoot: "Blocked: recursive delete of a filesystem root or home directory.",
+  removeRoot: "Blocked: recursive delete of a filesystem root, a home directory or a whole working directory (*, ., ..). Name the folder you mean.",
   printSecret: "Blocked: this would print a secret or the whole environment. Check that a variable is set with [ -n \"$NAME\" ] instead of printing it.",
   secretFile: "Blocked: env and credential files hold secrets and stay unread. Scripts such as `pnpm setup:secrets` and `pnpm env:local` read them for you.",
   evolutionHuman: "Blocked: EVOLUTION_HUMAN is set by a human when they start Claude Code, never by a command.",
   patchTool: "Blocked: patch, git apply and git am are off for agents, because the guard can't reliably tell which files a patch writes. Use the Edit/Write tools; a human can run them with EVOLUTION_HUMAN=1.",
-  gitAlias: "Blocked: git aliases hide what a command really runs, so agents don't define them. Spell out the git command instead.",
+  dynamicProgram: "Blocked: the guard can't see which program a variable, substitution, eval or PowerShell call operator (& $x, iex, Start-Process) will run. Spell the command out.",
+  spawnFromScript: "Blocked: inline interpreter code that starts other programs (child_process, subprocess, os.system, …) hides them from the guard. Run them directly in the shell.",
+  gitAlias: "Blocked: agents set only a few harmless git config keys (user.name, user.email, color.*, advice.*, …). Others, such as git aliases, config includes, push refspecs, pagers, editors, diff and filter drivers, and GIT_CONFIG_* variables, change what a git command runs. Spell out the git command instead, or ask a human.",
+  configHome: "Blocked: overriding HOME (or HOMEDRIVE/HOMEPATH), USERPROFILE, XDG_CONFIG_HOME or CLAUDE_CONFIG_DIR, or setting environment variables by a computed name or for a spawned process, can point git and other tools at a different config. Leave them as they are.",
   protectedWrite: (path: string) =>
-    `Blocked: ${path} is a protected path (.github/guardrails.json). Agents can't change their own guardrails; a human can by starting Claude Code with EVOLUTION_HUMAN=1.`,
+    `Blocked: ${path} is a protected path (.github/guardrails.json, or a Claude Code settings file). Agents can't change their own guardrails; a human can by starting Claude Code with EVOLUTION_HUMAN=1.`,
 };
 
 function programName(word: string): string {
@@ -102,6 +150,42 @@ function gitInvocation(words: readonly Word[]): GitInvocation | undefined {
   return undefined;
 }
 
+function gitConfigWrites(rest: readonly Word[]): string[] {
+  const flags: string[] = [];
+  const values: string[] = [];
+  let positional = false;
+  for (let index = 0; index < rest.length; index += 1) {
+    const word = rest[index]?.text ?? "";
+    if (positional || !word.startsWith("-") || word === "-") {
+      values.push(word);
+      positional = values.length > 1 || !gitConfigSubcommands.has(word);
+    } else if (word.startsWith("--")) {
+      const [name = "", ...inline] = word.split("=");
+      const matches = gitConfigLongOptions.filter((option) => option === name || option.startsWith(name));
+      const option = matches.includes(name) ? name : matches.length === 1 ? (matches[0] ?? "") : "";
+      if (option === "") return [`an unknown option (${word})`];
+      flags.push(option);
+      if (gitConfigValueOptions.has(option) && inline.length === 0) index += 1;
+    } else {
+      for (let letter = 1; letter < word.length; letter += 1) {
+        const option = gitConfigShortOptions[word.charAt(letter)];
+        if (option === undefined) return [`an unknown option (${word})`];
+        flags.push(option);
+        if (gitConfigValueOptions.has(option)) {
+          if (letter === word.length - 1) index += 1;
+          break;
+        }
+      }
+    }
+  }
+  const [first = "", ...others] = values;
+  if ([first, ...flags].some((action) => gitConfigSectionActions.has(action))) return [`a whole section (${first})`];
+  if (first === "get" || first === "list" || flags.some((flag) => gitConfigReadFlags.has(flag))) return [];
+  if (first === "set" || first === "unset") return [others[0] ?? ""];
+  if (flags.some((flag) => gitConfigWriteFlags.has(flag))) return [first];
+  return others.length > 0 ? [first] : [];
+}
+
 function gitRuns(words: readonly Word[], git: GitInvocation, subcommand: string): readonly Word[] | undefined {
   if (git.subcommand === subcommand) return git.rest;
   const index = words.findIndex((word, position) => position > 0 && word.text === subcommand);
@@ -118,28 +202,36 @@ function shortCluster(option: string, letter: string): boolean {
   return /^-[A-Za-z]+$/.test(option) && option.includes(letter);
 }
 
+function abbreviates(flag: string, option: string): boolean {
+  const name = flag.split("=")[0] ?? "";
+  return name.length > 2 && option.startsWith(name);
+}
+
 function gitProblem(words: readonly Word[]): string | undefined {
   const git = gitInvocation(words);
   if (!git) return undefined;
   if (git.config.some((setting) => /^core\.hookspath/i.test(setting))) return messages.skipHooks;
   if (git.subcommand === "config" && git.rest.some((word) => /^core\.hookspath$/i.test(word.text))) return messages.skipHooks;
-  if (git.config.some((setting) => /^alias\./i.test(setting))) return messages.gitAlias;
-  if (git.subcommand === "config" && git.rest.some((word) => /^alias\./i.test(word.text))) return messages.gitAlias;
+  if (git.config.some((setting) => !harmlessGitConfig.test(setting.split("=")[0] ?? ""))) return messages.gitAlias;
+  if (git.subcommand === "config" && gitConfigWrites(git.rest).some((key) => !harmlessGitConfig.test(key))) return messages.gitAlias;
   const flags = options(git.rest);
-  if (flags.includes("--no-verify")) return messages.skipHooks;
+  if (flags.some((flag) => abbreviates(flag, "--no-verify"))) return messages.skipHooks;
   if (git.subcommand === "commit" && flags.some((flag) => shortCluster(flag, "n"))) return messages.skipHooks;
   const push = gitRuns(words, git, "push");
   if (push) {
-    const forced = options(push).some((flag) => flag.startsWith("--force") || flag === "--mirror" || shortCluster(flag, "f"));
+    const forced = options(push).some((flag) => flag.startsWith("--force") || forceOptions.some((option) => abbreviates(flag, option)) || shortCluster(flag, "f"));
     if (forced || operands(push).some((operand) => operand.startsWith("+"))) return messages.forcePush;
   }
+  if (git.subcommand === "remote" && flags.some((flag) => abbreviates(flag, "--mirror"))) return messages.forcePush;
   if (git.subcommand === "credential" && git.rest[0]?.text === "fill") return messages.printSecret;
   return undefined;
 }
 
 function isRootLike(target: string): boolean {
-  const path = target.replaceAll("\\", "/").replace(/\/\*$/, "").replace(/\/+$/, "");
+  const slashed = target.replaceAll("\\", "/").replace(/\/\*$/, "");
+  const path = (slashed === "" ? "" : posix.normalize(slashed)).replace(/\/+$/, "");
   if (path === "" || path === "~" || /^\$\{?(HOME|USERPROFILE)\}?$/i.test(path) || /^\$env:(HOME|USERPROFILE)$/i.test(path)) return true;
+  if (path === "*" || path === ".*" || /^\.\.?(\/\.\.)*$/.test(path)) return true;
   if (/^%(HOMEPATH|USERPROFILE)%$/i.test(path)) return true;
   return /^\/[^/]+$/.test(path) || /^[A-Za-z]:(\/[^/]+)?$/.test(path) || /^\/[A-Za-z]\/[^/]+$/.test(path);
 }
@@ -160,7 +252,10 @@ function secretVariables(word: Word): string[] {
 }
 
 function printsSecret(name: string, args: readonly Word[], all: readonly Word[]): boolean {
-  if (printers.has(name) && args.some((word) => secretVariables(word).length > 0)) return true;
+  const program = all[0];
+  if (program && secretVariables(program).length > 0) return true;
+  if (printers.has(name) && args.some((word) => secretVariables(word).length > 0 || word.expandable.includes("${!"))) return true;
+  if (all.some((word) => /\/proc\/[^/\s]+\/environ/.test(word.text))) return true;
   if (name === "printenv") return args.length === 0 || args.some((word) => secretName.test(word.text));
   if (name === "env" || (name === "set" && args.length === 0)) return true;
   if (name === "export" || name === "declare" || name === "typeset") {
@@ -170,8 +265,12 @@ function printsSecret(name: string, args: readonly Word[], all: readonly Word[])
   if (envDrivers.has(name) && args.some((word) => /^env:/i.test(word.text))) return true;
   const texts = all.map((word) => word.text.toLowerCase());
   if (name === "gh" && texts[1] === "auth") return texts[2] === "token" || (texts[2] === "status" && texts.some((text) => text === "-t" || text === "--show-token"));
-  const supabase = texts.findIndex((text) => programName(text) === "supabase");
-  return supabase !== -1 && texts.slice(supabase + 1).includes("status");
+  return runsSubcommand(texts, "supabase", "status");
+}
+
+function runsSubcommand(texts: readonly string[], program: string, subcommand: string): boolean {
+  const index = texts.findIndex((text) => programName(text) === program);
+  return index !== -1 && texts.slice(index + 1).includes(subcommand);
 }
 
 function isDataSink(name: string, all: readonly Word[]): boolean {
@@ -197,12 +296,20 @@ function writeTargets(name: string, args: readonly Word[], segment: Segment, all
   return targets.flatMap(candidatePaths);
 }
 
-function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): string | undefined {
+function runsDynamicShell(words: readonly Word[]): boolean {
+  const shell = words.findIndex((word) => shellPrograms.has(programName(word.text)));
+  if (shell === -1) return false;
+  const cmd = programName(words[shell]?.text ?? "") === "cmd";
+  return words.slice(shell + 1).some((word) => expansion.test(word.text) || (cmd && /%[^%\s]+%|![^!\s]+!/.test(word.text)));
+}
+
+function segmentProblem(segment: Segment, guard: CommandGuard, depth: number, lone: boolean): string | undefined {
   const all = commandWords(segment);
   const [program, ...args] = all;
   if (segment.words.some((word) => /^(\$env:)?(LEFTHOOK|HUSKY)=["']?(0|false)/i.test(word.text) || /^(\$env:)?LEFTHOOK_(EXCLUDE|SKIP)=/i.test(word.text))) {
     return messages.skipHooks;
   }
+  if (runsSubcommand(all.map((word) => word.text.toLowerCase()), "lefthook", "uninstall")) return messages.skipHooks;
   if (segment.words.some((word) => guard.secretPath(word.text)) || segment.writeTargets.some(guard.secretPath)) return messages.secretFile;
   if (program) {
     const name = programName(program.text);
@@ -225,7 +332,20 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     const nested = commandProblem(substitution, guard, depth);
     if (nested) return nested;
   }
-  if (depth >= maxNesting) return undefined;
+  if (program) {
+    const name = programName(program.text);
+    const [firstArgument] = args;
+    const valueStatement =
+      guard.powershell === true ? firstArgument === undefined || powershellValueStatement.test(firstArgument.text) : depth > 0 && lone && firstArgument === undefined;
+    if (expansion.test(program.text) && !valueStatement) return messages.dynamicProgram;
+    if (runsDynamicShell(all)) return messages.dynamicProgram;
+    if ((name === "eval" || name === "source" || program.text === ".") && args.some((word) => /[$`]/.test(word.text))) return messages.dynamicProgram;
+  }
+  const startsPrograms =
+    program !== undefined && interpreterName.test(programName(program.text)) && [...args.map((word) => word.text), ...segment.heredocs].some((code) => spawnsProcess.test(code))
+      ? messages.spawnFromScript
+      : undefined;
+  if (depth >= maxNesting) return startsPrograms;
   const inspectAll = program === undefined || !isDataSink(programName(program.text), all);
   const nestedCommands = [
     ...segment.quoted.filter((part) => inspectAll || part.includes("$(") || part.includes("`")),
@@ -235,23 +355,38 @@ function segmentProblem(segment: Segment, guard: CommandGuard, depth: number): s
     const nested = commandProblem(nestedCommand, guard, depth + 1);
     if (nested) return nested;
   }
-  return undefined;
+  return startsPrograms;
 }
 
 function scriptProblem(command: string): string | undefined {
   if (/process\.env(?![\w.[])/.test(command) || /os\.environ(?![\w.[])/.test(command)) return messages.printSecret;
+  if (/GetEnvironmentVariables\s*\(/i.test(command)) return messages.printSecret;
+  const powershellNamed = [...command.matchAll(/GetEnvironmentVariable\s*\(\s*["']([A-Za-z_][A-Za-z0-9_]*)/gi)];
+  if (powershellNamed.some((match) => secretName.test(match[1] ?? ""))) return messages.printSecret;
   const printing = /console\.\w+|process\.stdout|print\(|\s-p\b|--print/.test(command);
-  const named = [...command.matchAll(/(?:process\.env\.|process\.env\[\s*["'`]|os\.environ(?:\.get\(|\[)\s*["'])([A-Za-z_][A-Za-z0-9_]*)/g)];
+  const named = [...command.matchAll(/(?:process\.env\.|process\.env\[\s*["'`]|os\.environ(?:\.get\(|\[)\s*["']|os\.getenv\(\s*["'])([A-Za-z_][A-Za-z0-9_]*)/g)];
   return printing && named.some((match) => secretName.test(match[1] ?? "")) ? messages.printSecret : undefined;
+}
+
+export function pathProblem(path: string, guard: CommandGuard): string | undefined {
+  return guard.secretPath(path) ? messages.secretFile : undefined;
 }
 
 export function commandProblem(command: string, guard: CommandGuard, depth = 0): string | undefined {
   if (/EVOLUTION_HUMAN/.test(command)) return messages.evolutionHuman;
+  if (/GIT_CONFIG/i.test(command)) return messages.gitAlias;
+  if (configHomeOverrides.some((pattern) => pattern.test(command))) return messages.configHome;
   const script = scriptProblem(command);
   if (script) return script;
-  for (const segment of parseShell(command)) {
-    const problem = segmentProblem(segment, guard, depth);
+  const quoteAware = parseShell(command);
+  const segments = [...quoteAware, ...parseShell(command, true)];
+  const lone = quoteAware.length === 1;
+  for (const segment of segments) {
+    const problem = segmentProblem(segment, guard, depth, lone);
     if (problem) return problem;
   }
-  return undefined;
+  if (interpreters.test(command) && spawnsProcess.test(command)) return messages.spawnFromScript;
+  if (depth > 0) return undefined;
+  const withoutHeredocs = segments.flatMap((segment) => segment.heredocs).reduce((text, body) => text.replace(body, ""), command);
+  return dynamicPrograms.some((pattern) => pattern.test(withoutHeredocs)) ? messages.dynamicProgram : undefined;
 }

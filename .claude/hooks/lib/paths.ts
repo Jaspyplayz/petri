@@ -11,6 +11,7 @@ export type PathGuard = {
 export const localOnlyProtectedPaths: readonly string[] = ["**/.git", "**/.git/**", ".claude/settings.local.json"];
 
 const secretFileNames = [/^\.env(\..+)?$/i, /^\.git-credentials$/i, /^[._]netrc$/i, /^id_(rsa|dsa|ecdsa|ed25519)$/i];
+const agentConfigFile = /(^|\/)(\.claude\/(settings(\.local)?\.json|CLAUDE\.md)|\.claude\.json|managed-settings\.json|\.gitconfig|\.config\/git\/config)$/i;
 const sampleSuffix = /\.(example|sample|template)$/i;
 
 export const projectRoot = join(import.meta.dirname, "..", "..", "..");
@@ -79,7 +80,13 @@ function protectedWithin(absolute: string, guard: PathGuard): string | undefined
   return undefined;
 }
 
+function agentConfig(path: string): string | undefined {
+  const slashed = toRepoPath(path);
+  return agentConfigFile.test(slashed) ? slashed : undefined;
+}
+
 export function protectedRepoPath(path: string, cwd: string, guard: PathGuard): string | undefined {
   const absolute = resolve(cwd, toNativePath(path, guard.caseInsensitive));
-  return protectedWithin(absolute, guard) ?? protectedWithin(realPath(absolute), guard);
+  const real = realPath(absolute);
+  return protectedWithin(absolute, guard) ?? protectedWithin(real, guard) ?? agentConfig(absolute) ?? agentConfig(real);
 }
