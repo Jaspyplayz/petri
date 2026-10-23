@@ -7,6 +7,8 @@ export type FlowStep<SelectorName extends string> =
   | { readonly action: "press"; readonly target: SelectorName; readonly key: string }
   | { readonly action: "expectVisible"; readonly target: SelectorName }
   | { readonly action: "expectText"; readonly target: SelectorName; readonly text: string }
+  | { readonly action: "expectStyle"; readonly target: SelectorName; readonly property: string; readonly value: string }
+  | { readonly action: "pauseAnimations"; readonly atMs: number }
   | { readonly action: "screenshot"; readonly name: string }
   | { readonly action: "wait"; readonly ms: number };
 
