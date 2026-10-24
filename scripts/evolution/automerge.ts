@@ -7,6 +7,7 @@ export type ChangedFile = { readonly filename: string; readonly status: string; 
 export type Footprint = {
   readonly features: readonly string[];
   readonly newFeatures: readonly string[];
+  readonly server: readonly string[];
   readonly shared: boolean;
   readonly dependencies: boolean;
   readonly migrations: boolean;
@@ -16,6 +17,7 @@ export type Footprint = {
 };
 
 const FEATURE = /^src\/features\/([a-z][a-z0-9-]*)\//;
+const FEATURE_SERVER = /^src\/features\/([a-z][a-z0-9-]*)\/server\//;
 const NEW_PAGE = /^src\/app\/(?:[a-z0-9-]+\/)+page\.tsx$/;
 const DEPENDENCY_FILES = new Set(["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"]);
 // Regenerated from the manifests and checked in CI (featuremap:check), so it moves with any feature change.
@@ -25,6 +27,7 @@ const GENERATED = new Set(["FEATURE_MAP.md"]);
 // unnoticed. existingFeatures are the feature folders on main.
 export function footprint(files: readonly ChangedFile[], existingFeatures: ReadonlySet<string>): Footprint {
   const features = new Set<string>();
+  const server = new Set<string>();
   const wiring: string[] = [];
   const other: string[] = [];
   let shared = false;
@@ -35,6 +38,8 @@ export function footprint(files: readonly ChangedFile[], existingFeatures: Reado
     const paths = [file.filename, ...(file.previous_filename === undefined ? [] : [file.previous_filename])];
     for (const path of paths) {
       const feature = FEATURE.exec(path)?.[1];
+      const serverFeature = FEATURE_SERVER.exec(path)?.[1];
+      if (serverFeature !== undefined) server.add(serverFeature);
       if (feature !== undefined) features.add(feature);
       else if (path.startsWith("src/shared/")) shared = true;
       else if (DEPENDENCY_FILES.has(path)) dependencies = true;
@@ -49,7 +54,7 @@ export function footprint(files: readonly ChangedFile[], existingFeatures: Reado
     const isWiring = newFeatures.length > 0 && ((added && NEW_PAGE.test(path)) || path === "src/features/registry.ts");
     (isWiring ? wiring : other).push(path);
   }
-  return { features: [...features].sort(), newFeatures, shared, dependencies, migrations, wiring, other: [...new Set(other)].sort() };
+  return { features: [...features].sort(), newFeatures, server: [...server].sort(), shared, dependencies, migrations, wiring, other: [...new Set(other)].sort() };
 }
 
 export type Requirement = { readonly level: number; readonly why: string } | { readonly level: undefined; readonly why: string };
@@ -62,6 +67,7 @@ export function requiredLevel(fp: Footprint, risk: RiskLevel): Requirement {
   if (fp.features.length === 0 && !fp.shared && !fp.migrations) return { level: undefined, why: "it changes no feature" };
   if (fp.migrations) return { level: 4, why: "it adds a Supabase migration" };
   if (fp.shared) return { level: 3, why: "it changes src/shared/" };
+  if (fp.server.length > 0) return { level: 3, why: `it changes ${fp.server.map((id) => `src/features/${id}/server/`).join(", ")}` };
   if (fp.features.length > 1) return { level: 3, why: `it changes ${String(fp.features.length)} features (${fp.features.join(", ")})` };
   if (fp.newFeatures.length > 0) return { level: 2, why: `it adds the feature ${fp.newFeatures.join(", ")}` };
   if (risk === "medium") return { level: 2, why: `its riskLevel is medium (feature ${fp.features.join(", ")})` };

@@ -7,7 +7,7 @@ export const ladder: readonly Rung[] = [
   { level: 0, autoMerges: "nothing (a human merges every PR)", promotion: { pullRequests: 3, maxReverts: undefined, sentryClean: false } },
   { level: 1, autoMerges: "`riskLevel: low` changes inside one existing feature folder", promotion: { pullRequests: 10, maxReverts: 0, sentryClean: false } },
   { level: 2, autoMerges: "new features from the generator; changes inside any single feature", promotion: { pullRequests: 20, maxReverts: 1, sentryClean: true } },
-  { level: 3, autoMerges: "`src/shared/`, several features, allow-listed dependencies", promotion: { pullRequests: 30, maxReverts: 1, sentryClean: false } },
+  { level: 3, autoMerges: "`src/shared/`, a feature's `server/` code, several features, allow-listed dependencies", promotion: { pullRequests: 30, maxReverts: 1, sentryClean: false } },
   { level: 4, autoMerges: "additive Supabase migrations", promotion: undefined },
 ];
 

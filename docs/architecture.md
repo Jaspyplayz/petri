@@ -294,7 +294,7 @@ The level lives in `.evolution/config.json`, a protected file that only a human 
 | 0 | nothing (agents open PRs, a human merges) |
 | 1 | `riskLevel: low` changes inside one existing feature folder |
 | 2 | new features via the generator; changes inside any single feature |
-| 3 | `shared/`, multi-feature changes, deps from an allow-list |
+| 3 | `shared/`, a feature's `server/` code, multi-feature changes, deps from an allow-list |
 | 4 | additive Supabase migrations (CI-checked) |
 
 Any automatic revert drops the level by one and pauses the loop for 24h. `trust-report.ts` only *suggests* promotions.
