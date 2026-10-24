@@ -8,14 +8,18 @@ import { CONFIG_PATH, PAUSED_PATH, readEvolutionConfig } from "./evolution/confi
 import { gh } from "./evolution/github-issue";
 import { isEvolutionPr, PR_FIELDS, type GhPr } from "./evolution/github-pr";
 import {
+  afterDeployChecks,
   checkWindows,
   culpritCommit,
+  deployState,
   GUARDIAN_BRANCH_PREFIX,
   GUARDIAN_ISSUE_LABEL,
+  guardianRunStatus,
   incidentMarker,
   incidentRevert,
   loweredTrust,
   nextPause,
+  parseStepOutcomes,
   pauseBranch,
   productionState,
   promoteBlock,
@@ -23,11 +27,14 @@ import {
   revertBranch,
   rolledBackFrom,
   spikeVerdict,
+  stopWatching,
   type AliasRequest,
   type Deployed,
+  type DeployState,
   type ListedPr,
   type MainCommit,
   type MergedRevert,
+  type Production,
   type VercelDeployment,
 } from "./evolution/guardian";
 import {
@@ -56,6 +63,7 @@ import {
   type Outcome,
 } from "./evolution/guardian-report";
 import { mergedPrNumber, type CommitPr } from "./evolution/post-merge";
+import { loopSupabase } from "./evolution/supabase";
 import { labelCommand, LOOP_LABELS } from "./setup-labels/labels";
 import { REVERT_LABEL } from "./trust-report/ladder";
 
@@ -69,10 +77,17 @@ import { REVERT_LABEL } from "./trust-report/ladder";
 // pause-files <dir>: in the pause worktree, extend .evolution/PAUSED and lower trustLevel, as guardrails allow agents to.
 // open-pr <pause|revert>: open that PR from the pushed branch and turn auto-merge on for the pushed commit.
 // notify: open the issue that tells the maintainer what happened and what's left to do.
+// record: write the run to agent_runs when it found a spike or something to promote, or the check failed.
+// And in evolution-guardian-after-deploy.yml:
+// after-deploy: wait until production serves SHA's deployment, then dispatch evolution-guardian.yml 10, 30 and 60
+//   minutes after it went live.
 const root = join(import.meta.dirname, "..");
 const state = join(process.env.RUNNER_TEMP ?? tmpdir(), "guardian");
 const ALIAS_WAIT_MS = 3 * 60_000;
 const POLL_MS = 10_000;
+// How long after-deploy waits for the pushed commit's deployment to go live (a build takes a few minutes).
+const DEPLOY_WAIT_MS = 20 * 60_000;
+const DEPLOY_POLL_MS = 30_000;
 // Commits that went live with one deployment; a longer gap between deployments isn't searched for its change.
 const MAX_COMMITS = 20;
 
@@ -191,11 +206,15 @@ function handledBy(servingId: string): Handled | undefined {
   return pr === undefined ? undefined : { url: pr.url, kind: "pr" };
 }
 
+function errorText(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 500);
+}
+
 function attempt<T>(what: string, problems: string[], run: () => T): T | undefined {
   try {
     return run();
   } catch (error) {
-    problems.push(`${what}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500));
+    problems.push(`${what}: ${errorText(error)}`.slice(0, 500));
     return undefined;
   }
 }
@@ -230,15 +249,25 @@ function planPromotion(deployments: readonly VercelDeployment[], servingId: stri
   return `the revert ${number} merged, and ${target.url ?? target.id} (\`${target.sha.slice(0, 7)}\`) has it, so ${act ? "the guardian promotes it" : "**dry run:** acting would promote it"}`;
 }
 
-async function check(): Promise<void> {
-  const config = readEvolutionConfig(root);
-  const vercel = vercelAccess();
+async function readProduction(vercel: VercelAccess): Promise<{
+  readonly deployments: VercelDeployment[];
+  readonly servingId: string;
+  readonly aliasRequest: AliasRequest | undefined;
+  readonly production: Production;
+}> {
   const [deployments, servingId, aliasRequest] = await Promise.all([
     productionDeployments(vercel),
     servingDeploymentId(vercel, productionHost()),
     lastAliasRequest(vercel),
   ]);
-  const production = productionState(deployments, servingId, aliasRequest);
+  return { deployments, servingId, aliasRequest, production: productionState(deployments, servingId, aliasRequest) };
+}
+
+async function check(): Promise<void> {
+  output({ "started-at": new Date().toISOString() });
+  const config = readEvolutionConfig(root);
+  const vercel = vercelAccess();
+  const { deployments, servingId, aliasRequest, production } = await readProduction(vercel);
   if (production.kind === "held") {
     output({ spike: "false" });
     // A lookup that fails here only delays the promote to the next run, so it's reported, not thrown.
@@ -433,6 +462,97 @@ function notify(): void {
   process.stdout.write(`guardian: ${gh(root, ["issue", "create", "--title", title, "--body", body, "--label", GUARDIAN_ISSUE_LABEL])}\n`);
 }
 
+// Env: CHECK_OUTCOME, SPIKE and PROMOTE from the check, STEPS ("name=outcome ..." for the steps that act), JOB_STATUS,
+// STARTED_AT, ACT and the Supabase pair.
+async function record(): Promise<void> {
+  const act = process.env.ACT === "true";
+  const steps = parseStepOutcomes(process.env.STEPS ?? "");
+  const check = process.env.CHECK_OUTCOME ?? "";
+  const job = process.env.JOB_STATUS ?? "";
+  const status = guardianRunStatus({ check, spike: process.env.SPIKE === "true", promote: (process.env.PROMOTE ?? "") !== "", act, job, steps: Object.values(steps) });
+  if (status === undefined) {
+    process.stdout.write("guardian: a quiet run (no spike, nothing to promote), so nothing to record\n");
+    return;
+  }
+  const found = load("incident.json") as Incident | undefined;
+  const plan = load("promote.json") as Promotion | undefined;
+  const runId = Number(process.env.GITHUB_RUN_ID ?? "");
+  const startedAt = process.env.STARTED_AT || new Date().toISOString();
+  const finishedAt = new Date();
+  const { error } = await loopSupabase()
+    .from("agent_runs")
+    .insert({
+      workflow: "guardian",
+      gh_run_id: Number.isInteger(runId) && runId > 0 ? runId : null,
+      gh_run_url: runUrl(),
+      pr_number: found?.culprit?.pr.number ?? plan?.revert.number ?? null,
+      status,
+      duration_ms: Math.max(0, finishedAt.getTime() - Date.parse(startedAt)),
+      started_at: startedAt,
+      finished_at: finishedAt.toISOString(),
+      details: { act, check, job, steps, spike: [...(found?.verdict.reasons ?? [])], serving: found?.serving.id ?? null, promote: plan?.target.id ?? null },
+    });
+  if (error) throw new Error(`recording the run failed: ${error.message}`);
+  process.stdout.write(`guardian: recorded the run (${status})\n`);
+}
+
+// Dispatches each check as its own guardian run, so each acts and reports like a scheduled one. A failed read of
+// production only costs that poll or that check, so one Vercel or GitHub error doesn't end the watch, but the job
+// still ends red when it never saw the deploy or a check wasn't dispatched.
+async function afterDeploy(): Promise<void> {
+  const sha = env("SHA");
+  const act = process.env.ACT === "true";
+  const vercel = vercelAccess();
+  const short = `\`${sha.slice(0, 7)}\``;
+  const deadline = Date.now() + DEPLOY_WAIT_MS;
+  let live: Deployed | undefined;
+  while (live === undefined) {
+    let deploy: DeployState;
+    let failed = false;
+    try {
+      const { deployments, servingId, production } = await readProduction(vercel);
+      deploy = deployState(deployments, production, servingId, sha);
+    } catch (error) {
+      failed = true;
+      deploy = { kind: "waiting", reason: `reading production failed (${errorText(error)})` };
+      process.stdout.write(`guardian: ${deploy.reason}\n`);
+    }
+    if (deploy.kind === "live") {
+      live = deploy.serving;
+    } else if (deploy.kind === "stop" || Date.now() > deadline) {
+      stepSummary(`## Guardian after a deploy\n\nNo checks for ${short}: ${deploy.reason}${deploy.kind === "waiting" ? ", still after 20 minutes" : ""}.`);
+      if (failed) throw new Error(`after-deploy: ${deploy.reason}`);
+      return;
+    } else {
+      await sleep(DEPLOY_POLL_MS);
+    }
+  }
+  const lines = ["## Guardian after a deploy", "", `${short} went live as ${live.url ?? live.id} at ${new Date(live.liveAt).toISOString()}.`, ""];
+  const checks = afterDeployChecks(live.liveAt, Date.now());
+  if (checks.length === 0) lines.push("- It went live too long ago: every check time has passed.");
+  let missed = 0;
+  for (const { minutes, at } of checks) {
+    await sleep(Math.max(0, at - Date.now()));
+    let line: string;
+    try {
+      const stop = stopWatching((await readProduction(vercel)).production, live.id);
+      if (stop !== undefined) {
+        lines.push(`- ${String(minutes)} min: the checks stop: ${stop}.`);
+        break;
+      }
+      gh(root, ["workflow", "run", "evolution-guardian.yml", "--ref", "main", "-f", `act=${String(act)}`]);
+      line = `- ${String(minutes)} min: dispatched evolution-guardian${act ? " with act" : " (a dry run)"}.`;
+    } catch (error) {
+      missed += 1;
+      line = `- ${String(minutes)} min: no check: ${errorText(error)}.`;
+    }
+    lines.push(line);
+    process.stdout.write(`guardian: ${line.slice(2)}\n`);
+  }
+  stepSummary(lines.join("\n"));
+  if (missed > 0) throw new Error(`after-deploy: ${String(missed)} check(s) weren't dispatched; see the summary`);
+}
+
 const command = process.argv[2];
 if (command === "check") await check();
 else if (command === "promote") await promoteRevert();
@@ -440,4 +560,6 @@ else if (command === "rollback") await rollback();
 else if (command === "pause-files") pauseFiles(process.argv[3] ?? "");
 else if (command === "open-pr") openPr(process.argv[3] ?? "");
 else if (command === "notify") notify();
-else throw new Error("usage: pnpm evolution:guardian <check|promote|rollback|pause-files <dir>|open-pr <pause|revert>|notify>");
+else if (command === "record") await record();
+else if (command === "after-deploy") await afterDeploy();
+else throw new Error("usage: pnpm evolution:guardian <check|promote|rollback|pause-files <dir>|open-pr <pause|revert>|notify|record|after-deploy>");

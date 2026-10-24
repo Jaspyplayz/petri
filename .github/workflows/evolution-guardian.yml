@@ -3,10 +3,12 @@ name: evolution-guardian
 # Watches production (Phase 8.5). It compares the Sentry errors of the release production serves with the release
 # before it. On a spike it rolls production back with Vercel's Instant Rollback. When an evolution change went live, it
 # opens two PRs with auto-merge on: one extends .evolution/PAUSED by 24 hours and lowers trustLevel by one, the other
-# reverts the change. Then it opens an issue. While its rollback holds production, it promotes the newest ready
-# deployment that has the merged revert, because Vercel puts nothing new live after a rollback until a promote. Without
-# the act input it only reports what it would do. Dispatch only until Phase 9.1 adds the 15-minute cron, which acts.
-# No gate: the kill switch and the pause stop agents, and the guardian only lowers risk.
+# reverts the change. Then it opens an issue. While its rollback holds production, it promotes the oldest ready
+# deployment that has the merged revert, once the pause is on main, because Vercel puts nothing new live after a
+# rollback until a promote. Runs that found something, or whose check failed, go in agent_runs. Without the act input
+# it only reports what it would do. Dispatch only until Phase 9.1 adds the 15-minute cron, which acts;
+# evolution-guardian-after-deploy.yml dispatches it 10, 30 and 60 minutes after a deploy. No loop gate: the kill
+# switch and the pause stop agents, the guardian only rolls back and reverts, and its promote has its own conditions.
 on:
   workflow_dispatch:
     inputs:
@@ -57,6 +59,7 @@ jobs:
         run: pnpm -s evolution:guardian check
 
       - name: Promote the revert's deployment
+        id: promote
         if: ${{ env.ACT == 'true' && steps.check.outputs.promote != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -98,6 +101,7 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Open the pause PR with auto-merge on
+        id: pause-pr
         if: ${{ !cancelled() && steps.pause.outputs.sha != '' }}
         env:
           GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
@@ -125,6 +129,7 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Open the revert PR with auto-merge on
+        id: revert-pr
         if: ${{ !cancelled() && steps.revert.outputs.sha != '' }}
         env:
           GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
@@ -133,8 +138,26 @@ jobs:
         run: pnpm -s evolution:guardian open-pr revert
 
       - name: Tell the maintainer
+        id: notify
         if: ${{ !cancelled() && env.ACT == 'true' && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REVERT_CONFLICT: ${{ steps.revert.outputs.conflict }}
         run: pnpm -s evolution:guardian notify
+
+      # Only a run that found a spike or something to promote, or whose check failed, gets a row; quiet runs don't.
+      - name: Record the run in agent_runs
+        if: ${{ always() }}
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          JOB_STATUS: ${{ job.status }}
+          SPIKE: ${{ steps.check.outputs.spike }}
+          PROMOTE: ${{ steps.check.outputs.promote }}
+          STARTED_AT: ${{ steps.check.outputs.started-at }}
+          STEPS: >-
+            promote=${{ steps.promote.outcome }} rollback=${{ steps.rollback.outcome }} pause=${{ steps.pause.outcome }}
+            pause-pr=${{ steps.pause-pr.outcome }} revert=${{ steps.revert.outcome }} revert-pr=${{ steps.revert-pr.outcome }}
+            notify=${{ steps.notify.outcome }}
+        run: pnpm -s evolution:guardian record

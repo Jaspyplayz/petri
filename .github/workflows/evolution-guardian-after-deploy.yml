@@ -1,0 +1,51 @@
+name: evolution-guardian-after-deploy
+
+# Watches a production deploy closely (Phase 8.5): it dispatches evolution-guardian 10, 30 and 60 minutes after the
+# deploy of this commit goes live, so a spike is caught in the first hour, not only on the 15-minute schedule. It waits
+# up to 20 minutes for production to serve the commit's deployment, and stops when its build failed, a newer deploy
+# went live, or production stops serving it (a rollback). Each check is a normal guardian run with the same act. One
+# run per commit: a newer commit's run doesn't cancel this one, and a second run for the same commit waits for it.
+# GitHub keeps one pending guardian run, and a newer one replaces it, so a dry-run dispatch can drop a pending run that
+# would have acted: dispatch without act only to test. Dispatch only until Phase 9.1 adds the push trigger, which acts
+# like the guardian's schedule does.
+on:
+  workflow_dispatch:
+    inputs:
+      act:
+        description: "Dispatch the guardian with act on (it rolls back on a spike). Off: its checks are dry runs."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evolution-guardian-after-deploy-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  after-deploy:
+    runs-on: ubuntu-latest
+    # 20 minutes to go live, then up to 60 more for the last check.
+    timeout-minutes: 90
+    permissions:
+      actions: write
+      contents: read
+    env:
+      ACT: ${{ github.event_name == 'push' || inputs.act == true }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+
+      - name: Wait for the deploy, then dispatch the guardian at 10, 30 and 60 minutes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: pnpm -s evolution:guardian after-deploy

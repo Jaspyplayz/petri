@@ -64,7 +64,7 @@ function costOf(details: unknown): number {
 function add(totals: Totals, row: AgentRunRow): Totals {
   return {
     runs: totals.runs + 1,
-    failed: totals.failed + (row.status === "pass" ? 0 : 1),
+    failed: totals.failed + (row.status === "fail" || row.status === "error" ? 1 : 0),
     turns: totals.turns + (row.turns ?? 0),
     agentMinutes: totals.agentMinutes + (row.duration_ms ?? 0) / 60_000,
     costUsd: totals.costUsd + costOf(row.details),

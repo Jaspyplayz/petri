@@ -290,3 +290,69 @@ export function loweredTrust(text: string): { readonly text: string; readonly fr
   if ((JSON.parse(lowered) as { trustLevel?: unknown }).trustLevel !== from - 1) throw new Error("couldn't lower trustLevel in place");
   return { text: lowered, from, to: from - 1 };
 }
+
+// Minutes after a production deploy went live at which evolution-guardian-after-deploy.yml dispatches the guardian.
+export const AFTER_DEPLOY_MINUTES = [10, 30, 60] as const;
+// A check more than this late is skipped; the next one, or the 15-minute schedule, covers that time.
+const LATE_MINUTES = 5;
+
+export function afterDeployChecks(liveAt: number, now: number): { readonly minutes: number; readonly at: number }[] {
+  return AFTER_DEPLOY_MINUTES.map((minutes) => ({ minutes, at: liveAt + minutes * 60_000 })).filter((check) => now <= check.at + LATE_MINUTES * 60_000);
+}
+
+export type DeployState =
+  | { readonly kind: "live"; readonly serving: Deployed }
+  | { readonly kind: "waiting"; readonly reason: string }
+  | { readonly kind: "stop"; readonly reason: string };
+
+// Where a pushed commit's production deployment stands. live: production serves it and the guardian judges it
+// (productionState is ok). stop: it won't go live this way (its build failed, or production already serves a newer
+// deployment). waiting: still building, or held (a rollback or a promote).
+export function deployState(deployments: readonly VercelDeployment[], production: Production, servingId: string, sha: string): DeployState {
+  if (production.kind === "ok" && production.serving.sha === sha) return { kind: "live", serving: production.serving };
+  const short = sha.slice(0, 7);
+  const ours = deployments
+    .filter((deployment) => deployment.target === "production" && deployment.meta?.githubCommitSha === sha)
+    .sort((a, b) => b.created - a.created)[0];
+  if (ours === undefined) return { kind: "waiting", reason: `Vercel lists no production deployment of ${short} yet` };
+  if (ours.state === "ERROR" || ours.state === "CANCELED") return { kind: "stop", reason: `the production deployment of ${short} (${ours.uid}) is ${ours.state}` };
+  const serving = deployments.find((deployment) => deployment.uid === servingId);
+  if (serving !== undefined && serving.created > ours.created) return { kind: "stop", reason: `production serves ${servingId}, a newer deployment than ${short}'s` };
+  return { kind: "waiting", reason: production.kind === "held" ? production.reason : `${short}'s deployment ${ours.uid} is ${ours.state}` };
+}
+
+// Why after-deploy stops before a check: production no longer serves the deployment it watches (a rollback or a newer
+// deploy), or it's held and the guardian can't judge it. undefined: dispatch the check.
+export function stopWatching(production: Production, liveId: string): string | undefined {
+  if (production.kind === "held") return production.reason;
+  return production.serving.id === liveId ? undefined : `it serves ${production.serving.id}`;
+}
+
+// The workflow passes the outcomes of the steps that act as "name=outcome name=outcome".
+export function parseStepOutcomes(text: string): Record<string, string> {
+  const outcomes: Record<string, string> = {};
+  for (const pair of text.split(/\s+/)) {
+    const [name, outcome] = pair.split("=");
+    if (name !== undefined && name !== "" && outcome !== undefined && outcome !== "") outcomes[name] = outcome;
+  }
+  return outcomes;
+}
+
+// The agent_runs status of a guardian run, from its step outcomes and the job's status. A quiet run (the check passed
+// and found no spike and nothing to promote) isn't recorded: undefined. A check that didn't pass, or a cancelled run
+// that had something to do, is an error, and a dry run that would have acted is skipped. Otherwise it fails when a
+// step that acted failed.
+export function guardianRunStatus(input: {
+  readonly check: string;
+  readonly spike: boolean;
+  readonly promote: boolean;
+  readonly act: boolean;
+  readonly job: string;
+  readonly steps: readonly string[];
+}): "pass" | "fail" | "error" | "skipped" | undefined {
+  if (input.check !== "success") return "error";
+  if (!input.spike && !input.promote) return undefined;
+  if (input.job === "cancelled") return "error";
+  if (!input.act) return "skipped";
+  return input.steps.some((outcome) => outcome === "failure" || outcome === "cancelled") ? "fail" : "pass";
+}
