@@ -49,6 +49,11 @@ describe("totals and the budget", () => {
     expect(totalsByWorkflow(rows).get("post-merge")).toEqual({ runs: 1, failed: 0, turns: 0, agentMinutes: 4, costUsd: 0.5 });
   });
 
+  it("counts only failed and errored runs as failed, not a guardian dry run that was skipped", () => {
+    const guardian = [run("guardian", null, 1, "skipped"), run("guardian", null, 2, "fail"), run("guardian", null, 1, "error"), run("guardian", null, 1)];
+    expect(totalsByWorkflow(guardian).get("guardian")).toMatchObject({ runs: 4, failed: 2 });
+  });
+
   it("is over budget at either limit, and says which", () => {
     expect(overBudget(budgetTotals(rows), budget)).toBeUndefined();
     expect(overBudget({ ...budgetTotals(rows), turns: 100 }, budget)).toBe("over the weekly budget: the agents used 100 turns (budget 100) in the last 7 days");
