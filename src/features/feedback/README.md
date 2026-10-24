@@ -4,7 +4,7 @@ Feature id: `feedback` · Route: `/feedback` · API: `POST /api/feedback`, `POST
 
 ## What it does
 
-Anonymous visitors post an idea or a bug (1–280 characters plus a category), upvote other items and report abusive ones. Each item shows its vote count, category, status (`new → triaged → building → shipped | rejected`) and a link to its issue or PR once the agents pick it up. The list sorts by **Top** (votes, then newest) or **Newest** via `?sort=top|new`, and `?category=idea|bug` shows one category, with a "Show all" link back.
+Anonymous visitors post an idea or a bug (1–280 characters plus a category), upvote other items and report abusive ones. Each item shows its vote count, category, status (`new → triaged → building → shipped | rejected`) and a link to its issue or PR once the agents pick it up. The list sorts by **Top** (votes, then newest) or **Newest** via `?sort=top|new`.
 
 ## Invariants
 
@@ -23,5 +23,5 @@ Anonymous visitors post an idea or a bug (1–280 characters plus a category), u
 ## Structure
 
 - `server/handlers.ts`: create, vote and report route handler logic; `server/list-feedback.ts`: board query
-- `lib/`: Zod input schema and error messages, rate-limit constants, report outcomes, the category filter, sort and status labels (all pure, unit-tested)
+- `lib/`: Zod input schema and error messages, rate-limit constants, report outcomes, sort and status labels (all pure, unit-tested)
 - `components/`: `feedback-screen` (heading + form + Suspense), `feedback-form`, `feedback-board`, `feedback-item`, `vote-button`, `report-button`, `sort-tabs`
