@@ -5,7 +5,7 @@ export const feedbackManifest = defineFeature({
   title: "Feedback board",
   summary: "Anonymous visitors post ideas or bug reports (max 280 characters), upvote others and follow each item's status, sorted by top votes or newest.",
   routes: ["/feedback"],
-  uiLocation: "The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, and issue/PR links).",
+  uiLocation: "The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button; a 'Posting is closed' note instead while the feedback_open flag is off or the app is read-only), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, and issue/PR links).",
   howToReach: ["Open /", "Click 'Feedback' in the top navigation (the middle one of the three links on the right)"],
   keyboardShortcuts: [],
   selectors: {
@@ -30,6 +30,7 @@ export const feedbackManifest = defineFeature({
     charCount: "feedback-char-count",
     submit: "feedback-submit",
     formMessage: "feedback-form-message",
+    closedNote: "feedback-closed-note",
     sortTop: "feedback-sort-top",
     sortNew: "feedback-sort-new",
   },
