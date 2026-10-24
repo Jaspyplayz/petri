@@ -4,7 +4,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 const eslint = new ESLint({ cwd: process.cwd() });
 const rule = "petri/url-input-never-throws";
-const libFile = "src/features/feedback/lib/feedback-filter.ts";
+// Typed linting only parses files in the TypeScript project, so the fixtures borrow real files' paths.
+const libFile = "src/features/feedback/lib/feedback-sort.ts";
 const componentFile = "src/features/feedback/components/feedback-board.tsx";
 
 async function ruleHits(filePath: string, code: string): Promise<number[]> {
