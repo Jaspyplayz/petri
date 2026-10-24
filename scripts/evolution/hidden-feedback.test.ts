@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { hiddenByReports, renderHiddenFeedback, type HiddenItem, type ReportedItemRow } from "./hidden-feedback";
+import { REPORTS_TO_HIDE as FEATURE_REPORTS_TO_HIDE } from "../../src/features/feedback/lib/feedback-report";
+import { hiddenByReports, renderHiddenFeedback, REPORTS_TO_HIDE, type HiddenItem, type ReportedItemRow } from "./hidden-feedback";
 import { windowStart } from "./usage";
 
 const since = windowStart(new Date("2026-11-08T12:00:00Z"));
+
+describe("REPORTS_TO_HIDE", () => {
+  it("is the feedback feature's count, which a feature test ties to the migration", () => {
+    expect(REPORTS_TO_HIDE).toBe(FEATURE_REPORTS_TO_HIDE);
+  });
+});
 
 function item(id: string, reportedAt: readonly string[], fields: Partial<Pick<ReportedItemRow, "category" | "hidden">> = {}): ReportedItemRow {
   return { id, category: "idea", hidden: true, ...fields, feedback_reports: reportedAt.map((created_at) => ({ created_at })) };

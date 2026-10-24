@@ -1,5 +1,7 @@
-import { REPORTS_TO_HIDE } from "../../src/features/feedback/lib/feedback-report";
 import type { Database } from "../../src/shared/supabase/database.types";
+
+// The weekly job holds secrets and so never runs feature code. A test pins this to the feature's REPORTS_TO_HIDE.
+export const REPORTS_TO_HIDE = 3;
 
 type Category = Database["public"]["Enums"]["feedback_category"];
 
