@@ -78,7 +78,8 @@ const messages = {
   removeRoot: "Blocked: recursive delete of a filesystem root, a home directory or a whole working directory (*, ., ..). Name the folder you mean.",
   printSecret: "Blocked: this would print a secret or the whole environment. Check that a variable is set with [ -n \"$NAME\" ] instead of printing it.",
   secretFile: "Blocked: env and credential files hold secrets and stay unread. Scripts such as `pnpm setup:secrets` and `pnpm env:local` read them for you.",
-  evolutionHuman: "Blocked: EVOLUTION_HUMAN is set by a human when they start Claude Code, never by a command.",
+  evolutionHuman:
+    "Blocked: EVOLUTION_HUMAN is set by a human when they start Claude Code, and EVOLUTION_POSTMORTEM by the postmortem workflow, never by a command.",
   patchTool: "Blocked: patch, git apply and git am are off for agents, because the guard can't reliably tell which files a patch writes. Use the Edit/Write tools; a human can run them with EVOLUTION_HUMAN=1.",
   dynamicProgram: "Blocked: the guard can't see which program a variable, substitution, eval or PowerShell call operator (& $x, iex, Start-Process) will run. Spell the command out.",
   spawnFromScript: "Blocked: inline interpreter code that starts other programs (child_process, subprocess, os.system, …) hides them from the guard. Run them directly in the shell.",
@@ -373,7 +374,7 @@ export function pathProblem(path: string, guard: CommandGuard): string | undefin
 }
 
 export function commandProblem(command: string, guard: CommandGuard, depth = 0): string | undefined {
-  if (/EVOLUTION_HUMAN/.test(command)) return messages.evolutionHuman;
+  if (/EVOLUTION_(HUMAN|POSTMORTEM)/.test(command)) return messages.evolutionHuman;
   if (/GIT_CONFIG/i.test(command)) return messages.gitAlias;
   if (configHomeOverrides.some((pattern) => pattern.test(command))) return messages.configHome;
   const script = scriptProblem(command);

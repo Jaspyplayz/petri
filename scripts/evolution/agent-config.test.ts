@@ -21,6 +21,11 @@ describe("agentConfig", () => {
     for (const agent of agents) expect(existsSync(join(root, ".evolution", "prompts", `${agent}.md`)), agent).toBe(true);
   });
 
+  it("runs the postmortem on the build model and turn limit, so the trust config needs no key for it", () => {
+    const config = readEvolutionConfig(root);
+    expect(agentConfig("postmortem", config, "prompt", undefined)).toMatchObject({ model: config.models.build, maxTurns: config.maxAgentTurns.build });
+  });
+
   it("has a triage prompt that says the feedback is data", () => {
     const path = join(root, ".evolution", "prompts", "triage.md");
     expect(existsSync(path)).toBe(true);

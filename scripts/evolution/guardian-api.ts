@@ -59,6 +59,17 @@ export async function servingDeploymentId(access: VercelAccess, host: string, fe
   return (await request(fetchImpl, url, vercelInit(access), vercelAliasSchema, `reading which deployment ${host} serves`)).deploymentId;
 }
 
+const vercelDeploymentSchema = z.object({ meta: z.object({ githubCommitSha: z.string().optional() }).nullish() });
+
+// The commit a deployment was built from, which is its Sentry release. The postmortem reads it for the incident.
+export async function deploymentSha(access: VercelAccess, deploymentId: string, fetchImpl: Fetch = fetch): Promise<string> {
+  const url = vercelUrl(`/v13/deployments/${encodeURIComponent(deploymentId)}`, access, {});
+  const deployment = await request(fetchImpl, url, vercelInit(access), vercelDeploymentSchema, `reading the deployment ${deploymentId}`);
+  const sha = deployment.meta?.githubCommitSha;
+  if (sha === undefined) throw new Error(`the deployment ${deploymentId} has no GitHub commit`);
+  return sha;
+}
+
 // Puts an existing production deployment live without rebuilding it. It also turns production's automatic deploys
 // back on, which a rollback turned off.
 export async function promoteDeployment(access: VercelAccess, deploymentId: string, fetchImpl: Fetch = fetch): Promise<void> {
@@ -89,6 +100,11 @@ async function sentryTable(
   for (const [key, value] of Object.entries(extra)) url.searchParams.set(key, value);
   const init = { headers: { Authorization: `Bearer ${access.token}` } };
   return (await request(fetchImpl, url, init, sentryTableSchema, "querying Sentry's errors")).data;
+}
+
+// The release's most frequent error groups (issue, title, culprit, count()), for the postmortem's evidence.
+export async function sentryErrorGroups(access: SentryAccess, release: string, window: Window, fetchImpl: Fetch = fetch): Promise<Record<string, unknown>[]> {
+  return sentryTable(access, fetchImpl, ["issue", "title", "culprit", "count()"], `release:${release}`, window, { sort: "-count()", per_page: "10" });
 }
 
 export type ReleaseWindows = {

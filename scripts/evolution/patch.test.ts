@@ -35,6 +35,16 @@ describe("patchProblems", () => {
     expect(patchProblems([{ ...added("src/features/blob/x.ts"), status: "T" }], [], config)).toEqual(["src/features/blob/x.ts has git status T"]);
   });
 
+  it("lets a postmortem change postmortemWritablePaths, and no other protected path", () => {
+    const postmortem = { postmortem: true };
+    const allowed = ["docs/agent-mistakes.md", ".claude/skills/postmortem/SKILL.md", "evals/verify-app/cases/03-x/task.md", "scripts/agent-tools/x.test.ts"];
+    expect(patchProblems(allowed.map((path) => added(path)), lines("docs/agent-mistakes.md", 40), config, postmortem)).toEqual([]);
+    expect(patchProblems([added(".claude/skills/postmortem/SKILL.md")], [], config)).toEqual([".claude/skills/postmortem/SKILL.md is a protected path"]);
+    for (const path of [".github/workflows/ci.yml", ".evolution/config.json", ".claude/hooks/guard-files.ts", "scripts/check-pr/config.ts", "evals/results.jsonl", "package.json"]) {
+      expect(patchProblems([added(path)], [], config, postmortem)).toEqual([`${path} is a protected path a postmortem can't change`]);
+    }
+  });
+
   it("refuses binaries, oversize and empty patches, and doesn't count generated files", () => {
     expect(patchProblems([added("src/features/blob/hat.png")], [{ path: "src/features/blob/hat.png", added: null, deleted: null }], config)).toEqual([
       "src/features/blob/hat.png is binary",

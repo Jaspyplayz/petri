@@ -194,7 +194,9 @@ export function notifyIssue(incident: Incident, summary: string, outcome: Outcom
     );
   }
   todo.push(
-    culprit === undefined ? "- Find the cause of the spike in Sentry; the guardian didn't revert anything." : `- Run \`/postmortem #${String(culprit.pr.number)}\` to find out why the change got through and add a check that would have caught it.`,
+    culprit === undefined
+      ? "- Find the cause of the spike in Sentry; the guardian didn't revert anything."
+      : `- When the revert merges, \`evolution-postmortem\` writes the postmortem of #${String(culprit.pr.number)}: why the change got through, and a check that would have caught it. It links its PR here for you to review and merge, or says here that it couldn't. Without a merged revert, run \`/postmortem #${String(culprit.pr.number)}\` yourself.`,
   );
   if (outcome.pause !== undefined && outcome.pause !== "unchanged" && "problem" in outcome.pause) {
     todo.push("- The loop isn't paused yet: merge the pause PR if there is one, or pause it by hand (`pnpm evolution:pause`) and lower trustLevel in `.evolution/config.json`.");

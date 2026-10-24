@@ -1,11 +1,12 @@
 import { join } from "node:path";
 import { readEvolutionConfig } from "./evolution/config";
 import { loopSupabase } from "./evolution/supabase";
-import { AGENT_STEPS, parseAgentUsage, runStatus, WORKFLOW_OF_STEP, type AgentStep } from "./evolution/usage";
+import { AGENT_STEPS, MODEL_OF_STEP, parseAgentUsage, runStatus, WORKFLOW_OF_STEP, type AgentStep } from "./evolution/usage";
 
-// pnpm evolution:record-run <triage|builder|planner|judge> records one agent run in agent_runs. It runs main's code in
-// a job that never ran the agent's or the PR's code. Env: RESULT (the agent step's or job's result), USAGE (the JSON
-// the workflow's jq step took from the action's log; may be empty), ISSUE and PR (optional), and the Supabase pair.
+// pnpm evolution:record-run <triage|builder|planner|judge|postmortem> records one agent run in agent_runs. It runs
+// main's code in a job that never ran the agent's or the PR's code. Env: RESULT (the agent step's or job's result),
+// USAGE (the JSON the workflow's jq step took from the action's log; may be empty), ISSUE and PR (optional), and the
+// Supabase pair.
 const root = join(import.meta.dirname, "..");
 
 function optionalNumber(name: string): number | null {
@@ -37,7 +38,7 @@ async function main(): Promise<void> {
       gh_run_url: runId && repo ? `${server}/${repo}/actions/runs/${String(runId)}` : null,
       issue_number: optionalNumber("ISSUE"),
       pr_number: optionalNumber("PR"),
-      model: readEvolutionConfig(root).models[workflow],
+      model: readEvolutionConfig(root).models[MODEL_OF_STEP[agentStep]],
       status,
       turns: usage?.turns ?? null,
       duration_ms: usage?.durationMs ?? null,

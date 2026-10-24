@@ -116,6 +116,7 @@ describe("notifyIssue", () => {
     expect(body).toContain("Opened https://github.com/x/y/pull/65, which merges itself once its checks pass. It pauses the loop until 2026-10-25T12:00:00.000Z and lowers trustLevel from 1 to 0.");
     expect(body).toContain("Once the revert and the pause have merged and the revert's deployment is ready, the guardian promotes it on its next run (dispatch `evolution-guardian` with `act` to run it now)");
     expect(body).toContain("add `needs-human` to this issue");
+    expect(body).toContain("When the revert merges, `evolution-postmortem` writes the postmortem of #63");
     expect(body).toContain("`/postmortem #63`");
     expect(body).toContain("The pause ends on its own");
     expect(body).toContain(MARKER);

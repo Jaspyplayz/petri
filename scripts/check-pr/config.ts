@@ -11,6 +11,7 @@ export type GuardrailsConfig = {
     readonly branchPrefixes: readonly string[];
     readonly authors: readonly string[];
   };
+  readonly postmortemWritablePaths: readonly string[];
   readonly humanOnlyLabels: {
     readonly protectedPaths: string;
     readonly prSize: string;
@@ -42,6 +43,7 @@ export function parseGuardrailsConfig(json: string): GuardrailsConfig {
       branchPrefixes: requireStringArray(agent, "branchPrefixes", `${where}.agentPullRequests`),
       authors: requireStringArray(agent, "authors", `${where}.agentPullRequests`),
     },
+    postmortemWritablePaths: requireStringArray(root, "postmortemWritablePaths", where),
     humanOnlyLabels: {
       protectedPaths: requireString(labels, "protectedPaths", `${where}.humanOnlyLabels`),
       prSize: requireString(labels, "prSize", `${where}.humanOnlyLabels`),

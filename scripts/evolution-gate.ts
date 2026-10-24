@@ -6,7 +6,7 @@ import { gate, gatedWorkflows, mergedTodayArgs, readsBudget, type GatedWorkflow 
 import { loopSupabase } from "./evolution/supabase";
 import { budgetTotals, windowStart, type Totals } from "./evolution/usage";
 
-// pnpm evolution:gate <triage|build|verify|automerge> writes open=true|false and reason to $GITHUB_OUTPUT.
+// pnpm evolution:gate <triage|build|verify|automerge|postmortem> writes open=true|false and reason to $GITHUB_OUTPUT.
 // A closed gate isn't a failure: the workflow skips its agent steps and exits green. Triage and build also read the
 // last 7 days of agent_runs (NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY); if that read fails, the step
 // fails rather than run without a budget.

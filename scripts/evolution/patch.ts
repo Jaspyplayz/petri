@@ -1,5 +1,6 @@
 import type { GuardrailsConfig } from "../check-pr/config";
 import type { NumstatEntry } from "../check-pr/git";
+import { matchesAny } from "../check-pr/glob";
 import { measurePullRequest } from "../check-pr/pr-size";
 import { isProtectedPath } from "../check-pr/protected-paths";
 
@@ -23,10 +24,19 @@ export function parseRawZ(output: string): RawChange[] {
 
 // The builder's patch is checked after git applied it to a scratch index from the base commit, so the paths and modes
 // are what git would really write: the protected paths and size cap CI enforces on agent PRs (with no human-label
-// escape), and only plain, non-executable files (no symlinks, submodules or binaries).
-export function patchProblems(raw: readonly RawChange[], entries: readonly NumstatEntry[], config: GuardrailsConfig): string[] {
+// escape), and only plain, non-executable files (no symlinks, submodules or binaries). A postmortem's patch may also
+// change postmortemWritablePaths; its PR needs a human's protected-ok for them.
+export function patchProblems(
+  raw: readonly RawChange[],
+  entries: readonly NumstatEntry[],
+  config: GuardrailsConfig,
+  options: { readonly postmortem?: boolean } = {},
+): string[] {
   if (raw.length === 0) return ["the patch changes nothing"];
-  const problems = raw.filter((change) => isProtectedPath(change.path, config)).map((change) => `${change.path} is a protected path`);
+  const writable = (path: string) => options.postmortem === true && matchesAny(path, config.postmortemWritablePaths);
+  const problems = raw
+    .filter((change) => isProtectedPath(change.path, config) && !writable(change.path))
+    .map((change) => `${change.path} is a protected path${options.postmortem === true ? " a postmortem can't change" : ""}`);
   for (const change of raw) {
     if (change.status !== "A" && change.status !== "M" && change.status !== "D") problems.push(`${change.path} has git status ${change.status}`);
     const modes = [change.oldMode, change.newMode].filter((mode) => mode !== NONE);

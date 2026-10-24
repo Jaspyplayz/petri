@@ -90,3 +90,16 @@ export function protectedRepoPath(path: string, cwd: string, guard: PathGuard): 
   const real = realPath(absolute);
   return protectedWithin(absolute, guard) ?? protectedWithin(real, guard) ?? agentConfig(absolute) ?? agentConfig(real);
 }
+
+// The postmortem agent (EVOLUTION_POSTMORTEM=1) may write a protected path only when the path and its real target
+// are both in the project and on postmortemWritablePaths, and neither is a Claude Code settings file.
+export function postmortemWritable(path: string, cwd: string, guard: PathGuard): boolean {
+  const absolute = resolve(cwd, toNativePath(path, guard.caseInsensitive));
+  const flags = guard.caseInsensitive ? "i" : "";
+  const writable = loadGuardrailsConfig(guard.projectRoot).postmortemWritablePaths.map((glob) => new RegExp(globToRegExp(glob).source, flags));
+  return [absolute, realPath(absolute)].every((target) => {
+    const inside = relative(guard.projectRoot, target);
+    if (inside === "" || inside.startsWith("..") || isAbsolute(inside) || agentConfig(target) !== undefined) return false;
+    return writable.some((pattern) => pattern.test(toRepoPath(inside)));
+  });
+}

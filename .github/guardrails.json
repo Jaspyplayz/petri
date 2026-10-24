@@ -51,13 +51,30 @@
     "branchPrefixes": [
       "evo/",
       "claude/",
-      "guardian/"
+      "guardian/",
+      "postmortem/"
     ],
     "authors": [
       "claude[bot]",
       "github-actions[bot]"
     ]
   },
+  "postmortemWritablePaths": [
+    ".claude/skills/**",
+    ".claude/agents/**",
+    ".claude/commands/**",
+    "CLAUDE.md",
+    "evals/*/cases/**",
+    "lint-rules/**",
+    "eslint.config.*",
+    "scripts/agent-tools/**",
+    "scripts/check-boundaries/**",
+    "scripts/check-features/**",
+    "scripts/check-featuremap/**",
+    "scripts/featuremap/**",
+    "scripts/new-feature/**",
+    "scripts/verify/**"
+  ],
   "humanOnlyLabels": {
     "protectedPaths": "protected-ok",
     "prSize": "size-ok"

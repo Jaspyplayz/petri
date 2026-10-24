@@ -4,11 +4,25 @@ import type { EvolutionConfig } from "./config";
 // Agent usage (Phase 8): every agent run lands in agent_runs with its turns and runtime, the gate closes triage and
 // build once the last 7 days pass .evolution/config.json's weeklyBudget, and a weekly issue shows the totals.
 export const BUDGET_WINDOW_DAYS = 7;
-export const BUDGETED_WORKFLOWS = ["triage", "build", "verify"] as const;
+export const BUDGETED_WORKFLOWS = ["triage", "build", "verify", "postmortem"] as const;
 export type BudgetedWorkflow = (typeof BUDGETED_WORKFLOWS)[number];
-export const AGENT_STEPS = ["triage", "builder", "planner", "judge"] as const;
+export const AGENT_STEPS = ["triage", "builder", "planner", "judge", "postmortem"] as const;
 export type AgentStep = (typeof AGENT_STEPS)[number];
-export const WORKFLOW_OF_STEP: Readonly<Record<AgentStep, BudgetedWorkflow>> = { triage: "triage", builder: "build", planner: "verify", judge: "verify" };
+export const WORKFLOW_OF_STEP: Readonly<Record<AgentStep, BudgetedWorkflow>> = {
+  triage: "triage",
+  builder: "build",
+  planner: "verify",
+  judge: "verify",
+  postmortem: "postmortem",
+};
+// The postmortem runs on the build model, so .evolution/config.json has no key of its own for it.
+export const MODEL_OF_STEP: Readonly<Record<AgentStep, keyof EvolutionConfig["models"]>> = {
+  triage: "triage",
+  builder: "build",
+  planner: "verify",
+  judge: "verify",
+  postmortem: "build",
+};
 
 // What `jq` takes from the action's execution log (its final `result` message). In the build workflow the agent's job
 // could rewrite that log, so this is a report, not proof: the bounds keep a bad value out of the table, and

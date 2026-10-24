@@ -1,7 +1,7 @@
 import type { EvolutionConfig } from "./config";
 import { overBudget, type Totals } from "./usage";
 
-export const gatedWorkflows = ["triage", "build", "verify", "automerge"] as const;
+export const gatedWorkflows = ["triage", "build", "verify", "automerge", "postmortem"] as const;
 
 export type GatedWorkflow = (typeof gatedWorkflows)[number];
 
@@ -44,8 +44,11 @@ export function pauseState(paused: string | undefined, now: Date): { readonly pa
   return { paused: false, reason: `the pause ended at ${new Date(timestamp).toISOString()}` };
 }
 
+// The postmortem answers a guardian revert, which also pauses the loop, so only the kill switch stops it. It opens a
+// PR a human merges and starts no new work.
 export function gate(input: GateInput): GateResult {
   if (input.enabled !== "true") return { open: false, reason: 'the repo variable EVOLUTION_ENABLED isn\'t "true"' };
+  if (input.workflow === "postmortem") return { open: true, reason: "enabled (a postmortem runs while the loop is paused)" };
   const pause = pauseState(input.paused, input.now);
   if (pause.paused) return { open: false, reason: pause.reason };
   const { config } = input;

@@ -9,7 +9,7 @@ function runHook(script: string, payload: unknown, env: Readonly<Record<string, 
     cwd: projectRoot,
     input: typeof payload === "string" ? payload : JSON.stringify(payload),
     encoding: "utf8",
-    env: { ...process.env, EVOLUTION_HUMAN: "", ...env },
+    env: { ...process.env, EVOLUTION_HUMAN: "", EVOLUTION_POSTMORTEM: "", ...env },
   });
   return { status: result.status, stderr: result.stderr };
 }
@@ -73,6 +73,12 @@ describe("guard-files hook", () => {
     expect(blocked.status).toBe(2);
     expect(blocked.stderr).toContain("eslint.config.mjs is a protected path");
     expect(runHook("guard-files.ts", write, { EVOLUTION_HUMAN: "1" }).status).toBe(0);
+  });
+
+  it("lets EVOLUTION_POSTMORTEM=1 write postmortemWritablePaths and nothing else protected", () => {
+    const workflow = toolCall("Write", { file_path: join(projectRoot, ".github/workflows/ci.yml"), content: "" });
+    expect(runHook("guard-files.ts", write, { EVOLUTION_POSTMORTEM: "1" }).status).toBe(0);
+    expect(runHook("guard-files.ts", workflow, { EVOLUTION_POSTMORTEM: "1" }).status).toBe(2);
   });
 });
 
