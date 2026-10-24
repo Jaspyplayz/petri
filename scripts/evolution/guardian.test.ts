@@ -24,6 +24,7 @@ import {
   parseStepOutcomes,
   pauseBranch,
   productionState,
+  PROMOTED_LABEL,
   promoteBlock,
   promoteTarget,
   revertBranch,
@@ -161,12 +162,26 @@ describe("after the guardian's rollback", () => {
   const SHA_R = "d".repeat(40);
 
   it("names the deployment a rollback replaced while that rollback holds production", () => {
-    expect(rolledBackFrom("dpl_old", rollback)).toBe("dpl_bad");
-    expect(rolledBackFrom("dpl_new", rollback)).toBeUndefined();
-    expect(rolledBackFrom("dpl_old", { ...rollback, jobStatus: "in-progress" })).toBeUndefined();
-    expect(rolledBackFrom("dpl_old", { ...rollback, type: "promote" })).toBeUndefined();
-    expect(rolledBackFrom("dpl_old", { ...rollback, fromDeploymentId: null })).toBeUndefined();
-    expect(rolledBackFrom("dpl_old", undefined)).toBeUndefined();
+    expect(rolledBackFrom("dpl_old", rollback, [])).toBe("dpl_bad");
+    expect(rolledBackFrom("dpl_new", rollback, [])).toBeUndefined();
+    expect(rolledBackFrom("dpl_old", { ...rollback, jobStatus: "in-progress" }, [])).toBeUndefined();
+    expect(rolledBackFrom("dpl_old", { ...rollback, type: "promote" }, [])).toBeUndefined();
+    expect(rolledBackFrom("dpl_old", { ...rollback, fromDeploymentId: null }, [])).toBeUndefined();
+    expect(rolledBackFrom("dpl_old", undefined, [])).toBeUndefined();
+  });
+
+  it("reads the rollback from the deployments when Vercel reports no promote or rollback", () => {
+    const old = deployment("dpl_old", 1_000, SHA_A);
+    const bad = deployment("dpl_bad", 2_000, SHA_B);
+    const reverted = deployment("dpl_rev", 3_000, SHA_R, { readySubstate: "STAGED" });
+    const cancelled = deployment("dpl_cancelled", 2_500, SHA_C, { state: "CANCELED", readySubstate: null });
+    const held = [reverted, cancelled, bad, old];
+    expect(rolledBackFrom("dpl_old", undefined, held)).toBe("dpl_bad");
+    expect(rolledBackFrom("dpl_bad", undefined, held)).toBeUndefined();
+    expect(rolledBackFrom("dpl_rev", undefined, [{ ...reverted, readySubstate: "PROMOTED" }, bad, old])).toBeUndefined();
+    expect(rolledBackFrom("dpl_old", undefined, [reverted, { ...bad, readySubstate: "STAGED" }, old])).toBeUndefined();
+    expect(rolledBackFrom("dpl_older", undefined, [...held, deployment("dpl_older", 500, SHA_C)])).toBeUndefined();
+    expect(rolledBackFrom("dpl_old", { ...rollback, type: "promote", toDeploymentId: "dpl_old" }, held)).toBeUndefined();
   });
 
   const pr = (number: number, extra: Partial<ListedPr> = {}): ListedPr => ({
@@ -190,8 +205,13 @@ describe("after the guardian's rollback", () => {
 
   it("finds the incident's merged revert: a guardian revert with that incident's marker", () => {
     const others = [pr(70, { body: incidentMarker("dpl_other") }), pr(71, { labels: [] }), pr(72, { isCrossRepository: true }), pr(73, { mergeCommit: null })];
-    expect(incidentRevert([...others, pr(74)], "dpl_bad")).toEqual({ number: 74, url: "https://github.com/x/y/pull/74", mergeCommit: SHA_R });
+    expect(incidentRevert([...others, pr(74)], "dpl_bad")).toEqual({ number: 74, url: "https://github.com/x/y/pull/74", mergeCommit: SHA_R, promoted: false });
     expect(incidentRevert(others, "dpl_bad")).toBeUndefined();
+  });
+
+  it("knows a revert whose deployment the guardian already promoted by its label", () => {
+    const labels = [{ name: "evolution:revert" }, { name: PROMOTED_LABEL }];
+    expect(incidentRevert([pr(75, { labels })], "dpl_bad")?.promoted).toBe(true);
   });
 
   it("promotes only once the pause is on main, and not while a human holds the incident", () => {

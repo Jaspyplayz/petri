@@ -22,6 +22,7 @@ import {
   parseStepOutcomes,
   pauseBranch,
   productionState,
+  PROMOTED_LABEL,
   promoteBlock,
   promoteTarget,
   revertBranch,
@@ -230,13 +231,16 @@ function vercelLine(deployments: readonly VercelDeployment[], aliasRequest: Alia
 // While the guardian's rollback holds production, the way back to normal deploys is promoting a deployment that has
 // the merged revert. Says what it found, for the summary, and saves the plan when there's something to promote.
 function planPromotion(deployments: readonly VercelDeployment[], servingId: string, aliasRequest: AliasRequest | undefined): string | undefined {
-  const from = rolledBackFrom(servingId, aliasRequest);
+  const from = rolledBackFrom(servingId, aliasRequest, deployments);
   if (from === undefined) return undefined;
   const fields = "number,url,body,headRefName,isCrossRepository,labels,mergeCommit";
   const prs = JSON.parse(gh(root, ["pr", "list", "--state", "merged", "--base", "main", "--label", REVERT_LABEL, "--limit", "30", "--json", fields])) as ListedPr[];
   const revert = incidentRevert(prs, from);
   if (revert === undefined) return `production was rolled back from ${from}, and no guardian revert of it has merged yet, so there's nothing to promote`;
   const number = `#${String(revert.number)}`;
+  if (revert.promoted) {
+    return `the guardian already promoted (or tried to promote) the deployment of the revert ${number}, which has ${PROMOTED_LABEL}, so it won't again; a human promotes now, or removes the label to let it retry`;
+  }
   const pausedPath = join(root, PAUSED_PATH);
   const block = promoteBlock(existsSync(pausedPath) ? readFileSync(pausedPath, "utf8") : undefined, new Date(), openIncidentIssue(from)?.labels ?? []);
   if (block !== undefined) return `the revert ${number} merged, but ${block}`;
@@ -355,8 +359,8 @@ function commentOnIncident(plan: Promotion, body: string): void {
   gh(root, issue === undefined ? ["pr", "comment", plan.revert.url, "--body", body] : ["issue", "comment", issue.url, "--body", body]);
 }
 
-// After the promote, lastAliasRequest is a promote, so later runs no longer see the rollback and never promote again.
-// An unconfirmed promote is reported on the incident instead of retried.
+// The revert gets PROMOTED_LABEL before the promote, so later runs never promote for it again, even when Vercel
+// reports no promote. An unconfirmed promote is reported on the incident instead of retried.
 async function promoteRevert(): Promise<void> {
   const plan = load("promote.json") as Promotion | undefined;
   if (plan === undefined) throw new Error("run `evolution:guardian check` first");
@@ -364,6 +368,8 @@ async function promoteRevert(): Promise<void> {
   const host = productionHost();
   const now = await servingDeploymentId(vercel, host);
   if (now !== plan.servingId) throw new Error(`production changed since the check (it serves ${now}, not ${plan.servingId}), so the guardian won't promote`);
+  ensureLabel(PROMOTED_LABEL);
+  gh(root, ["pr", "edit", plan.revert.url, "--add-label", PROMOTED_LABEL]);
   await promoteDeployment(vercel, plan.target.id);
   if (!(await servesWithin(vercel, host, plan.target.id))) {
     commentOnIncident(plan, promoteUnconfirmedComment(plan.target, runUrl()));

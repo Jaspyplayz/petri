@@ -8,6 +8,8 @@ import { pauseState } from "./gate";
 
 export const GUARDIAN_BRANCH_PREFIX = "guardian/";
 export const GUARDIAN_ISSUE_LABEL = "evolution:guardian";
+// On a guardian revert once the guardian has promoted (or tried to promote) its deployment, so it never tries twice.
+export const PROMOTED_LABEL = "guardian:promoted";
 export const PAUSE_HOURS = 24;
 // A previous release live for less than this had too few errors to compare a rate with.
 export const MIN_BASELINE_MINUTES = 15;
@@ -89,9 +91,23 @@ export function productionState(deployments: readonly VercelDeployment[], servin
 // After Instant Rollback, Vercel builds new production deployments but doesn't put them live until one is promoted.
 // While a rollback that succeeded holds production (it still serves the rollback's target), this is the deployment the
 // rollback replaced, which names the guardian's incident. Otherwise undefined.
-export function rolledBackFrom(servingId: string, aliasRequest: AliasRequest | undefined): string | undefined {
-  if (aliasRequest?.type !== "rollback" || aliasRequest.jobStatus !== "succeeded" || aliasRequest.toDeploymentId !== servingId) return undefined;
+//
+// Vercel doesn't always report the rollback: after the guardian's real one (#92), the project had no lastAliasRequest.
+// When it reports none, the deployments show it: production serves the deployment that served right before the newest
+// one that ever served, the only target Hobby's rollback allows. When Vercel reports a promote or rollback, that wins,
+// so a human's promote of an older deployment is left alone.
+export function rolledBackFrom(servingId: string, aliasRequest: AliasRequest | undefined, deployments: readonly VercelDeployment[]): string | undefined {
+  if (aliasRequest === undefined) return servedBefore(deployments, servingId);
+  if (aliasRequest.type !== "rollback" || aliasRequest.jobStatus !== "succeeded" || aliasRequest.toDeploymentId !== servingId) return undefined;
   return aliasRequest.fromDeploymentId ?? undefined;
+}
+
+// The newest deployment that has served production, when production serves the one that served right before it.
+function servedBefore(deployments: readonly VercelDeployment[], servingId: string): string | undefined {
+  const [newest, next] = deployments
+    .filter((deployment) => deployment.state === "READY" && deployment.target === "production" && deployment.readySubstate === "PROMOTED")
+    .sort((a, b) => b.created - a.created);
+  return newest !== undefined && next?.uid === servingId ? newest.uid : undefined;
 }
 
 // A PR as `gh pr list --json number,url,body,headRefName,isCrossRepository,labels,mergeCommit` lists it.
@@ -118,14 +134,16 @@ export function isGuardianRevert(pr: Pick<ListedPr, "body" | "headRefName" | "is
   );
 }
 
-export type MergedRevert = { readonly number: number; readonly url: string; readonly mergeCommit: string };
+export type MergedRevert = { readonly number: number; readonly url: string; readonly mergeCommit: string; readonly promoted: boolean };
 
-// The guardian's merged revert for an incident: one whose body has that incident's marker.
+// The guardian's merged revert for an incident: one whose body has that incident's marker. promoted says the guardian
+// already promoted (or tried to promote) its deployment.
 export function incidentRevert(prs: readonly ListedPr[], servingId: string): MergedRevert | undefined {
   const marker = incidentMarker(servingId);
   for (const pr of prs) {
     if (!isGuardianRevert(pr) || !pr.body.includes(marker) || pr.mergeCommit === null) continue;
-    return { number: pr.number, url: pr.url, mergeCommit: pr.mergeCommit.oid };
+    const promoted = pr.labels.some((label) => label.name === PROMOTED_LABEL);
+    return { number: pr.number, url: pr.url, mergeCommit: pr.mergeCommit.oid, promoted };
   }
   return undefined;
 }
