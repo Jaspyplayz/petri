@@ -2,8 +2,10 @@ name: evals
 
 # Runs the skill evals (pnpm evals, docs/decisions.md P7):
 #   pull_request  only the skills a PR changes, at most EVALS_MAX_PER_SKILL cases each. Same-repo PRs only (forks get no
-#                 secrets), and never an agent PR as .github/guardrails.json defines one (agentPullRequests: its branch
-#                 prefixes, authors and label), because this job hands the PR's code a Claude token. Keep the two in step.
+#                 secrets), and never an agent PR, because the evals job hands the PR's code a Claude token. The gate
+#                 job decides with the base branch's scripts/check-agent-pr.ts, the same rules guardrails uses (label,
+#                 author or bot account, branch prefix, bot commits); the PR head is fetched as data only. The `if`
+#                 below repeats the cheap part. An agent can't edit this file: the bot token has no workflow scope.
 #   schedule      the first case of every skill, nightly, only while the EVALS_NIGHTLY variable is "true".
 # The results go to the job summary and the artifact. evals/results.jsonl is committed only from local runs.
 on:
@@ -36,17 +38,49 @@ env:
   CLAUDE_CODE_VERSION: "2.1.310"
 
 jobs:
-  evals:
+  gate:
     if: >-
-      (github.event_name == 'pull_request'
-        && github.event.pull_request.head.repo.full_name == github.repository
-        && !startsWith(github.head_ref, 'evo/')
-        && !startsWith(github.head_ref, 'claude/')
-        && github.event.pull_request.user.login != 'claude[bot]'
-        && github.event.pull_request.user.login != 'github-actions[bot]'
-        && !contains(github.event.pull_request.labels.*.name, 'evolution'))
-      || (github.event_name == 'schedule' && vars.EVALS_NIGHTLY == 'true')
-      || github.event_name == 'workflow_dispatch'
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.user.type != 'Bot'
+      && !endsWith(github.actor, '[bot]')
+      && !startsWith(github.head_ref, 'evo/')
+      && !startsWith(github.head_ref, 'claude/')
+      && !contains(github.event.pull_request.labels.*.name, 'evolution')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      agent: ${{ steps.check.outputs.agent }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Fetch the PR head as data
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head"
+      - name: Is it an agent PR?
+        id: check
+        run: node scripts/check-agent-pr.ts
+
+  evals:
+    needs: gate
+    if: >-
+      always()
+      && ((github.event_name == 'pull_request' && needs.gate.result == 'success' && needs.gate.outputs.agent == 'false')
+        || (github.event_name == 'schedule' && vars.EVALS_NIGHTLY == 'true')
+        || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 240
     permissions:
