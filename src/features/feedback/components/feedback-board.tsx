@@ -2,6 +2,7 @@ import "server-only";
 import { parseFeedbackSort } from "../lib/feedback-sort";
 import { boardTimestamp, listFeedback } from "../server/list-feedback";
 import { FeedbackItem } from "./feedback-item";
+import { ReportButton } from "./report-button";
 import { SortTabs } from "./sort-tabs";
 import { VoteButton } from "./vote-button";
 
@@ -24,7 +25,13 @@ export async function FeedbackBoard({ searchParams }: { readonly searchParams: S
       ) : (
         <ul data-testid="feedback-list" data-sort={sort} className="space-y-3">
           {items.map((item) => (
-            <FeedbackItem key={item.id} item={item} now={now} voteControl={<VoteButton feedbackId={item.id} count={item.vote_count} />} />
+            <FeedbackItem
+              key={item.id}
+              item={item}
+              now={now}
+              voteControl={<VoteButton feedbackId={item.id} count={item.vote_count} />}
+              reportControl={<ReportButton feedbackId={item.id} />}
+            />
           ))}
         </ul>
       )}

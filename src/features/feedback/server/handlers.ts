@@ -12,6 +12,7 @@ import {
   feedbackInputSchema,
   type FeedbackApiError,
 } from "../lib/feedback-input";
+import { reportOutcome, type ReportOutcome } from "../lib/feedback-report";
 import { RATE_LIMITS, VOTES_PER_NETWORK_PER_ITEM } from "../lib/rate-limits";
 import { hashVoter, voterCookie, voterFromCookies } from "./voter";
 
@@ -31,6 +32,17 @@ function voteResponse(outcome: string): Response {
       return errorResponse("not_found", 404);
     default:
       throw new Error(`cast_vote returned ${outcome}`);
+  }
+}
+
+function reportResponse(outcome: ReportOutcome): Response {
+  switch (outcome) {
+    case "reported":
+      return new Response(null, { status: 201 });
+    case "already_reported":
+      return Response.json({ alreadyReported: true }, { status: 200 });
+    case "not_found":
+      return errorResponse("not_found", 404);
   }
 }
 
@@ -100,6 +112,30 @@ export async function handleVote(request: Request, rawId: string): Promise<Respo
     return response;
   } catch (error) {
     log.error("feedback: failed to vote", error, { feedbackId: id.data });
+    return errorResponse("unavailable", 503);
+  }
+}
+
+export async function handleReport(request: Request, rawId: string): Promise<Response> {
+  const body = await readJson(request);
+  if (!body.ok) return body.response;
+
+  const id = feedbackIdSchema.safeParse(rawId);
+  if (!id.success) return errorResponse("not_found", 404);
+
+  const writesOff = writesOffResponse() ?? (await flagsOffResponse("report"));
+  if (writesOff) return writesOff;
+
+  try {
+    const ipHash = hashClientIp(request.headers);
+    if (!(await consumeRateLimit(ipHash, "report", RATE_LIMITS.report))) return rateLimitedResponse(RATE_LIMITS.report);
+
+    const { error } = await serviceSupabase().from("feedback_reports").insert({ feedback_id: id.data, reporter_hash: ipHash });
+    const outcome = reportOutcome(error?.code);
+    if (outcome === undefined) throw new Error(error?.message ?? "reporting failed");
+    return reportResponse(outcome);
+  } catch (error) {
+    log.error("feedback: failed to report", error, { feedbackId: id.data });
     return errorResponse("unavailable", 503);
   }
 }

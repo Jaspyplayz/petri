@@ -10,7 +10,7 @@ Read this before any task. It maps what's on screen to a feature folder, its `da
 |---|---|---|---|---|---|---|
 | [Analytics (`analytics`)](#analytics-analytics) | none | Invisible. Each page renders a PageView tracker, and features call shared/lib/track on interactions. Events are POSTed to /api/events. | Open any page; a 'view' event is sent once per page show | none | none | medium |
 | [Blob (`blob`)](#blob-blob) | `/` | The home page, centred under the top navigation: the blob's name, the creature, its stats, Poke and Feed buttons, a row of colour swatches, and a rename form. | Open / (from another page, click 'Blob' in the top navigation) | `blob-panel`, `blob-name`, `blob-creature`, `blob-body`, `blob-eyelid`, `blob-size`, `blob-pokes`, `blob-feeds`, `blob-poke-button`, `blob-feed-button`, `blob-color-picker`, `blob-color-swatch-pink`, `blob-name-input`, `blob-name-save`, `blob-name-error` | `blob.poke`, `blob.feed`, `blob.blink`, `blob.recolor`, `blob.rename` | low |
-| [Feedback board (`feedback`)](#feedback-board-feedback) | `/feedback` | The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button; a 'Posting is closed' note instead while the feedback_open flag is off or the app is read-only), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, and issue/PR links). | Open / → Click 'Feedback' in the top navigation (the middle one of the three links on the right) | `feedback-panel`, `feedback-heading`, `feedback-list`, `feedback-empty`, `feedback-item`, `feedback-item-body`, `feedback-item-age`, `feedback-item-status`, `feedback-item-issue-link`, `feedback-item-pr-link`, `feedback-vote-button`, `feedback-vote-count`, `feedback-vote-error`, `feedback-vote-note`, `feedback-form`, `feedback-body-input`, `feedback-category-idea`, `feedback-category-bug`, `feedback-char-count`, `feedback-submit`, `feedback-form-message`, `feedback-closed-note`, `feedback-sort-top`, `feedback-sort-new` | `feedback.browse`, `feedback.post`, `feedback.age`, `feedback.vote` | medium |
+| [Feedback board (`feedback`)](#feedback-board-feedback) | `/feedback` | The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button; a 'Posting is closed' note instead while the feedback_open flag is off or the app is read-only), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, issue/PR links, and a small 'Report' link at the right end of that row, which asks 'Confirm report' before it counts). | Open / → Click 'Feedback' in the top navigation (the middle one of the three links on the right) | `feedback-panel`, `feedback-heading`, `feedback-list`, `feedback-empty`, `feedback-item`, `feedback-item-body`, `feedback-item-age`, `feedback-item-status`, `feedback-item-issue-link`, `feedback-item-pr-link`, `feedback-vote-button`, `feedback-vote-count`, `feedback-vote-error`, `feedback-vote-note`, `feedback-report-button`, `feedback-report-cancel`, `feedback-report-note`, `feedback-report-error`, `feedback-form`, `feedback-body-input`, `feedback-category-idea`, `feedback-category-bug`, `feedback-char-count`, `feedback-submit`, `feedback-form-message`, `feedback-closed-note`, `feedback-sort-top`, `feedback-sort-new` | `feedback.browse`, `feedback.post`, `feedback.age`, `feedback.vote`, `feedback.report` | medium |
 | [Timeline (`timeline`)](#timeline-timeline) | `/timeline` | The /timeline page: a heading, a 'N changes shipped, 0 written by humans' counter, then a vertical list of change cards. Reverts have a red 'Reverted' badge. | Open / → Click 'Timeline' in the top navigation (the last of the three links on the right) | `timeline-panel`, `timeline-heading`, `timeline-counter`, `timeline-list`, `timeline-empty`, `timeline-entry`, `timeline-entry-title`, `timeline-revert-badge`, `timeline-pr-link` | `timeline.browse` | medium |
 
 ## Page layout
@@ -155,13 +155,13 @@ Renaming the blob updates its heading. Run it with `pnpm verify:flow blob.rename
 
 ## Feedback board (`feedback`)
 
-Anonymous visitors post ideas or bug reports (max 280 characters), upvote others and follow each item's status, sorted by top votes or newest.
+Anonymous visitors post ideas or bug reports (max 280 characters), upvote others, report abuse and follow each item's status, sorted by top votes or newest. Reports from 3 different networks hide an item.
 
 - **Folder:** `src/features/feedback/`
 - **Routes:** `/feedback`
-- **Where it is on screen:** The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button; a 'Posting is closed' note instead while the feedback_open flag is off or the app is read-only), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, and issue/PR links).
+- **Where it is on screen:** The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button; a 'Posting is closed' note instead while the feedback_open flag is off or the app is read-only), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, issue/PR links, and a small 'Report' link at the right end of that row, which asks 'Confirm report' before it counts).
 - **Keyboard shortcuts:** none
-- **Data tables:** `feedback`, `votes`, `rate_limit_hits`
+- **Data tables:** `feedback`, `votes`, `feedback_reports`, `rate_limit_hits`
 - **Risk level:** medium
 
 How to reach it:
@@ -185,6 +185,10 @@ How to reach it:
 | voteCount | `feedback-vote-count` |
 | voteError | `feedback-vote-error` |
 | voteNote | `feedback-vote-note` |
+| reportButton | `feedback-report-button` |
+| reportCancel | `feedback-report-cancel` |
+| reportNote | `feedback-report-note` |
+| reportError | `feedback-report-error` |
 | form | `feedback-form` |
 | bodyInput | `feedback-body-input` |
 | categoryIdea | `feedback-category-idea` |
@@ -241,6 +245,19 @@ Upvoting an item marks the button as voted. Run it with `pnpm verify:flow feedba
 2. click `voteButton`
 3. expectVisible `voteCount`
 4. screenshot "after-vote"
+
+### `feedback.report`
+
+Reporting an item asks for a confirmation, then says it's reported (or already reported from this network); the item stays until 3 networks report it. Run it with `pnpm verify:flow feedback.report`. It writes data, so `verify:all --read-only` (production) skips it.
+
+1. goto `/feedback?sort=new`
+2. click `reportButton`
+3. expectText `reportButton` contains "Confirm report"
+4. expectVisible `reportCancel`
+5. screenshot "report-confirm"
+6. click `reportButton`
+7. expectVisible `reportNote`
+8. screenshot "after-report"
 
 ## Timeline (`timeline`)
 

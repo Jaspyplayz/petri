@@ -75,8 +75,9 @@ describe("API errors", () => {
 });
 
 describe("rate limits", () => {
-  it("matches the spec: 5 posts and 30 votes per hour", () => {
+  it("matches the spec: 5 posts, 30 votes and 10 reports per hour", () => {
     expect(RATE_LIMITS.post).toEqual({ limit: 5, windowSeconds: 3600 });
     expect(RATE_LIMITS.vote).toEqual({ limit: 30, windowSeconds: 3600 });
+    expect(RATE_LIMITS.report).toEqual({ limit: 10, windowSeconds: 3600 });
   });
 });

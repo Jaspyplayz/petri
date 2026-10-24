@@ -6,10 +6,12 @@ import type { FeedbackItem as Item } from "../server/list-feedback";
 export function FeedbackItem({
   item,
   voteControl,
+  reportControl,
   now,
 }: {
   readonly item: Item;
   readonly voteControl: ReactNode;
+  readonly reportControl: ReactNode;
   readonly now: number;
 }) {
   return (
@@ -46,6 +48,7 @@ export function FeedbackItem({
               Pull request
             </a>
           ) : null}
+          {reportControl}
         </div>
       </div>
     </li>

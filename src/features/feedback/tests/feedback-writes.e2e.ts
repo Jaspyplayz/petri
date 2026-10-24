@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { expect, test } from "@/shared/testing/e2e-fixture";
 
 test.describe("feedback writes", () => {
@@ -17,11 +18,12 @@ test.describe("feedback writes", () => {
     await expect(item.getByTestId("feedback-item-status")).toHaveText("New");
   });
 
-  test("voting raises the count once per visitor", async ({ page }) => {
+  test("voting raises the count once per visitor", async ({ page, request }) => {
+    const posted = await request.post("/api/feedback", { data: { body: `Vote probe ${String(Date.now())}`, category: "idea" } });
+    expect(posted.status()).toBe(201);
+    const { id } = (await posted.json()) as { id: string };
     await page.goto("/feedback?sort=new");
-    const item = page.getByTestId("feedback-item").first();
-    const id = await item.getAttribute("data-feedback-id");
-    const target = page.locator(`[data-feedback-id="${String(id)}"]`);
+    const target = page.locator(`[data-feedback-id="${id}"]`);
     const before = Number(await target.getByTestId("feedback-vote-count").innerText());
 
     await target.getByTestId("feedback-vote-button").click();
@@ -48,6 +50,68 @@ test.describe("feedback writes", () => {
     }
     expect(statuses.every((status) => status === 201 || status === 409)).toBe(true);
     expect(statuses.at(-1)).toBe(409);
+  });
+
+  test("reporting asks first, then counts once per network", async ({ page, request }) => {
+    const posted = await request.post("/api/feedback", { data: { body: `Report probe ${String(Date.now())}`, category: "idea" } });
+    expect(posted.status()).toBe(201);
+    const { id } = (await posted.json()) as { id: string };
+    await page.goto("/feedback?sort=new");
+    const target = page.locator(`[data-feedback-id="${id}"]`);
+    const button = target.getByTestId("feedback-report-button");
+
+    await button.click();
+    await expect(button).toHaveText("Confirm report");
+    await target.getByTestId("feedback-report-cancel").click();
+    await expect(button).toHaveText("Report");
+
+    await button.click();
+    await expect(button).toHaveText("Confirm report");
+    await button.click();
+    await expect(target.getByTestId("feedback-report-note")).toHaveText("Reported. Thanks.");
+
+    await page.reload();
+    await button.click();
+    await expect(button).toHaveText("Confirm report");
+    await button.click();
+    await expect(target.getByTestId("feedback-report-note")).toHaveText("Already reported");
+    await expect(target).toBeVisible();
+  });
+
+  test("reports from 3 networks hide an item", async ({ page, request }) => {
+    const text = `Hide probe ${String(Date.now())}`;
+    const posted = await request.post("/api/feedback", { data: { body: text, category: "idea" } });
+    expect(posted.status()).toBe(201);
+    const { id } = (await posted.json()) as { id: string };
+    const statuses: number[] = [];
+    for (let network = 1; network <= 3; network += 1) {
+      const report = await request.post(`/api/feedback/${id}/report`, {
+        data: {},
+        headers: { "x-forwarded-for": `198.19.${String(network)}.${String(randomInt(1, 255))}` },
+      });
+      statuses.push(report.status());
+    }
+    expect(statuses).toEqual([201, 201, 201]);
+
+    await page.goto("/feedback?sort=new");
+    await expect(page.getByTestId("feedback-list")).toBeVisible();
+    await expect(page.locator(`[data-feedback-id="${id}"]`)).toHaveCount(0);
+    await expect(page.getByTestId("feedback-list")).not.toContainText(text);
+  });
+
+  test("reports refuse unknown items and cross-site requests", async ({ request }) => {
+    const unknown = await request.post("/api/feedback/00000000-0000-4000-8000-00000000ffff/report", { data: {} });
+    expect(unknown.status()).toBe(404);
+    expect(await unknown.json()).toEqual({ error: "not_found" });
+    const badId = await request.post("/api/feedback/not-a-uuid/report", { data: {} });
+    expect(badId.status()).toBe(404);
+    const crossSite = await request.post("/api/feedback/00000000-0000-4000-8000-000000000003/report", {
+      data: {},
+      headers: { origin: "https://evil.example", "sec-fetch-site": "cross-site" },
+    });
+    expect(crossSite.status()).toBe(403);
+    const noBody = await request.post("/api/feedback/00000000-0000-4000-8000-000000000003/report");
+    expect(noBody.status()).toBe(415);
   });
 
   test("the API validates input and caps length", async ({ request }) => {
