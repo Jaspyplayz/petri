@@ -17,6 +17,7 @@ Anonymous visitors post an idea or a bug (1–280 characters plus a category) an
 - One vote per browser per item, so several people on one connection can each vote. The browser gets a random id in the `petri_voter` cookie (HttpOnly, SameSite=Lax, a year), stored only as `voter_hash = sha256(RATE_LIMIT_SALT + ":voter:" + id)` (`server/voter.ts`). A repeat vote is idempotent (200 `{ alreadyVoted: true }`, no count change), and the button shows as voted with "Already counted" under it.
 - One connection can give an item at most 5 votes (`VOTES_PER_NETWORK_PER_ITEM`), so clearing cookies doesn't stuff the board; the 6th gets 409 `vote_limit`. The `cast_vote` RPC checks both and inserts under an advisory lock per (item, IP hash). Votes from before this rule used the IP hash as `voter_hash`, and their `ip_hash` is that same hash. Vote counts are maintained by a DB trigger.
 - The board is fetched at request time inside `<Suspense>` (Cache Components); after a write the client calls `router.refresh()`.
+- **Kill switch flags** (`app_flags`, read through `shared/lib/flags-off-response.ts`, cached 30 s per server instance): `feedback_open = false` closes posting (503 `feedback_closed`, and the form becomes a note); `read_only_mode = true` closes posting and voting (503 `read_only`). The post area reads them at request time inside its own `<Suspense>`.
 
 ## Structure
 

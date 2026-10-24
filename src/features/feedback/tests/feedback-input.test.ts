@@ -59,6 +59,13 @@ describe("API errors", () => {
     expect(parseFeedbackApiError(null)).toBe("unavailable");
   });
 
+  it("parses the kill-switch codes and explains each", () => {
+    expect(parseFeedbackApiError({ error: "feedback_closed" })).toBe("feedback_closed");
+    expect(parseFeedbackApiError({ error: "read_only" })).toBe("read_only");
+    expect(feedbackErrorMessage("feedback_closed")).toBe("Posting is closed for now. You can still vote.");
+    expect(feedbackErrorMessage("read_only")).toBe("Petri is read-only for now. Try again later.");
+  });
+
   it.each(["invalid", "too_large", "rate_limited", "not_found", "unavailable"] as const)(
     "has a message for %s",
     (code) => {

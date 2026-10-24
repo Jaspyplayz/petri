@@ -1,4 +1,5 @@
 import "server-only";
+import { flagsOffResponse } from "@/shared/lib/flags-off-response";
 import { log } from "@/shared/lib/log";
 import { readBodyWithLimit } from "@/shared/lib/read-body";
 import { guardJsonWrite } from "@/shared/lib/request-guards";
@@ -52,7 +53,7 @@ export async function handleCreateFeedback(request: Request): Promise<Response> 
   const input = feedbackInputSchema.safeParse(body.json);
   if (!input.success) return errorResponse("invalid", 400);
 
-  const writesOff = writesOffResponse();
+  const writesOff = writesOffResponse() ?? (await flagsOffResponse("post"));
   if (writesOff) return writesOff;
 
   try {
@@ -79,7 +80,7 @@ export async function handleVote(request: Request, rawId: string): Promise<Respo
   const id = feedbackIdSchema.safeParse(rawId);
   if (!id.success) return errorResponse("not_found", 404);
 
-  const writesOff = writesOffResponse();
+  const writesOff = writesOffResponse() ?? (await flagsOffResponse("vote"));
   if (writesOff) return writesOff;
 
   try {

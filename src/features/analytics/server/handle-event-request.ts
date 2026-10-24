@@ -1,4 +1,5 @@
 import "server-only";
+import { flagsOffResponse } from "@/shared/lib/flags-off-response";
 import { log } from "@/shared/lib/log";
 import { readBodyWithLimit } from "@/shared/lib/read-body";
 import { guardJsonWrite } from "@/shared/lib/request-guards";
@@ -21,6 +22,7 @@ export async function handleEventRequest(request: Request): Promise<Response> {
 
   const writesOff = writesOffResponse();
   if (writesOff) return writesOff;
+  if (await flagsOffResponse("event")) return new Response(null, { status: 204 });
 
   const { featureId, action, path } = parsed.event;
   try {

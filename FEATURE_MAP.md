@@ -10,7 +10,7 @@ Read this before any task. It maps what's on screen to a feature folder, its `da
 |---|---|---|---|---|---|---|
 | [Analytics (`analytics`)](#analytics-analytics) | none | Invisible. Each page renders a PageView tracker, and features call shared/lib/track on interactions. Events are POSTed to /api/events. | Open any page; a 'view' event is sent once per page show | none | none | medium |
 | [Blob (`blob`)](#blob-blob) | `/` | The home page, centred under the top navigation: the blob's name, the creature, its stats, Poke and Feed buttons, a row of colour swatches, and a rename form. | Open / (from another page, click 'Blob' in the top navigation) | `blob-panel`, `blob-name`, `blob-creature`, `blob-body`, `blob-eyelid`, `blob-size`, `blob-pokes`, `blob-feeds`, `blob-poke-button`, `blob-feed-button`, `blob-color-picker`, `blob-color-swatch-pink`, `blob-name-input`, `blob-name-save`, `blob-name-error` | `blob.poke`, `blob.feed`, `blob.blink`, `blob.recolor`, `blob.rename` | low |
-| [Feedback board (`feedback`)](#feedback-board-feedback) | `/feedback` | The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, and issue/PR links). | Open / → Click 'Feedback' in the top navigation (the middle one of the three links on the right) | `feedback-panel`, `feedback-heading`, `feedback-list`, `feedback-empty`, `feedback-item`, `feedback-item-body`, `feedback-item-age`, `feedback-item-status`, `feedback-item-issue-link`, `feedback-item-pr-link`, `feedback-vote-button`, `feedback-vote-count`, `feedback-vote-error`, `feedback-vote-note`, `feedback-form`, `feedback-body-input`, `feedback-category-idea`, `feedback-category-bug`, `feedback-char-count`, `feedback-submit`, `feedback-form-message`, `feedback-sort-top`, `feedback-sort-new` | `feedback.browse`, `feedback.post`, `feedback.age`, `feedback.vote` | medium |
+| [Feedback board (`feedback`)](#feedback-board-feedback) | `/feedback` | The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button; a 'Posting is closed' note instead while the feedback_open flag is off or the app is read-only), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, and issue/PR links). | Open / → Click 'Feedback' in the top navigation (the middle one of the three links on the right) | `feedback-panel`, `feedback-heading`, `feedback-list`, `feedback-empty`, `feedback-item`, `feedback-item-body`, `feedback-item-age`, `feedback-item-status`, `feedback-item-issue-link`, `feedback-item-pr-link`, `feedback-vote-button`, `feedback-vote-count`, `feedback-vote-error`, `feedback-vote-note`, `feedback-form`, `feedback-body-input`, `feedback-category-idea`, `feedback-category-bug`, `feedback-char-count`, `feedback-submit`, `feedback-form-message`, `feedback-closed-note`, `feedback-sort-top`, `feedback-sort-new` | `feedback.browse`, `feedback.post`, `feedback.age`, `feedback.vote` | medium |
 | [Timeline (`timeline`)](#timeline-timeline) | `/timeline` | The /timeline page: a heading, a 'N changes shipped, 0 written by humans' counter, then a vertical list of change cards. Reverts have a red 'Reverted' badge. | Open / → Click 'Timeline' in the top navigation (the last of the three links on the right) | `timeline-panel`, `timeline-heading`, `timeline-counter`, `timeline-list`, `timeline-empty`, `timeline-entry`, `timeline-entry-title`, `timeline-revert-badge`, `timeline-pr-link` | `timeline.browse` | medium |
 
 ## Page layout
@@ -159,7 +159,7 @@ Anonymous visitors post ideas or bug reports (max 280 characters), upvote others
 
 - **Folder:** `src/features/feedback/`
 - **Routes:** `/feedback`
-- **Where it is on screen:** The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, and issue/PR links).
+- **Where it is on screen:** The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button; a 'Posting is closed' note instead while the feedback_open flag is off or the app is read-only), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, and issue/PR links).
 - **Keyboard shortcuts:** none
 - **Data tables:** `feedback`, `votes`, `rate_limit_hits`
 - **Risk level:** medium
@@ -192,6 +192,7 @@ How to reach it:
 | charCount | `feedback-char-count` |
 | submit | `feedback-submit` |
 | formMessage | `feedback-form-message` |
+| closedNote | `feedback-closed-note` |
 | sortTop | `feedback-sort-top` |
 | sortNew | `feedback-sort-new` |
 
