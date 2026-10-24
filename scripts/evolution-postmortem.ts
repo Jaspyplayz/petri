@@ -3,10 +3,13 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path";
 import { z } from "zod";
 import { loadGuardrailsConfig } from "./check-pr/config";
+import { parseNumstatZ } from "./check-pr/git";
 import { gh } from "./evolution/github-issue";
 import { GUARDIAN_ISSUE_LABEL, incidentMarker, parseRevertBranch } from "./evolution/guardian";
 import { deploymentSha, sentryErrorGroups } from "./evolution/guardian-api";
+import { parseRawZ } from "./evolution/patch";
 import {
+  appliedProblems,
   errorGroups,
   incidentDeploymentId,
   POSTMORTEM_BRANCH_PREFIX,
@@ -28,12 +31,15 @@ import { NEEDS_HUMAN_LABEL } from "./trust-report/ladder";
 // pnpm evolution:postmortem <command> runs in evolution-postmortem.yml:
 // gather: in a trusted job, collect the evidence for PR's postmortem (the PR, its diff and issue, the guardian's
 //   revert REVERT and incident issue, and the incident release's errors from Vercel and Sentry) into
-//   artifacts/postmortem/. Outputs found, branch, base and incident. found is false when PR already has an open
-//   postmortem PR.
+//   artifacts/postmortem/. Outputs number and incident as soon as it knows them, so a failure can still be reported,
+//   then found, branch and base. found is false when PR already has an open postmortem PR.
 // check-report <report.json>: fail unless the agent's report matches the schema and its outcome. Outputs outcome.
+// check-applied <report.json>: with the patch applied to the index, fail unless it adds the log entry without changing
+//   a line of the log, and adds the eval case the report names.
 // labels: create the labels open-pr puts on the PR.
-// open-pr: open the PR for the pushed BRANCH from the report and the evidence, labelled postmortem, and needs-human
-//   when it changes PROTECTED paths. GH_TOKEN must be EVOLUTION_BOT_TOKEN so CI runs on the PR. Outputs url.
+// open-pr: open the PR for the pushed BRANCH from the report and the evidence, listing the protected files it adds
+//   (PROTECTED_ADDED) and changes (PROTECTED_MODIFIED), labelled postmortem, and needs-human when there are any.
+//   GH_TOKEN must be EVOLUTION_BOT_TOKEN so CI runs on the PR. Outputs url.
 const root = join(import.meta.dirname, "..");
 const dir = join(root, "artifacts", "postmortem");
 const SENTRY_DAYS = 14;
@@ -56,11 +62,11 @@ function env(name: string): string {
   return value;
 }
 
+// Only the plain form, so "1e1" or "010" can't name the same PR in a different concurrency group.
 function positive(value: string | undefined, name: string): number | undefined {
   if (value === undefined || value.trim() === "") return undefined;
-  const number = Number(value);
-  if (!Number.isInteger(number) || number <= 0) throw new Error(`${name} must be a PR number, not ${value}`);
-  return number;
+  if (!/^[1-9]\d{0,6}$/.test(value)) throw new Error(`${name} must be a PR number, not ${JSON.stringify(value.slice(0, 40))}`);
+  return Number(value);
 }
 
 function output(values: Record<string, string>): void {
@@ -93,6 +99,7 @@ function json(args: readonly string[]): unknown {
 
 async function gather(): Promise<void> {
   const number = positive(env("PR"), "PR") ?? 0;
+  output({ number: String(number) });
   const revertNumber = positive(process.env.REVERT, "REVERT");
   const note = (process.env.NOTE ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
   const fields = "number,title,body,url,headRefName,mergedAt,mergeCommit,files,labels";
@@ -101,7 +108,7 @@ async function gather(): Promise<void> {
   if (!pr.headRefName.startsWith("evo/") && !pr.labels.some((label) => config.agentPullRequests.labels.includes(label.name))) {
     throw new Error(`#${String(number)} isn't an evolution PR; a postmortem is for an agent's change`);
   }
-  const open = json(["pr", "list", "--state", "open", "--limit", "100", "--json", "url,headRefName"]) as OpenPr[];
+  const open = json(["pr", "list", "--state", "open", "--limit", "1000", "--json", "url,headRefName"]) as OpenPr[];
   const existing = open.find((item) => item.headRefName.startsWith(`${POSTMORTEM_BRANCH_PREFIX}${String(number)}-`));
   if (existing !== undefined) {
     output({ found: "false" });
@@ -135,6 +142,7 @@ async function gather(): Promise<void> {
           if (found === undefined) throw new Error(`no ${GUARDIAN_ISSUE_LABEL} issue has the marker for ${deploymentId}`);
           return found;
         });
+  if (incident !== undefined) output({ incident: String(incident.number) });
   const release =
     deploymentId === undefined
       ? undefined
@@ -173,7 +181,7 @@ async function gather(): Promise<void> {
   writeFileSync(join(dir, "evidence.md"), renderEvidence(evidence, diff));
   const base = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).stdout.trim();
   if (!/^[0-9a-f]{40}$/.test(base)) throw new Error("couldn't read the base commit");
-  output({ found: "true", branch: postmortemBranch(number, base), base, incident: incident === undefined ? "" : String(incident.number) });
+  output({ found: "true", branch: postmortemBranch(number, base), base });
   for (const problem of problems) process.stdout.write(`postmortem: lookup failed: ${problem}\n`);
 }
 
@@ -191,6 +199,19 @@ function checkReport(file: string | undefined): void {
   output({ outcome: report.outcome, reason: defang(report.blockedReason ?? "").replace(/\s+/g, " ") });
 }
 
+function staged(args: readonly string[]): string {
+  const result = spawnSync("git", ["diff", "--cached", "-z", "--no-renames", ...args], { cwd: root, encoding: "utf8", windowsHide: true });
+  if (result.status !== 0) throw new Error(`git diff --cached ${args.join(" ")} failed: ${result.stderr.trim()}`);
+  return result.stdout;
+}
+
+function checkApplied(file: string | undefined): void {
+  if (file === undefined) throw new Error("usage: pnpm evolution:postmortem check-applied <report.json>");
+  const problems = appliedProblems(readReport(file), parseRawZ(staged(["--raw"])), parseNumstatZ(staged(["--numstat"])));
+  if (problems.length > 0) throw new Error(`the patch doesn't match the report: ${problems.join("; ")}`);
+  process.stdout.write("postmortem: the patch adds the entry and the eval case it reports\n");
+}
+
 function labels(): void {
   for (const name of [POSTMORTEM_LABEL, NEEDS_HUMAN_LABEL]) {
     const spec = LOOP_LABELS.find((label) => label.name === name);
@@ -203,12 +224,16 @@ function openPr(): void {
   const branch = env("BRANCH");
   if (!/^postmortem\/\d+-[0-9a-f]{7}$/.test(branch)) throw new Error(`${branch} isn't a postmortem branch`);
   const report = readReport(join(dir, "report.json"));
+  const problems = reportProblems(report);
+  if (problems.length > 0) throw new Error(`the postmortem report doesn't add up: ${problems.join("; ")}`);
   const evidence = JSON.parse(readFileSync(join(dir, "evidence.json"), "utf8")) as Evidence;
-  const protectedPaths = (process.env.PROTECTED ?? "").split(/\s+/).filter((path) => path !== "");
+  const paths = (name: string) => (process.env[name] ?? "").split(/\s+/).filter((path) => path !== "");
+  const protectedPaths = { added: paths("PROTECTED_ADDED"), modified: paths("PROTECTED_MODIFIED") };
   const body = postmortemPrBody({ report, evidence, protectedPaths, runUrl: env("RUN_URL") });
   const bodyFile = join(dir, "pr-body.md");
   writeFileSync(bodyFile, body);
-  const labelNames = [POSTMORTEM_LABEL, ...(protectedPaths.length > 0 ? [NEEDS_HUMAN_LABEL] : [])].join(",");
+  const touched = protectedPaths.added.length + protectedPaths.modified.length > 0;
+  const labelNames = [POSTMORTEM_LABEL, ...(touched ? [NEEDS_HUMAN_LABEL] : [])].join(",");
   const url = gh(root, ["pr", "create", "--base", "main", "--head", branch, "--title", postmortemTitle(report), "--body-file", bodyFile, "--label", labelNames]);
   output({ url });
 }
@@ -216,6 +241,7 @@ function openPr(): void {
 const command = process.argv[2];
 if (command === "gather") await gather();
 else if (command === "check-report") checkReport(process.argv[3]);
+else if (command === "check-applied") checkApplied(process.argv[3]);
 else if (command === "labels") labels();
 else if (command === "open-pr") openPr();
-else throw new Error("usage: pnpm evolution:postmortem <gather|check-report <report.json>|labels|open-pr>");
+else throw new Error("usage: pnpm evolution:postmortem <gather|check-report <report.json>|check-applied <report.json>|labels|open-pr>");

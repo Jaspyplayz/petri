@@ -6,12 +6,13 @@ import { join } from "node:path";
 import { loadGuardrailsConfig } from "./check-pr/config";
 import { parseNumstatZ } from "./check-pr/git";
 import { isProtectedPath } from "./check-pr/protected-paths";
-import { parseRawZ, patchProblems } from "./evolution/patch";
+import { parseRawZ, patchProblems, SKILL_FILE, skillFrontmatterProblem } from "./evolution/patch";
 
 // pnpm evolution:check-patch <patch file> [--postmortem] fails unless the agent's patch is safe to apply. It applies the
 // patch to a scratch index built from HEAD (the base commit), never the working tree, and checks what git recorded
-// there. With --postmortem it allows postmortemWritablePaths and writes the protected ones it changes to
-// $GITHUB_OUTPUT as protected (space separated), for the PR's needs-human label.
+// there. With --postmortem it allows what postmortemPathProblem allows, checks the frontmatter of the skills the patch
+// writes, and writes the protected files it adds and modifies to $GITHUB_OUTPUT as added and modified (space
+// separated; a postmortem's protected paths have no spaces), for the PR body and its needs-human label.
 const root = join(import.meta.dirname, "..");
 const usage = "usage: pnpm evolution:check-patch <patch file> [--postmortem]";
 
@@ -33,15 +34,24 @@ function main(): void {
     const entries = parseNumstatZ(git(["diff-index", "--cached", "--numstat", "-z", "--no-renames", "HEAD"], index));
     const config = loadGuardrailsConfig(root);
     const problems = patchProblems(raw, entries, config, { postmortem });
+    if (postmortem && problems.length === 0) {
+      for (const change of raw.filter((item) => item.status !== "D" && SKILL_FILE.test(item.path))) {
+        const problem = skillFrontmatterProblem(git(["show", `:${change.path}`], index));
+        if (problem !== undefined) problems.push(`${change.path}: ${problem}`);
+      }
+    }
     if (problems.length > 0) {
       process.stderr.write(`${problems.map((problem) => `✖ ${problem}`).join("\n")}\ncheck-patch: the agent's patch can't be used.\n`);
       process.exitCode = 1;
       return;
     }
-    const touched = raw.filter((change) => isProtectedPath(change.path, config)).map((change) => change.path);
+    const touched = raw.filter((change) => isProtectedPath(change.path, config));
+    const added = touched.filter((change) => change.status === "A").map((change) => change.path);
+    const modified = touched.filter((change) => change.status !== "A").map((change) => change.path);
     const output = process.env.GITHUB_OUTPUT;
-    if (postmortem && output) appendFileSync(output, `protected=${touched.join(" ")}\n`);
-    process.stdout.write(`check-patch: ok (${String(raw.length)} file(s)${touched.length > 0 ? `; protected: ${touched.join(", ")}` : ""})\n`);
+    if (postmortem && output) appendFileSync(output, `added=${added.join(" ")}\nmodified=${modified.join(" ")}\n`);
+    const listed = touched.length > 0 ? `; protected: ${touched.map((change) => change.path).join(", ")}` : "";
+    process.stdout.write(`check-patch: ok (${String(raw.length)} file(s)${listed})\n`);
   } finally {
     rmSync(index, { force: true });
   }

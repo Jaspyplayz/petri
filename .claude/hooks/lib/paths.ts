@@ -1,7 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { GUARDRAILS_CONFIG_PATH, loadGuardrailsConfig } from "../../../scripts/check-pr/config.ts";
 import { globToRegExp, toRepoPath } from "../../../scripts/check-pr/glob.ts";
+import { postmortemPathProblem } from "../../../scripts/check-pr/postmortem-paths.ts";
 
 export type PathGuard = {
   readonly projectRoot: string;
@@ -91,15 +93,27 @@ export function protectedRepoPath(path: string, cwd: string, guard: PathGuard): 
   return protectedWithin(absolute, guard) ?? protectedWithin(real, guard) ?? agentConfig(absolute) ?? agentConfig(real);
 }
 
-// The postmortem agent (EVOLUTION_POSTMORTEM=1) may write a protected path only when the path and its real target
-// are both in the project and on postmortemWritablePaths, and neither is a Claude Code settings file.
-export function postmortemWritable(path: string, cwd: string, guard: PathGuard): boolean {
+function inHead(repoPath: string, root: string): boolean {
+  const result = spawnSync("git", ["cat-file", "-e", `HEAD:${repoPath}`], { cwd: root, windowsHide: true });
+  if (result.error !== undefined) throw result.error;
+  return result.status === 0;
+}
+
+// Why the postmortem agent (EVOLUTION_POSTMORTEM=1) can't write this protected path, or undefined if it can: the path
+// and its real target must both be in the project, neither may be a Claude Code settings file, and
+// postmortemPathProblem must allow the change (writing a file HEAD has changes it; any other file is an addition).
+export function postmortemProblem(path: string, cwd: string, guard: PathGuard): string | undefined {
   const absolute = resolve(cwd, toNativePath(path, guard.caseInsensitive));
-  const flags = guard.caseInsensitive ? "i" : "";
-  const writable = loadGuardrailsConfig(guard.projectRoot).postmortemWritablePaths.map((glob) => new RegExp(globToRegExp(glob).source, flags));
-  return [absolute, realPath(absolute)].every((target) => {
+  const config = loadGuardrailsConfig(guard.projectRoot);
+  for (const target of [absolute, realPath(absolute)]) {
     const inside = relative(guard.projectRoot, target);
-    if (inside === "" || inside.startsWith("..") || isAbsolute(inside) || agentConfig(target) !== undefined) return false;
-    return writable.some((pattern) => pattern.test(toRepoPath(inside)));
-  });
+    if (inside === "" || inside.startsWith("..") || isAbsolute(inside) || agentConfig(target) !== undefined) {
+      return "a postmortem writes only inside the project, and never a Claude Code settings file";
+    }
+    const repoPath = toRepoPath(inside);
+    const change = inHead(repoPath, guard.projectRoot) ? "modify" : "add";
+    const problem = postmortemPathProblem(repoPath, change, config, { ignoreCase: guard.caseInsensitive });
+    if (problem !== undefined) return problem;
+  }
+  return undefined;
 }

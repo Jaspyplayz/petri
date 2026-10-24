@@ -59,22 +59,25 @@
       "github-actions[bot]"
     ]
   },
-  "postmortemWritablePaths": [
-    ".claude/skills/**",
-    ".claude/agents/**",
-    ".claude/commands/**",
-    "CLAUDE.md",
-    "evals/*/cases/**",
-    "lint-rules/**",
-    "eslint.config.*",
-    "scripts/agent-tools/**",
-    "scripts/check-boundaries/**",
-    "scripts/check-features/**",
-    "scripts/check-featuremap/**",
-    "scripts/featuremap/**",
-    "scripts/new-feature/**",
-    "scripts/verify/**"
-  ],
+  "postmortem": {
+    "addPaths": [
+      ".claude/skills/*/SKILL.md",
+      "evals/*/cases/**",
+      "lint-rules/**",
+      "scripts/agent-tools/**",
+      "scripts/check-boundaries/**",
+      "scripts/check-features/**",
+      "scripts/check-featuremap/**",
+      "scripts/featuremap/**",
+      "scripts/new-feature/**"
+    ],
+    "modifyPaths": [
+      ".claude/skills/*/SKILL.md",
+      "CLAUDE.md",
+      "eslint.config.mjs",
+      "lint-rules/index.mjs"
+    ]
+  },
   "humanOnlyLabels": {
     "protectedPaths": "protected-ok",
     "prSize": "size-ok"

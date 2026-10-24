@@ -1,6 +1,6 @@
 import { fileProblem } from "./lib/files.ts";
 import { block, type HookInput, parseHookInput, readStdin } from "./lib/hook-input.ts";
-import { postmortemWritable, projectRoot, protectedRepoPath, secretTarget } from "./lib/paths.ts";
+import { postmortemProblem, projectRoot, protectedRepoPath, secretTarget } from "./lib/paths.ts";
 
 function problemFor(input: HookInput): string | undefined {
   const cwd = input.cwd ?? projectRoot;
@@ -9,7 +9,7 @@ function problemFor(input: HookInput): string | undefined {
     evolutionHuman: process.env.EVOLUTION_HUMAN === "1",
     protectedTarget: (path) => protectedRepoPath(path, cwd, guard),
     secretPath: (path) => secretTarget(path, cwd, guard.caseInsensitive),
-    ...(process.env.EVOLUTION_POSTMORTEM === "1" ? { postmortemWritable: (path: string) => postmortemWritable(path, cwd, guard) } : {}),
+    ...(process.env.EVOLUTION_POSTMORTEM === "1" ? { postmortemProblem: (path: string) => postmortemProblem(path, cwd, guard) } : {}),
   });
 }
 

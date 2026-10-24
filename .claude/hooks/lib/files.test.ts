@@ -2,7 +2,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type FileGuard, fileProblem } from "./files";
-import { isSecretFile, postmortemWritable, projectRoot, protectedRepoPath, secretTarget, toNativePath } from "./paths";
+import { isSecretFile, postmortemProblem, projectRoot, protectedRepoPath, secretTarget, toNativePath } from "./paths";
 
 const pathGuard = { projectRoot, caseInsensitive: process.platform === "win32" };
 const agent: FileGuard = {
@@ -29,15 +29,19 @@ describe("fileProblem", () => {
     expect(fileProblem({ toolName: "Write", toolInput: { file_path: at("eslint.config.mjs") } }, { ...agent, evolutionHuman: true })).toBeUndefined();
   });
 
-  it("lets the postmortem agent edit only postmortemWritablePaths", () => {
-    const postmortem: FileGuard = { ...agent, postmortemWritable: (path) => postmortemWritable(path, projectRoot, pathGuard) };
+  it("lets the postmortem agent add and change only what the postmortem lists allow", () => {
+    const postmortem: FileGuard = { ...agent, postmortemProblem: (path) => postmortemProblem(path, projectRoot, pathGuard) };
     const write = (path: string) => fileProblem({ toolName: "Write", toolInput: { file_path: at(path) } }, postmortem);
     for (const path of [".claude/skills/postmortem/SKILL.md", "CLAUDE.md", "evals/verify-app/cases/09-x/task.md", "eslint.config.mjs", "scripts/agent-tools/x.test.ts"]) {
       expect(write(path)).toBeUndefined();
     }
-    for (const path of [".github/workflows/ci.yml", ".evolution/config.json", ".claude/settings.json", ".claude/hooks/guard-files.ts", "scripts/check-pr/config.ts", "evals/results.jsonl", "package.json", "src/features/x/CLAUDE.md"]) {
-      expect(write(path)).toContain("A postmortem may change only postmortemWritablePaths");
+    for (const path of [".github/workflows/ci.yml", ".evolution/config.json", ".claude/hooks/guard-files.ts", "scripts/check-pr/config.ts", "evals/results.jsonl", "package.json"]) {
+      expect(write(path)).toContain("For a postmortem: a postmortem can't write this protected path");
     }
+    expect(write(".claude/settings.json")).toContain("never a Claude Code settings file");
+    expect(write("scripts/agent-tools/workflow-limits.ts")).toContain("may add files here but not change existing ones");
+    expect(write("evals/verify-app/cases/09-x/.env.sample")).toContain("dotfile");
+    expect(write("src/features/x/CLAUDE.md")).toContain("only the root CLAUDE.md");
     expect(write("src/features/blob/lib/blob-state.ts")).toBeUndefined();
   });
 

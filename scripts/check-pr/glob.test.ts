@@ -22,6 +22,8 @@ describe("globToRegExp", () => {
     ["file?.txt", "file1.txt", true],
     ["a+b.txt", "a+b.txt", true],
     ["a+b.txt", "aab.txt", false],
+    [".github/**", ".github/workflows/x\n.yml", true],
+    ["**/.env*", "a\nb/.env", true],
   ])("%s vs %s → %s", (glob, path, expected) => {
     expect(globToRegExp(glob).test(path)).toBe(expected);
   });
