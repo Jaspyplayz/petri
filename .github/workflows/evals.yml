@@ -1,0 +1,113 @@
+name: evals
+
+# Runs the skill evals (pnpm evals, docs/decisions.md P7):
+#   pull_request  only the skills a PR changes, at most EVALS_MAX_PER_SKILL cases each. Same-repo PRs only (forks get no
+#                 secrets), and never evo/ branches: an agent PR that touches .claude/** fails guardrails anyway.
+#   schedule      the first case of every skill, nightly, only while the EVALS_NIGHTLY variable is "true".
+# The results go to the job summary and the artifact. evals/results.jsonl is committed only from local runs.
+on:
+  pull_request:
+    paths:
+      - ".claude/skills/**"
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      skills:
+        description: Skills to run, space-separated (empty for all)
+        required: false
+        default: ""
+      max:
+        description: Cases per skill
+        required: false
+        default: "1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  EVALS_MAX_PER_SKILL: "2"
+  CLAUDE_CODE_VERSION: "2.1.310"
+
+jobs:
+  evals:
+    if: >-
+      (github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name == github.repository
+        && !startsWith(github.head_ref, 'evo/'))
+      || (github.event_name == 'schedule' && vars.EVALS_NIGHTLY == 'true')
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No store cache: this job runs an agent with a Claude token (see the setup action).
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - name: Install the Claude Code CLI (pinned, docs/decisions.md P7)
+        run: npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+      - name: Install Chromium
+        run: pnpm exec playwright install --only-shell chromium
+      - name: Start local Supabase (migrations + seed)
+        run: pnpm db:start -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: Write .env.local from supabase status
+        run: pnpm env:local
+
+      - name: Pick the skills
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SKILLS: ${{ inputs.skills }}
+          MAX: ${{ inputs.max }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            skills=$(gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" --name-only | sed -n 's|^\.claude/skills/\([^/]*\)/.*|\1|p' | sort -u | tr '\n' ' ')
+            max="$EVALS_MAX_PER_SKILL"
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            skills="$SKILLS"
+            max="${MAX:-1}"
+          else
+            skills=""
+            max="1"
+          fi
+          echo "skills=$skills" >> "$GITHUB_OUTPUT"
+          echo "max=$max" >> "$GITHUB_OUTPUT"
+          echo "Skills: ${skills:-all}, at most $max case(s) each"
+
+      - name: Run the evals
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SKILLS: ${{ steps.pick.outputs.skills }}
+          MAX: ${{ steps.pick.outputs.max }}
+        # $SKILLS is unquoted on purpose: one argument per skill. A PR with no skill named runs nothing, not everything.
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -z "${SKILLS// /}" ]; then
+            echo "No changed skill found in the PR."
+            exit 0
+          fi
+          pnpm evals $SKILLS --max "$MAX"
+
+      - name: Job summary
+        if: always()
+        run: pnpm -s evals:report >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evals
+          path: |
+            artifacts/evals/
+            evals/results.jsonl
+          retention-days: 14
+          if-no-files-found: ignore

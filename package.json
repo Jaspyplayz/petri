@@ -40,6 +40,8 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "e2e": "playwright test",
+    "evals": "tsx scripts/evals.ts",
+    "evals:report": "tsx scripts/evals-report.ts",
     "verify:up": "tsx scripts/verify.ts up",
     "verify:down": "tsx scripts/verify.ts down",
     "verify:flow": "tsx scripts/verify.ts flow",

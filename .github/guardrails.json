@@ -11,6 +11,7 @@
     "**/.env*",
     "**/eslint.config.*",
     "lint-rules/**",
+    "evals/**",
     "tsconfig*.json",
     ".dependency-cruiser.cjs",
     "next.config.*",
