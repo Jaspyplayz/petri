@@ -13,22 +13,38 @@ import {
   GUARDIAN_BRANCH_PREFIX,
   GUARDIAN_ISSUE_LABEL,
   incidentMarker,
+  incidentRevert,
   loweredTrust,
   nextPause,
   pauseBranch,
   productionState,
+  promoteTarget,
   revertBranch,
+  rolledBackFrom,
   spikeVerdict,
   type AliasRequest,
+  type Deployed,
+  type ListedPr,
   type MainCommit,
+  type MergedRevert,
   type VercelDeployment,
 } from "./evolution/guardian";
-import { lastAliasRequest, productionDeployments, rollBack, sentryNumbers, servingDeploymentId, type SentryAccess, type VercelAccess } from "./evolution/guardian-api";
+import {
+  lastAliasRequest,
+  productionDeployments,
+  promoteDeployment,
+  rollBack,
+  sentryNumbers,
+  servingDeploymentId,
+  type SentryAccess,
+  type VercelAccess,
+} from "./evolution/guardian-api";
 import {
   incidentSummary,
   notifyIssue,
   pausePrBody,
   pauseTitle,
+  promotedComment,
   retriedRollbackComment,
   revertPrBody,
   revertTitle,
@@ -43,20 +59,24 @@ import { REVERT_LABEL } from "./trust-report/ladder";
 
 // pnpm evolution:guardian <command> runs from main in evolution-guardian.yml, one step per command:
 // check: compare the release production serves with the one before it in Sentry, and find the evolution merge that
-//   went live with it. Writes the state for the later steps and the spike, handled, culprit and branch outputs.
+//   went live with it. Writes the state for the later steps and the spike, handled, culprit and branch outputs. While
+//   the guardian's rollback holds production, it looks for the merged revert instead (the promote output).
 //   Changes nothing.
+// promote: put the deployment that has the merged revert live, which turns Vercel's automatic deploys back on.
 // rollback: point production back at the previous deployment and wait until the production URL serves it.
 // pause-files <dir>: in the pause worktree, extend .evolution/PAUSED and lower trustLevel, as guardrails allow agents to.
 // open-pr <pause|revert>: open that PR from the pushed branch and turn auto-merge on for the pushed commit.
 // notify: open the issue that tells the maintainer what happened and what's left to do.
 const root = join(import.meta.dirname, "..");
 const state = join(process.env.RUNNER_TEMP ?? tmpdir(), "guardian");
-const ROLLBACK_WAIT_MS = 3 * 60_000;
+const ALIAS_WAIT_MS = 3 * 60_000;
 const POLL_MS = 10_000;
 // Commits that went live with one deployment; a longer gap between deployments isn't searched for its change.
 const MAX_COMMITS = 20;
 
 type Handled = { readonly url: string; readonly kind: "issue" | "pr" };
+// from: the deployment the rollback replaced, which names the incident. servingId: what production served at the check.
+type Promotion = { readonly from: string; readonly servingId: string; readonly revert: MergedRevert; readonly target: Deployed };
 
 function env(name: string): string {
   const value = process.env[name];
@@ -106,6 +126,20 @@ function productionHost(): string {
   return new URL(readEvolutionConfig(root).productionUrl).host;
 }
 
+function runUrl(): string {
+  return `${process.env.GITHUB_SERVER_URL ?? "https://github.com"}/${process.env.GITHUB_REPOSITORY ?? "local"}/actions/runs/${process.env.GITHUB_RUN_ID ?? "0"}`;
+}
+
+// Waits until the production URL serves the deployment, at most ALIAS_WAIT_MS.
+async function servesWithin(vercel: VercelAccess, host: string, deploymentId: string): Promise<boolean> {
+  const deadline = Date.now() + ALIAS_WAIT_MS;
+  while ((await servingDeploymentId(vercel, host)) !== deploymentId) {
+    if (Date.now() > deadline) return false;
+    await sleep(POLL_MS);
+  }
+  return true;
+}
+
 function git(args: readonly string[]): string | undefined {
   const result = spawnSync("git", args, { cwd: root, encoding: "utf8", windowsHide: true });
   return result.status === 0 ? result.stdout.trim() : undefined;
@@ -128,13 +162,18 @@ function liveCommits(serving: string, previous: string | undefined): MainCommit[
   });
 }
 
+function openIncidentIssue(servingId: string): string | undefined {
+  const marker = incidentMarker(servingId);
+  const issues = JSON.parse(gh(root, ["issue", "list", "--state", "open", "--label", GUARDIAN_ISSUE_LABEL, "--limit", "50", "--json", "url,body"])) as { url: string; body: string }[];
+  return issues.find((item) => item.body.includes(marker))?.url;
+}
+
 // The guardian's open issue or PR for this deployment, when an earlier run already acted on it. Then only the
 // rollback is retried: the PRs and the issue exist.
 function handledBy(servingId: string): Handled | undefined {
   const marker = incidentMarker(servingId);
-  const issues = JSON.parse(gh(root, ["issue", "list", "--state", "open", "--label", GUARDIAN_ISSUE_LABEL, "--limit", "50", "--json", "url,body"])) as { url: string; body: string }[];
-  const issue = issues.find((item) => item.body.includes(marker));
-  if (issue !== undefined) return { url: issue.url, kind: "issue" };
+  const issue = openIncidentIssue(servingId);
+  if (issue !== undefined) return { url: issue, kind: "issue" };
   const prs = JSON.parse(gh(root, ["pr", "list", "--state", "open", "--base", "main", "--limit", "100", "--json", "url,body,headRefName"])) as {
     url: string;
     body: string;
@@ -161,6 +200,25 @@ function vercelLine(deployments: readonly VercelDeployment[], aliasRequest: Alia
   return `- **Vercel:** ${String(ready.length)} ready production deployments listed, ${String(served)} of them have served production; last promote or rollback: ${last}`;
 }
 
+// While the guardian's rollback holds production, the way back to normal deploys is promoting a deployment that has
+// the merged revert. Says what it found, for the summary, and saves the plan when there's something to promote.
+function planPromotion(deployments: readonly VercelDeployment[], servingId: string, aliasRequest: AliasRequest | undefined): string | undefined {
+  const from = rolledBackFrom(servingId, aliasRequest);
+  if (from === undefined) return undefined;
+  const fields = "number,url,body,headRefName,isCrossRepository,mergeCommit";
+  const prs = JSON.parse(gh(root, ["pr", "list", "--state", "merged", "--base", "main", "--label", REVERT_LABEL, "--limit", "30", "--json", fields])) as ListedPr[];
+  const revert = incidentRevert(prs, from);
+  if (revert === undefined) return `production was rolled back from ${from}, and no guardian revert of it has merged yet, so there's nothing to promote`;
+  const number = `#${String(revert.number)}`;
+  const target = promoteTarget(deployments, servingId, (sha) => git(["merge-base", "--is-ancestor", revert.mergeCommit, sha]) !== undefined);
+  if (target === undefined) return `the revert ${number} merged, but no ready production deployment has it yet, so there's nothing to promote`;
+  const plan: Promotion = { from, servingId, revert, target };
+  save("promote.json", plan);
+  output({ promote: target.id });
+  const act = process.env.ACT === "true";
+  return `the revert ${number} merged, and ${target.url ?? target.id} (\`${target.sha.slice(0, 7)}\`) has it, so ${act ? "the guardian promotes it" : "**dry run:** acting would promote it"}`;
+}
+
 async function check(): Promise<void> {
   const config = readEvolutionConfig(root);
   const vercel = vercelAccess();
@@ -172,7 +230,9 @@ async function check(): Promise<void> {
   const production = productionState(deployments, servingId, aliasRequest);
   if (production.kind === "held") {
     output({ spike: "false" });
-    stepSummary(`## Guardian\n\nNot checking: ${production.reason}.\n\n${vercelLine(deployments, aliasRequest)}`);
+    const promotion = planPromotion(deployments, servingId, aliasRequest);
+    const next = promotion === undefined ? "" : `\n\nAfter the rollback: ${promotion}.`;
+    stepSummary(`## Guardian\n\nNot checking: ${production.reason}.${next}\n\n${vercelLine(deployments, aliasRequest)}`);
     return;
   }
   const { serving, previous } = production;
@@ -187,7 +247,6 @@ async function check(): Promise<void> {
   const handled = lookedUp?.handled;
   if (handled !== undefined) save("handled.json", handled);
   if (lookedUp === undefined) save("prs-skipped.json", true);
-  const runUrl = `${process.env.GITHUB_SERVER_URL ?? "https://github.com"}/${process.env.GITHUB_REPOSITORY ?? "local"}/actions/runs/${process.env.GITHUB_RUN_ID ?? "0"}`;
   const result: Incident = {
     checkedAt: now.toISOString(),
     serving,
@@ -197,7 +256,7 @@ async function check(): Promise<void> {
     verdict,
     culprit: found === undefined ? undefined : { sha: found.sha, pr: { number: found.pr.number, title: found.pr.title, url: found.pr.url } },
     problems,
-    runUrl,
+    runUrl: runUrl(),
   };
   save("incident.json", result);
   output({
@@ -235,23 +294,37 @@ async function rollback(): Promise<void> {
   const now = await servingDeploymentId(vercel, host);
   if (now !== serving.id) throw new Error(`production changed since the check (it serves ${now}, not ${serving.id}), so the guardian won't roll it back`);
   await rollBack(vercel, previous.id, `guardian: ${verdict.reasons.join("; ")}`.slice(0, 250));
-  const deadline = Date.now() + ROLLBACK_WAIT_MS;
-  while ((await servingDeploymentId(vercel, host)) !== previous.id) {
-    if (Date.now() > deadline) {
-      save("rollback.json", { result: "pending" });
-      throw new Error(`Vercel accepted the rollback, but ${host} didn't switch to ${previous.id} within 3 minutes`);
-    }
-    await sleep(POLL_MS);
+  if (!(await servesWithin(vercel, host, previous.id))) {
+    save("rollback.json", { result: "pending" });
+    throw new Error(`Vercel accepted the rollback, but ${host} didn't switch to ${previous.id} within 3 minutes`);
   }
   save("rollback.json", { result: "done" });
   process.stdout.write(`guardian: ${host} serves ${previous.id} (${previous.sha.slice(0, 7)}) again\n`);
 }
 
+// The comment goes on the incident's open issue, or on the revert PR when the issue is closed.
+async function promoteRevert(): Promise<void> {
+  const plan = load("promote.json") as Promotion | undefined;
+  if (plan === undefined) throw new Error("run `evolution:guardian check` first");
+  const vercel = vercelAccess();
+  const host = productionHost();
+  const now = await servingDeploymentId(vercel, host);
+  if (now !== plan.servingId) throw new Error(`production changed since the check (it serves ${now}, not ${plan.servingId}), so the guardian won't promote`);
+  await promoteDeployment(vercel, plan.target.id);
+  if (!(await servesWithin(vercel, host, plan.target.id))) {
+    throw new Error(`Vercel accepted the promote, but ${host} didn't switch to ${plan.target.id} within 3 minutes`);
+  }
+  const body = promotedComment(plan.revert, plan.target, runUrl());
+  const issue = openIncidentIssue(plan.from);
+  gh(root, issue === undefined ? ["pr", "comment", plan.revert.url, "--body", body] : ["issue", "comment", issue, "--body", body]);
+  process.stdout.write(`guardian: ${host} serves ${plan.target.id} (${plan.target.sha.slice(0, 7)}), which has the revert #${String(plan.revert.number)}\n`);
+}
+
 function pauseFiles(dir: string): void {
   if (dir === "" || !existsSync(join(dir, CONFIG_PATH))) throw new Error("usage: pnpm evolution:guardian pause-files <pause worktree>");
-  const { culprit, runUrl } = incident();
+  const { culprit, runUrl: run } = incident();
   const pausedPath = join(dir, PAUSED_PATH);
-  const reason = `guardian: production rolled back${culprit === undefined ? "" : ` after #${String(culprit.pr.number)}`} (${runUrl})`;
+  const reason = `guardian: production rolled back${culprit === undefined ? "" : ` after #${String(culprit.pr.number)}`} (${run})`;
   const pause = nextPause(existsSync(pausedPath) ? readFileSync(pausedPath, "utf8") : undefined, new Date(), reason);
   if (pause !== undefined) writeFileSync(pausedPath, pause);
   const configPath = join(dir, CONFIG_PATH);
@@ -338,8 +411,9 @@ function notify(): void {
 
 const command = process.argv[2];
 if (command === "check") await check();
+else if (command === "promote") await promoteRevert();
 else if (command === "rollback") await rollback();
 else if (command === "pause-files") pauseFiles(process.argv[3] ?? "");
 else if (command === "open-pr") openPr(process.argv[3] ?? "");
 else if (command === "notify") notify();
-else throw new Error("usage: pnpm evolution:guardian <check|rollback|pause-files <dir>|open-pr <pause|revert>|notify>");
+else throw new Error("usage: pnpm evolution:guardian <check|promote|rollback|pause-files <dir>|open-pr <pause|revert>|notify>");

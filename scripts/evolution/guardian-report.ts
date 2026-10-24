@@ -186,7 +186,7 @@ export function notifyIssue(incident: Incident, summary: string, outcome: Outcom
   const todo: string[] = [];
   if (outcome.rollback === "done" || outcome.rollback === "pending") {
     todo.push(
-      "- After a rollback, Vercel stops putting new deployments live until one is promoted. Once the revert has merged and deployed, promote its deployment: Vercel → Deployments → the revert's deployment → Promote (or `vercel promote <url>`). Until then production stays on the rolled-back deployment, which is safe.",
+      "- After a rollback, Vercel doesn't put new deployments live until one is promoted. Once the revert merges and its deployment is ready, the guardian promotes it on its next run (dispatch `evolution-guardian` with `act` to run it now). Until then production stays on the rolled-back deployment, which is safe. If the revert can't merge, promote a deployment by hand: Vercel → Deployments → Promote.",
     );
   }
   todo.push(
@@ -206,5 +206,10 @@ export function notifyIssue(incident: Incident, summary: string, outcome: Outcom
 // A later run found the same incident still live and retried the rollback, which worked this time.
 export function retriedRollbackComment(incident: Incident): string {
   const target = incident.previous === undefined ? "the previous deployment" : `${incident.previous.url ?? incident.previous.id} (${short(incident.previous.sha)})`;
-  return `The guardian retried the rollback (${incident.runUrl}): production serves ${target} again. Once the revert has merged and deployed, promote its deployment (Vercel → Deployments → Promote), because Vercel doesn't put new deployments live after a rollback.`;
+  return `The guardian retried the rollback (${incident.runUrl}): production serves ${target} again. Once the revert merges and its deployment is ready, the guardian promotes it, because Vercel doesn't put new deployments live after a rollback.`;
+}
+
+// The guardian promoted the deployment that has the merged revert.
+export function promotedComment(revert: { readonly number: number; readonly url: string }, target: Deployed, runUrl: string): string {
+  return `The revert #${String(revert.number)} merged, so the guardian promoted its deployment, ${target.url ?? target.id} (${short(target.sha)}), to production (${runUrl}). Production serves main with the revert, and Vercel puts new merges live again as usual.`;
 }

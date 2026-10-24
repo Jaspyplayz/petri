@@ -6,15 +6,17 @@ import { prDataFromBody } from "./evolution/build";
 import { readEvolutionConfig } from "./evolution/config";
 import { gh } from "./evolution/github-issue";
 import { isEvolutionPr, linkedIssue, PR_FIELDS, type GhPr } from "./evolution/github-pr";
-import { changelogRow, mergedPrNumber, vercelDeployment, type CommitPr, type CommitStatus } from "./evolution/post-merge";
+import { parseRevertBranch } from "./evolution/guardian";
+import { changelogRow, mergedPrNumber, revertRow, vercelDeployment, type CommitPr, type CommitStatus } from "./evolution/post-merge";
 import { loopSupabase } from "./evolution/supabase";
 
 // pnpm evolution:post-merge record|finish runs from main after a push (evolution-post-merge.yml).
 // record: if the pushed commit is a merged evolution PR, wait for Vercel's production deployment, insert its changelog
-//   row (once per PR), mark its feedback shipped and comment on its issue. Writes skip, pr, issue, started-at and
-//   production-url to $GITHUB_OUTPUT.
-// finish: after verify:all --read-only ran against production, record the run in agent_runs and, if anything failed,
-//   comment on the PR and exit 1.
+//   row (once per PR), mark its feedback shipped and comment on its issue. If it's a merged guardian revert, insert
+//   the "Reverted" row (once per PR). Writes kind (none, change or revert), pr, issue, started-at and production-url
+//   to $GITHUB_OUTPUT.
+// finish: after verify:all --read-only ran against production (changes only), record the run in agent_runs and, if
+//   anything failed, comment on the PR and exit 1.
 const root = join(import.meta.dirname, "..");
 const DEPLOY_TIMEOUT_MS = 15 * 60_000;
 const POLL_MS = 15_000;
@@ -53,18 +55,22 @@ async function record(): Promise<void> {
   const sha = env("GITHUB_SHA");
   const number = mergedPrNumber(JSON.parse(gh(root, ["api", `repos/${repo}/commits/${sha}/pulls`])) as CommitPr[], sha);
   if (number === undefined) {
-    output({ skip: "true" });
+    output({ kind: "none" });
     process.stdout.write(`post-merge: ${sha} isn't the merge of a PR into main\n`);
     return;
   }
   const pr = JSON.parse(gh(root, ["pr", "view", String(number), "--json", `${PR_FIELDS},url,mergedAt`])) as MergedGhPr;
+  if (!pr.isCrossRepository && parseRevertBranch(pr.headRefName) !== undefined) {
+    await recordRevert(pr, sha);
+    return;
+  }
   if (!isEvolutionPr(pr, loadGuardrailsConfig(root))) {
-    output({ skip: "true" });
+    output({ kind: "none" });
     process.stdout.write(`post-merge: #${String(number)} isn't an evolution PR, so it doesn't go on the Timeline\n`);
     return;
   }
   const { trustLevel, productionUrl } = readEvolutionConfig(root);
-  output({ skip: "false", pr: String(number), "production-url": productionUrl });
+  output({ kind: "change", pr: String(number), "production-url": productionUrl });
   const issue = linkedIssue(root, pr, { allowClosed: true });
   if (typeof issue === "string") throw new Error(`#${String(number)} was merged, but ${issue}`);
   output({ issue: String(issue.number) });
@@ -90,11 +96,38 @@ async function record(): Promise<void> {
   process.stdout.write(`post-merge: #${String(number)} is on the Timeline (${id}); ${String(issue.feedbackIds.length)} feedback item(s) shipped\n`);
 }
 
+// A merged guardian revert goes on the Timeline as "Reverted", linked to the change it undid. The branch names that
+// change's PR and commit, and its row has to match both. Production already serves the rollback, and the guardian
+// promotes the revert's deployment, so there's no deployment to wait for or verify here.
+async function recordRevert(pr: MergedGhPr, sha: string): Promise<void> {
+  const reverted = parseRevertBranch(pr.headRefName);
+  if (reverted === undefined) throw new Error(`${pr.headRefName} isn't a guardian revert branch`);
+  output({ kind: "revert", pr: String(pr.number) });
+  if (pr.mergedAt === null) throw new Error(`#${String(pr.number)} has no merge time`);
+  const supabase = loopSupabase();
+  const original = await supabase.from("changelog").select("id,title,feedback_ids,commit_sha").eq("kind", "change").eq("pr_number", reverted.pr).maybeSingle();
+  if (original.error) throw new Error(`reading the changelog failed: ${original.error.message}`);
+  if (original.data === null || original.data.commit_sha?.startsWith(reverted.sha7) !== true) {
+    throw new Error(`#${String(pr.number)} reverts #${String(reverted.pr)} (${reverted.sha7}), which has no Timeline entry for that commit`);
+  }
+  const existing = await supabase.from("changelog").select("id").eq("kind", "revert").eq("pr_number", pr.number).maybeSingle();
+  if (existing.error) throw new Error(`reading the changelog failed: ${existing.error.message}`);
+  let id = existing.data?.id;
+  if (id === undefined) {
+    const row = revertRow({ reverted: original.data, pr: { number: pr.number, url: pr.url, mergedAt: pr.mergedAt, sha }, trustLevel: readEvolutionConfig(root).trustLevel });
+    const inserted = await supabase.from("changelog").insert(row).select("id").single();
+    if (inserted.error) throw new Error(`inserting the revert's changelog row failed: ${inserted.error.message}`);
+    id = inserted.data.id;
+  }
+  process.stdout.write(`post-merge: the revert #${String(pr.number)} of #${String(reverted.pr)} is on the Timeline (${id})\n`);
+}
+
 async function finish(): Promise<void> {
   const pr = Number(env("PR"));
   const issue = process.env.ISSUE ? Number(process.env.ISSUE) : null;
+  const kind = process.env.KIND === "revert" ? "revert" : "change";
   const outcomes = { record: env("RECORD_OUTCOME"), verify: process.env.VERIFY_OUTCOME || "skipped" };
-  const passed = outcomes.record === "success" && outcomes.verify === "success";
+  const passed = outcomes.record === "success" && (kind === "revert" || outcomes.verify === "success");
   const runUrl = `${env("GITHUB_SERVER_URL")}/${env("GITHUB_REPOSITORY")}/actions/runs/${env("GITHUB_RUN_ID")}`;
   const startedAt = process.env.STARTED_AT || new Date().toISOString();
   const finishedAt = new Date();
@@ -110,12 +143,15 @@ async function finish(): Promise<void> {
       duration_ms: Math.max(0, finishedAt.getTime() - Date.parse(startedAt)),
       started_at: startedAt,
       finished_at: finishedAt.toISOString(),
-      details: { commit: env("GITHUB_SHA"), ...outcomes },
+      details: { commit: env("GITHUB_SHA"), kind, ...outcomes },
     });
   if (run.error) throw new Error(`recording the run failed: ${run.error.message}`);
-  process.stdout.write(`post-merge: recorded the run (${passed ? "pass" : "fail"}: record ${outcomes.record}, verify ${outcomes.verify})\n`);
+  process.stdout.write(`post-merge: recorded the run (${passed ? "pass" : "fail"}: ${kind}, record ${outcomes.record}, verify ${outcomes.verify})\n`);
   if (passed) return;
-  const what = outcomes.record === "success" ? "Production verification (`verify:all --read-only`) failed" : "Putting this PR on the Timeline failed";
+  const what =
+    outcomes.record !== "success"
+      ? `Putting this ${kind === "revert" ? "revert" : "PR"} on the Timeline failed`
+      : "Production verification (`verify:all --read-only`) failed";
   gh(root, ["pr", "comment", String(pr), "--body", `${what} after the merge. Evidence: ${runUrl}`]);
   process.exitCode = 1;
 }

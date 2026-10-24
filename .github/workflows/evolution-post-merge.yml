@@ -2,10 +2,12 @@ name: evolution-post-merge
 
 # After a push to main: if the commit is a merged evolution PR, wait for Vercel's production deployment, put the change
 # on the Timeline (changelog row, feedback shipped, a comment on the issue), then verify production with the flows that
-# don't write (verify:all --read-only) and record the run in agent_runs. Any other push stops after the first step.
-# The row goes in before verification because the change shipped either way, and timeline.browse needs an entry.
-# No gate: it only records what a merge already shipped. Reverts are the guardian's job, not this workflow's.
-# On a clean finish it dispatches the build for the next evolution:ready issue, whose own gate applies.
+# don't write (verify:all --read-only) and record the run in agent_runs. A merged guardian revert gets its "Reverted"
+# row and the agent_runs record, nothing else: production serves the rollback until the guardian promotes the revert.
+# Any other push stops after the first step. The row goes in before verification because the change shipped either way,
+# and timeline.browse needs an entry. No gate: it only records what a merge already shipped. Rolling back and
+# reverting are the guardian's job, not this workflow's.
+# On a clean finish of a change it dispatches the build for the next evolution:ready issue, whose own gate applies.
 on:
   push:
     branches: [main]
@@ -37,7 +39,7 @@ jobs:
         with:
           cache: "false"
 
-      - name: Put the merged evolution PR on the Timeline
+      - name: Put the merged evolution PR or guardian revert on the Timeline
         id: record
         env:
           GH_TOKEN: ${{ github.token }}
@@ -47,19 +49,19 @@ jobs:
 
       # No --with-deps: ubuntu-latest has Chromium's libraries, and these flows check content, not pixels.
       - name: Install Chromium
-        if: steps.record.outcome == 'success' && steps.record.outputs.skip == 'false'
+        if: steps.record.outcome == 'success' && steps.record.outputs.kind == 'change'
         run: pnpm exec playwright install --only-shell chromium
 
       - name: Verify production (flows that don't write)
         id: verify
-        if: steps.record.outcome == 'success' && steps.record.outputs.skip == 'false'
+        if: steps.record.outcome == 'success' && steps.record.outputs.kind == 'change'
         continue-on-error: true
         env:
           PRODUCTION_URL: ${{ steps.record.outputs.production-url }}
         run: pnpm -s verify:all --read-only --base-url "$PRODUCTION_URL"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always() && steps.record.outputs.skip == 'false'
+        if: always() && steps.record.outputs.kind == 'change'
         with:
           name: post-merge-verify
           path: artifacts/verify/
@@ -73,6 +75,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PR: ${{ steps.record.outputs.pr }}
+          KIND: ${{ steps.record.outputs.kind }}
           ISSUE: ${{ steps.record.outputs.issue }}
           STARTED_AT: ${{ steps.record.outputs.started-at }}
           RECORD_OUTCOME: ${{ steps.record.outcome }}
@@ -83,7 +86,7 @@ jobs:
       # issue that arrived while a PR was open would otherwise wait for a manual dispatch (#48 did). Only after a
       # clean finish: a failed production verify is the guardian's to handle, not a reason to build more.
       - name: Start the next build
-        if: steps.record.outputs.skip == 'false'
+        if: steps.record.outputs.kind == 'change'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

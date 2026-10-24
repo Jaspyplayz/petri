@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuiltIssue, PrData } from "./build";
-import { changelogRow, changelogSummary, mergedPrNumber, trustedScreenshots, vercelDeployment, whatChanged, type CommitPr } from "./post-merge";
+import { changelogRow, changelogSummary, mergedPrNumber, revertRow, trustedScreenshots, vercelDeployment, whatChanged, type CommitPr } from "./post-merge";
 
 const SHA = "a".repeat(40);
 const SUPABASE = "https://ref.supabase.co";
@@ -117,5 +117,29 @@ describe("changelogRow", () => {
       after_screenshot_urls: [shot("after")],
       merged_at: "2026-10-23T18:00:00Z",
     });
+  });
+});
+
+describe("revertRow", () => {
+  const reverted = { id: "00000000-0000-4000-8000-0000000000aa", title: "Give the blob a tiny hat", feedback_ids: ["00000000-0000-4000-8000-000000000001"] };
+  const pr = { number: 64, url: "https://github.com/o/r/pull/64", mergedAt: "2026-10-24T13:00:00Z", sha: "ABCDEF2".padEnd(40, "0") };
+
+  it("links the change it undid, keeps that change's feedback and names it from its row, not the PR", () => {
+    expect(revertRow({ reverted, pr, trustLevel: 0 })).toEqual({
+      kind: "revert",
+      reverts_id: reverted.id,
+      title: "Reverted: Give the blob a tiny hat",
+      summary: 'Errors spiked in production after "Give the blob a tiny hat" went live, so the guardian rolled production back and reverted the change.',
+      feedback_ids: ["00000000-0000-4000-8000-000000000001"],
+      pr_number: 64,
+      pr_url: "https://github.com/o/r/pull/64",
+      commit_sha: "abcdef2".padEnd(40, "0"),
+      trust_level: 0,
+      merged_at: "2026-10-24T13:00:00Z",
+    });
+  });
+
+  it("keeps the title within the 200 characters the table allows", () => {
+    expect(revertRow({ reverted: { ...reverted, title: "x".repeat(200) }, pr, trustLevel: 0 }).title).toHaveLength(200);
   });
 });

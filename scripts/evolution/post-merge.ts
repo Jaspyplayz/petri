@@ -63,6 +63,27 @@ export function trustedScreenshots(urls: readonly string[], supabaseUrl: string)
 
 export type MergedPr = { readonly number: number; readonly url: string; readonly body: string; readonly mergedAt: string; readonly sha: string };
 
+// The change a guardian revert undid, as its Timeline row has it.
+export type RevertedChange = { readonly id: string; readonly title: string; readonly feedback_ids: readonly string[] };
+
+// The "Reverted" Timeline entry for a merged guardian revert. It links the change it undid and keeps that change's
+// feedback; the title and summary come from the change's row and fixed text, not from the PR.
+export function revertRow(input: { readonly reverted: RevertedChange; readonly pr: Omit<MergedPr, "body">; readonly trustLevel: number }): ChangelogInsert {
+  const { reverted, pr } = input;
+  return {
+    kind: "revert",
+    reverts_id: reverted.id,
+    title: `Reverted: ${reverted.title}`.slice(0, 200),
+    summary: `Errors spiked in production after "${reverted.title}" went live, so the guardian rolled production back and reverted the change.`,
+    feedback_ids: [...reverted.feedback_ids],
+    pr_number: pr.number,
+    pr_url: pr.url,
+    commit_sha: pr.sha.toLowerCase(),
+    trust_level: input.trustLevel,
+    merged_at: pr.mergedAt,
+  };
+}
+
 // The Timeline entry for a merged evolution PR. Title and feedback come from the issue, which triage wrote and only
 // the loop edits; the PR body only adds the change list and the screenshots.
 export function changelogRow(input: {

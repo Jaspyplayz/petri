@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lastAliasRequest, productionDeployments, rollBack, sentryNumbers, servingDeploymentId, type Fetch } from "./guardian-api";
+import { lastAliasRequest, productionDeployments, promoteDeployment, rollBack, sentryNumbers, servingDeploymentId, type Fetch } from "./guardian-api";
 
 const VERCEL = { token: "vercel-secret", projectId: "prj_1", teamId: "team_1" };
 const SENTRY = { token: "sentry-secret", org: "jaspys-team", project: "petri" };
@@ -37,7 +37,7 @@ describe("Vercel", () => {
       [200, { id: "prj_1", lastAliasRequest: request }],
       [200, { id: "prj_1", lastAliasRequest: null }],
     ]);
-    expect(await lastAliasRequest(VERCEL, fetch)).toEqual({ type: "rollback", toDeploymentId: "dpl_1", requestedAt: 5, jobStatus: "succeeded" });
+    expect(await lastAliasRequest(VERCEL, fetch)).toEqual(request);
     expect(await lastAliasRequest(VERCEL, fetch)).toBeUndefined();
     expect(calls[0]?.url.pathname).toBe("/v9/projects/prj_1");
     expect(calls[0]?.url.searchParams.get("teamId")).toBe("team_1");
@@ -55,6 +55,17 @@ describe("Vercel", () => {
     expect(calls[0]?.init?.method).toBe("POST");
     expect(calls[0]?.url.pathname).toBe("/v1/projects/prj_1/rollback/dpl_1");
     expect(calls[0]?.url.searchParams.get("description")).toBe("guardian: spike");
+  });
+
+  it("promotes with a POST to the deployment to put live, which may answer with no body", async () => {
+    const { fetch, calls } = fakeFetch([[202, ""]]);
+    await promoteDeployment(VERCEL, "dpl_3", fetch);
+    expect(calls[0]?.init?.method).toBe("POST");
+    expect(calls[0]?.url.pathname).toBe("/v10/projects/prj_1/promote/dpl_3");
+    expect(calls[0]?.url.searchParams.get("teamId")).toBe("team_1");
+    await expect(promoteDeployment(VERCEL, "dpl_3", fakeFetch([[400, { error: { message: "not a production deployment" } }]]).fetch)).rejects.toThrow(
+      /promoting the revert's deployment failed: HTTP 400/,
+    );
   });
 
   it("fails on an error status or an unknown shape, without the token in the message", async () => {
