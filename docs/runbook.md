@@ -148,6 +148,8 @@ gh workflow run evolution-weekly.yml
 
 It opens an `evolution:weekly` issue with each workflow's runs, failures, turns, agent minutes and API-equivalent dollars over the last 7 days, and the share of `weeklyBudget` they used. Then it runs the trust report.
 
+The issue also lists the feedback items that visitor reports hid in those 7 days: each item's id, category, report count, and the time its 3rd report came in. It shows no feedback text, because the issue is public and these items were hidden for abuse. Under the list is the SQL to read an item and to unhide one, which deletes its reports before it sets `hidden = false`. A long list in one week can mean someone with many networks is hiding good feedback, so read a few of the items.
+
 `pnpm evolution:weekly` prints the same table from the database in `.env.local`, which `pnpm env:local` points at the local stack. To see production's rows one by one, open the `agent_runs` table in Supabase's Table Editor.
 
 When either budget is used up, the triage and build gates close until older runs leave the 7-day window. To change the budget, edit `weeklyBudget` in `.evolution/config.json` in a PR of yours. `docs/costs.md` explains the numbers.

@@ -2,11 +2,13 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { readEvolutionConfig } from "./evolution/config";
+import { hiddenByReports, renderHiddenFeedback } from "./evolution/hidden-feedback";
 import { loopSupabase } from "./evolution/supabase";
 import { renderWeeklySummary, windowStart } from "./evolution/usage";
 
-// pnpm evolution:weekly prints the last 7 days of agent_runs against the weekly budget. With --issue it also opens an
-// issue labelled evolution:weekly. It only reports: the gate is what closes triage and build when over budget.
+// pnpm evolution:weekly prints the last 7 days of agent_runs against the weekly budget, then the feedback items that
+// reports hid in those days. With --issue it also opens an issue labelled evolution:weekly. It only reports: the gate
+// is what closes triage and build when over budget.
 const root = join(import.meta.dirname, "..");
 const LABEL = "evolution:weekly";
 
@@ -18,12 +20,21 @@ function gh(args: readonly string[], input?: string): string {
 
 async function main(): Promise<void> {
   const now = new Date();
-  const { data, error } = await loopSupabase()
-    .from("agent_runs")
-    .select("workflow, status, turns, duration_ms, details")
-    .gte("started_at", windowStart(now).toISOString());
-  if (error) throw new Error(`reading agent_runs failed: ${error.message}`);
-  const body = renderWeeklySummary(data, readEvolutionConfig(root).weeklyBudget, now);
+  const since = windowStart(now);
+  const supabase = loopSupabase();
+  const runs = await supabase.from("agent_runs").select("workflow, status, turns, duration_ms, details").gte("started_at", since.toISOString());
+  if (runs.error) throw new Error(`reading agent_runs failed: ${runs.error.message}`);
+  const candidates = await supabase
+    .from("feedback")
+    .select("id, category, hidden, feedback_reports(created_at)")
+    .eq("hidden", true)
+    .gte("updated_at", since.toISOString());
+  if (candidates.error) throw new Error(`reading hidden feedback failed: ${candidates.error.message}`);
+  const body = [
+    renderWeeklySummary(runs.data, readEvolutionConfig(root).weeklyBudget, now),
+    "",
+    renderHiddenFeedback(hiddenByReports(candidates.data, since), since),
+  ].join("\n");
   process.stdout.write(`${body}\n`);
   const summary = process.env.GITHUB_STEP_SUMMARY;
   if (summary) appendFileSync(summary, `${body}\n`);

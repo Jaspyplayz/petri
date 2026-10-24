@@ -62,6 +62,7 @@ Both are rolling totals over the last 7 days for the triage, build, verify and p
 
 - runs, failures, turns, agent minutes and API-equivalent $ per workflow
 - the budgeted total, and the share of each budget used
+- the feedback items that reports hid in the same 7 days, by id, category, report count and time, with no feedback text
 
 It then runs `pnpm trust-report --issue`. It runs on demand for now; its weekly cron is turned on with the other crons in Phase 9.1. Run `pnpm evolution:weekly` locally (with `.env.local`) to print the same table without opening an issue.
 
