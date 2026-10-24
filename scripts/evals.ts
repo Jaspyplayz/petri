@@ -9,7 +9,17 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { DEFAULT_JUDGE_MODEL, JUDGE_SCHEMA, SUBJECT_ALLOWED_TOOLS, SUBJECT_MAX_TURNS, judgePrompt, type JudgeVerdict } from "./evals/agents";
+import {
+  DEFAULT_JUDGE_MODEL,
+  JUDGE_SCHEMA,
+  SUBJECT_ALLOWED_TOOLS,
+  SUBJECT_MAX_TURNS,
+  claudeEnv,
+  judgePrompt,
+  redactCredentials,
+  withoutSecrets,
+  type JudgeVerdict,
+} from "./evals/agents";
 import { caseProblems, selectCases, type EvalCase } from "./evals/cases";
 import type { EvalResult } from "./evals/results";
 import { bashCommands, condenseTranscript, ranVerify } from "./evals/transcript";
@@ -22,7 +32,7 @@ const JUDGE_TIMEOUT_MS = 15 * 60_000;
 const BASH = process.platform === "win32" ? join(process.env.ProgramFiles ?? "C:\\Program Files", "Git", "bin", "bash.exe") : "bash";
 
 function run(command: string, args: readonly string[], options: SpawnSyncOptions & { cwd: string }): string {
-  const result = spawnSync(command, args, { encoding: "utf8", maxBuffer: 512 * 1024 * 1024, ...options });
+  const result = spawnSync(command, args, { encoding: "utf8", maxBuffer: 512 * 1024 * 1024, env: withoutSecrets(process.env) as NodeJS.ProcessEnv, ...options });
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error(`${command} ${args.slice(0, 3).join(" ")} exited ${String(result.status)}: ${String(result.stderr).slice(-2000)}`);
@@ -73,8 +83,9 @@ function prepareCopy(evalCase: EvalCase): string {
 }
 
 function claude(args: readonly string[], cwd: string, timeout: number): string {
-  // The agent under test runs with the normal guardrails: EVOLUTION_HUMAN is a human's switch, never an agent's.
-  return run("claude", args, { cwd, timeout, env: { ...process.env, EVOLUTION_HUMAN: "" } });
+  // The agent under test runs with the normal guardrails (EVOLUTION_HUMAN is a human's switch, never an agent's) and
+  // only the Claude credential, which its tools don't inherit.
+  return redactCredentials(run("claude", args, { cwd, timeout, env: claudeEnv(process.env) as NodeJS.ProcessEnv }), process.env);
 }
 
 function lastJson(text: string): { total_cost_usd?: number; structured_output?: unknown } {
@@ -100,7 +111,7 @@ function runCase(evalCase: EvalCase, options: { runId: string; commit: string; s
       SUBJECT_TIMEOUT_MS,
     );
   } catch (error) {
-    transcript += `\n${JSON.stringify({ type: "runner_error", message: String(error) })}`;
+    transcript += `\n${JSON.stringify({ type: "runner_error", message: redactCredentials(String(error), process.env) })}`;
   }
   const lines = transcript.split("\n");
   const commands = bashCommands(lines);

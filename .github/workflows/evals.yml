@@ -2,7 +2,8 @@ name: evals
 
 # Runs the skill evals (pnpm evals, docs/decisions.md P7):
 #   pull_request  only the skills a PR changes, at most EVALS_MAX_PER_SKILL cases each. Same-repo PRs only (forks get no
-#                 secrets), and never evo/ branches: an agent PR that touches .claude/** fails guardrails anyway.
+#                 secrets), and never an agent PR as .github/guardrails.json defines one (agentPullRequests: its branch
+#                 prefixes, authors and label), because this job hands the PR's code a Claude token. Keep the two in step.
 #   schedule      the first case of every skill, nightly, only while the EVALS_NIGHTLY variable is "true".
 # The results go to the job summary and the artifact. evals/results.jsonl is committed only from local runs.
 on:
@@ -39,7 +40,11 @@ jobs:
     if: >-
       (github.event_name == 'pull_request'
         && github.event.pull_request.head.repo.full_name == github.repository
-        && !startsWith(github.head_ref, 'evo/'))
+        && !startsWith(github.head_ref, 'evo/')
+        && !startsWith(github.head_ref, 'claude/')
+        && github.event.pull_request.user.login != 'claude[bot]'
+        && github.event.pull_request.user.login != 'github-actions[bot]'
+        && !contains(github.event.pull_request.labels.*.name, 'evolution'))
       || (github.event_name == 'schedule' && vars.EVALS_NIGHTLY == 'true')
       || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest

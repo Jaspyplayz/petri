@@ -30,6 +30,30 @@ export const SUBJECT_ALLOWED_TOOLS = [
   "Bash(git log:*)",
 ].join(",");
 
+// The Claude CLI needs its own credential, and nothing else needs any. The repo copy's pnpm install, setup.sh and every
+// tool the agent runs get an env with no secrets; the CLI gets the Claude credential back, and
+// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB keeps it out of its Bash tool and hooks.
+const CLAUDE_CREDENTIALS = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"];
+const SECRET_NAME = /TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|_KEY$|^KEY$|SALT|DSN/i;
+
+export function withoutSecrets(env: Readonly<Record<string, string | undefined>>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined && !SECRET_NAME.test(entry[0])),
+  );
+}
+
+export function claudeEnv(env: Readonly<Record<string, string | undefined>>): Record<string, string> {
+  const credentials = CLAUDE_CREDENTIALS.flatMap((name) => (env[name] ? [[name, env[name]] as const] : []));
+  return { ...withoutSecrets(env), ...Object.fromEntries(credentials), CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1", EVOLUTION_HUMAN: "" };
+}
+
+export function redactCredentials(text: string, env: Readonly<Record<string, string | undefined>>): string {
+  return CLAUDE_CREDENTIALS.reduce((out, name) => {
+    const value = env[name];
+    return value && value.length >= 8 ? out.split(value).join("[REDACTED]") : out;
+  }, text);
+}
+
 export const JUDGE_SCHEMA = {
   type: "object",
   properties: {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { pnpmRuleProblem, splitRules } from "../agent-tools/allowed-tools";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SUBJECT_ALLOWED_TOOLS, judgePrompt } from "./agents";
+import { SUBJECT_ALLOWED_TOOLS, claudeEnv, judgePrompt, redactCredentials, withoutSecrets } from "./agents";
 import { caseProblems, selectCases, type EvalCase } from "./cases";
 import { formatReport, parseResults, type EvalResult } from "./results";
 import { bashCommands, condenseTranscript, ranVerify } from "./transcript";
@@ -99,5 +99,37 @@ describe("formatReport", () => {
 
   it("says when there's nothing yet", () => {
     expect(formatReport([])).toBe("No eval results yet. Run pnpm evals.\n");
+  });
+});
+
+describe("the agents' environment", () => {
+  const env = {
+    PATH: "/usr/bin",
+    HOME: "/home/runner",
+    CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-secret-value",
+    GH_TOKEN: "ghp_secret",
+    SUPABASE_SERVICE_ROLE_KEY: "service-role",
+    RATE_LIMIT_SALT: "salt",
+    SENTRY_DSN: "https://dsn",
+    UNSET: undefined,
+  };
+
+  it("gives setup and tools no secrets at all", () => {
+    expect(withoutSecrets(env)).toEqual({ PATH: "/usr/bin", HOME: "/home/runner" });
+  });
+
+  it("gives the CLI only its own credential, with the subprocess scrub on and no human switch", () => {
+    expect(claudeEnv(env)).toEqual({
+      PATH: "/usr/bin",
+      HOME: "/home/runner",
+      CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-secret-value",
+      CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
+      EVOLUTION_HUMAN: "",
+    });
+  });
+
+  it("redacts the credential from saved output", () => {
+    expect(redactCredentials("token sk-ant-oat-secret-value twice sk-ant-oat-secret-value", env)).toBe("token [REDACTED] twice [REDACTED]");
+    expect(redactCredentials("nothing here", { CLAUDE_CODE_OAUTH_TOKEN: "short" })).toBe("nothing here");
   });
 });
