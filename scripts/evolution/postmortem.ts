@@ -259,7 +259,7 @@ export function postmortemPrBody(input: {
     `- **Rung:** ${report.rung}.${report.rungProof === "" ? "" : ` ${inline(report.rungProof)}`}`,
     skill === undefined
       ? "- **Eval case:** none."
-      : `- **Eval case:** \`${report.evalCase}\`, the only eval files it adds. The agent's sandbox can't run evals. Read the case's \`setup.sh\` before you merge or run \`/run-evals ${skill}\`: \`/run-evals\` runs it on your machine, and once merged the evals workflow runs it in CI next to the Claude token, neither in a sandbox.`,
+      : `- **Eval case:** \`${report.evalCase}\`, the only eval files it adds. The agent's sandbox can't run evals. Read the whole case before you merge or run \`/run-evals ${skill}\`: its \`setup.sh\` runs in a container with no network, but then the agent under test follows \`task.md\` and runs the copy's code on your machine without a sandbox (in CI, in the secret scrub's).`,
     ...report.whatChanged.map((line) => `- ${inline(line)}`),
     "",
     `**Root cause** (${report.reproduced ? "reproduced" : "not reproduced"}): ${inline(report.rootCause)}`,
