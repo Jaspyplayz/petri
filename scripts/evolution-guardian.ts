@@ -27,8 +27,10 @@ import {
   revertBranch,
   rolledBackFrom,
   spikeVerdict,
+  stopWatching,
   type AliasRequest,
   type Deployed,
+  type DeployState,
   type ListedPr,
   type MainCommit,
   type MergedRevert,
@@ -204,11 +206,15 @@ function handledBy(servingId: string): Handled | undefined {
   return pr === undefined ? undefined : { url: pr.url, kind: "pr" };
 }
 
+function errorText(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 500);
+}
+
 function attempt<T>(what: string, problems: string[], run: () => T): T | undefined {
   try {
     return run();
   } catch (error) {
-    problems.push(`${what}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500));
+    problems.push(`${what}: ${errorText(error)}`.slice(0, 500));
     return undefined;
   }
 }
@@ -456,13 +462,14 @@ function notify(): void {
   process.stdout.write(`guardian: ${gh(root, ["issue", "create", "--title", title, "--body", body, "--label", GUARDIAN_ISSUE_LABEL])}\n`);
 }
 
-// Env: CHECK_OUTCOME, SPIKE and PROMOTE from the check, STEPS ("name=outcome ..." for the steps that act), STARTED_AT,
-// ACT and the Supabase pair.
+// Env: CHECK_OUTCOME, SPIKE and PROMOTE from the check, STEPS ("name=outcome ..." for the steps that act), JOB_STATUS,
+// STARTED_AT, ACT and the Supabase pair.
 async function record(): Promise<void> {
   const act = process.env.ACT === "true";
   const steps = parseStepOutcomes(process.env.STEPS ?? "");
   const check = process.env.CHECK_OUTCOME ?? "";
-  const status = guardianRunStatus({ check, spike: process.env.SPIKE === "true", promote: (process.env.PROMOTE ?? "") !== "", act, steps: Object.values(steps) });
+  const job = process.env.JOB_STATUS ?? "";
+  const status = guardianRunStatus({ check, spike: process.env.SPIKE === "true", promote: (process.env.PROMOTE ?? "") !== "", act, job, steps: Object.values(steps) });
   if (status === undefined) {
     process.stdout.write("guardian: a quiet run (no spike, nothing to promote), so nothing to record\n");
     return;
@@ -478,18 +485,20 @@ async function record(): Promise<void> {
       workflow: "guardian",
       gh_run_id: Number.isInteger(runId) && runId > 0 ? runId : null,
       gh_run_url: runUrl(),
-      pr_number: found?.culprit?.pr.number ?? null,
+      pr_number: found?.culprit?.pr.number ?? plan?.revert.number ?? null,
       status,
       duration_ms: Math.max(0, finishedAt.getTime() - Date.parse(startedAt)),
       started_at: startedAt,
       finished_at: finishedAt.toISOString(),
-      details: { act, check, steps, spike: [...(found?.verdict.reasons ?? [])], serving: found?.serving.id ?? null, promote: plan?.target.id ?? null },
+      details: { act, check, job, steps, spike: [...(found?.verdict.reasons ?? [])], serving: found?.serving.id ?? null, promote: plan?.target.id ?? null },
     });
   if (error) throw new Error(`recording the run failed: ${error.message}`);
   process.stdout.write(`guardian: recorded the run (${status})\n`);
 }
 
-// Dispatches each check as its own guardian run, so each acts and reports like a scheduled one.
+// Dispatches each check as its own guardian run, so each acts and reports like a scheduled one. A failed read of
+// production only costs that poll or that check, so one Vercel or GitHub error doesn't end the watch, but the job
+// still ends red when it never saw the deploy or a check wasn't dispatched.
 async function afterDeploy(): Promise<void> {
   const sha = env("SHA");
   const act = process.env.ACT === "true";
@@ -498,12 +507,21 @@ async function afterDeploy(): Promise<void> {
   const deadline = Date.now() + DEPLOY_WAIT_MS;
   let live: Deployed | undefined;
   while (live === undefined) {
-    const { deployments, servingId, production } = await readProduction(vercel);
-    const deploy = deployState(deployments, production, servingId, sha);
+    let deploy: DeployState;
+    let failed = false;
+    try {
+      const { deployments, servingId, production } = await readProduction(vercel);
+      deploy = deployState(deployments, production, servingId, sha);
+    } catch (error) {
+      failed = true;
+      deploy = { kind: "waiting", reason: `reading production failed (${errorText(error)})` };
+      process.stdout.write(`guardian: ${deploy.reason}\n`);
+    }
     if (deploy.kind === "live") {
       live = deploy.serving;
     } else if (deploy.kind === "stop" || Date.now() > deadline) {
       stepSummary(`## Guardian after a deploy\n\nNo checks for ${short}: ${deploy.reason}${deploy.kind === "waiting" ? ", still after 20 minutes" : ""}.`);
+      if (failed) throw new Error(`after-deploy: ${deploy.reason}`);
       return;
     } else {
       await sleep(DEPLOY_POLL_MS);
@@ -512,20 +530,27 @@ async function afterDeploy(): Promise<void> {
   const lines = ["## Guardian after a deploy", "", `${short} went live as ${live.url ?? live.id} at ${new Date(live.liveAt).toISOString()}.`, ""];
   const checks = afterDeployChecks(live.liveAt, Date.now());
   if (checks.length === 0) lines.push("- It went live too long ago: every check time has passed.");
+  let missed = 0;
   for (const { minutes, at } of checks) {
     await sleep(Math.max(0, at - Date.now()));
-    const { production } = await readProduction(vercel);
-    if (production.kind !== "ok" || production.serving.id !== live.id) {
-      const now = production.kind === "held" ? production.reason : `it serves ${production.serving.id}`;
-      lines.push(`- ${String(minutes)} min: production no longer serves it (${now}), so the checks stop.`);
-      break;
+    let line: string;
+    try {
+      const stop = stopWatching((await readProduction(vercel)).production, live.id);
+      if (stop !== undefined) {
+        lines.push(`- ${String(minutes)} min: the checks stop: ${stop}.`);
+        break;
+      }
+      gh(root, ["workflow", "run", "evolution-guardian.yml", "--ref", "main", "-f", `act=${String(act)}`]);
+      line = `- ${String(minutes)} min: dispatched evolution-guardian${act ? " with act" : " (a dry run)"}.`;
+    } catch (error) {
+      missed += 1;
+      line = `- ${String(minutes)} min: no check: ${errorText(error)}.`;
     }
-    gh(root, ["workflow", "run", "evolution-guardian.yml", "--ref", "main", "-f", `act=${String(act)}`]);
-    const line = `- ${String(minutes)} min: dispatched evolution-guardian${act ? " with act" : " (a dry run)"}.`;
     lines.push(line);
     process.stdout.write(`guardian: ${line.slice(2)}\n`);
   }
   stepSummary(lines.join("\n"));
+  if (missed > 0) throw new Error(`after-deploy: ${String(missed)} check(s) weren't dispatched; see the summary`);
 }
 
 const command = process.argv[2];

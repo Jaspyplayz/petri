@@ -3,9 +3,11 @@ name: evolution-guardian-after-deploy
 # Watches a production deploy closely (Phase 8.5): it dispatches evolution-guardian 10, 30 and 60 minutes after the
 # deploy of this commit goes live, so a spike is caught in the first hour, not only on the 15-minute schedule. It waits
 # up to 20 minutes for production to serve the commit's deployment, and stops when its build failed, a newer deploy
-# went live (that deploy's own run watches it), or production stops serving it (a rollback). Each check is a normal
-# guardian run. A newer run cancels this one. Dispatch only until Phase 9.1 adds the push trigger, which acts like the
-# guardian's schedule does.
+# went live, or production stops serving it (a rollback). Each check is a normal guardian run with the same act. One
+# run per commit: a newer commit's run doesn't cancel this one, and a second run for the same commit waits for it.
+# GitHub keeps one pending guardian run, and a newer one replaces it, so a dry-run dispatch can drop a pending run that
+# would have acted: dispatch without act only to test. Dispatch only until Phase 9.1 adds the push trigger, which acts
+# like the guardian's schedule does.
 on:
   workflow_dispatch:
     inputs:
@@ -18,8 +20,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: evolution-guardian-after-deploy
-  cancel-in-progress: true
+  group: evolution-guardian-after-deploy-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   after-deploy:

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
 import { loadGuardrailsConfig } from "../check-pr/config";
 import { agentReasons } from "../check-pr/pull-request";
@@ -28,6 +29,7 @@ import {
   revertBranch,
   rolledBackFrom,
   spikeVerdict,
+  stopWatching,
   vercelDeploymentListSchema,
   vercelProjectSchema,
   type ListedPr,
@@ -394,15 +396,55 @@ describe("after a deploy", () => {
       reason: "production serves dpl_newer, a newer deployment than bbbbbbb's",
     });
   });
+
+  it("stops on a cancelled build, and waits while production serves a deployment Vercel doesn't list", () => {
+    const older = deployment("dpl_old", 1_000, SHA_A);
+    const cancelled = deployment("dpl_ours", 2_000, SHA_B, { state: "CANCELED" });
+    expect(deployState([older, cancelled], productionState([older, cancelled], "dpl_old", undefined), "dpl_old", SHA_B)).toEqual({
+      kind: "stop",
+      reason: "the production deployment of bbbbbbb (dpl_ours) is CANCELED",
+    });
+    const all = [older, deployment("dpl_ours", 2_000, SHA_B)];
+    expect(deployState(all, productionState(all, "dpl_unlisted", undefined), "dpl_unlisted", SHA_B)).toEqual({
+      kind: "waiting",
+      reason: expect.stringContaining("production serves dpl_unlisted") as string,
+    });
+  });
+
+  it("waits while a promote put the deployment live, because the guardian doesn't judge a promoted deployment", () => {
+    const all = [deployment("dpl_old", 1_000, SHA_A), deployment("dpl_ours", 2_000, SHA_B)];
+    const promote = { type: "promote", toDeploymentId: "dpl_ours", requestedAt: 90_000, jobStatus: "succeeded" };
+    expect(deployState(all, productionState(all, "dpl_ours", promote), "dpl_ours", SHA_B)).toEqual({
+      kind: "waiting",
+      reason: "production serves dpl_ours through a promote, not a deploy, so it waits for the next deploy",
+    });
+  });
+
+  it("stops the checks once production serves another deployment or is held", () => {
+    const older = deployment("dpl_old", 1_000, SHA_A);
+    const ours = deployment("dpl_ours", 2_000, SHA_B);
+    const newer = deployment("dpl_newer", 3_000, SHA_C);
+    expect(stopWatching(productionState([older, ours], "dpl_ours", undefined), "dpl_ours")).toBeUndefined();
+    expect(stopWatching(productionState([older, ours, newer], "dpl_newer", undefined), "dpl_ours")).toBe("it serves dpl_newer");
+    expect(stopWatching(productionState([older, ours], "dpl_old", undefined), "dpl_ours")).toContain("a rollback or a manual promote");
+  });
 });
 
 describe("guardianRunStatus", () => {
-  const quiet = { check: "success", spike: false, promote: false, act: true, steps: ["skipped", "skipped"] };
+  const quiet = { check: "success", spike: false, promote: false, act: true, job: "success", steps: ["skipped", "skipped"] };
 
-  it("leaves quiet runs out, and records a failed check as an error", () => {
+  it("leaves quiet runs out, and records a check that didn't pass as an error", () => {
     expect(guardianRunStatus(quiet)).toBeUndefined();
     expect(guardianRunStatus({ ...quiet, check: "failure" })).toBe("error");
     expect(guardianRunStatus({ ...quiet, check: "cancelled", act: false })).toBe("error");
+    expect(guardianRunStatus({ ...quiet, check: "skipped" })).toBe("error");
+    expect(guardianRunStatus({ ...quiet, check: "" })).toBe("error");
+  });
+
+  it("records a cancelled run that had something to do as an error, though its later steps were only skipped", () => {
+    expect(guardianRunStatus({ ...quiet, job: "cancelled" })).toBeUndefined();
+    expect(guardianRunStatus({ ...quiet, spike: true, job: "cancelled", steps: ["success", "skipped", "skipped"] })).toBe("error");
+    expect(guardianRunStatus({ ...quiet, promote: true, act: false, job: "cancelled" })).toBe("error");
   });
 
   it("is skipped for a dry run that would have acted, and pass or fail by the steps that acted", () => {
@@ -419,6 +461,19 @@ describe("guardianRunStatus", () => {
       "pause-pr": "failure",
     });
     expect(parseStepOutcomes("")).toEqual({});
+  });
+
+  it("gets the outcome of every step that acts, each under its own id", () => {
+    type Step = { readonly id?: string; readonly env?: Record<string, string> };
+    const workflow = load(readFileSync(join(root, ".github/workflows/evolution-guardian.yml"), "utf8")) as { jobs: { guardian: { steps: Step[] } } };
+    const steps = workflow.jobs.guardian.steps;
+    const passed = steps.find((step) => step.env?.STEPS !== undefined)?.env?.STEPS ?? "";
+    const pairs = [...passed.matchAll(/([\w-]+)=\$\{\{ steps\.([\w-]+)\.outcome \}\}/g)].map((match) => ({ name: match[1], id: match[2] }));
+    expect(pairs.filter((pair) => pair.name !== pair.id)).toEqual([]);
+    const acting = steps.flatMap((step) => (step.id === undefined || step.id === "check" ? [] : [step.id]));
+    expect(acting.length).toBeGreaterThan(0);
+    expect(new Set(pairs.map((pair) => pair.id))).toEqual(new Set(acting));
+    expect(pairs).toHaveLength(acting.length);
   });
 });
 

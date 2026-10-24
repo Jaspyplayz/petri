@@ -152,6 +152,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CHECK_OUTCOME: ${{ steps.check.outcome }}
+          JOB_STATUS: ${{ job.status }}
           SPIKE: ${{ steps.check.outputs.spike }}
           PROMOTE: ${{ steps.check.outputs.promote }}
           STARTED_AT: ${{ steps.check.outputs.started-at }}
