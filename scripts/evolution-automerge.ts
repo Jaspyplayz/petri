@@ -3,12 +3,12 @@ import { join } from "node:path";
 import { loadGuardrailsConfig } from "./check-pr/config";
 import { prDataFromBody } from "./evolution/build";
 import { readEvolutionConfig } from "./evolution/config";
+import { featureRisks } from "./evolution/feature-risks";
 import { decide, footprint, manifestPath, manifestRiskLevel, type ChangedFile, type Footprint, type ManifestRisk } from "./evolution/automerge";
 import { mergedTodayArgs } from "./evolution/gate";
 import { gh } from "./evolution/github-issue";
 import { isEvolutionPr, linkedIssue, PR_FIELDS, type GhPr } from "./evolution/github-pr";
 import { RISK_ORDER } from "./evolution/triage-output";
-import { featureManifests } from "../src/features/registry";
 import type { RiskLevel } from "../src/shared/lib/feature-manifest";
 
 // pnpm evolution:automerge runs from a checkout of main (trusted code) after the gate. For each open evolution PR whose
@@ -72,7 +72,7 @@ function needsHuman(pr: QueuedPr, reason: string): void {
 function main(): void {
   const guardrails = loadGuardrailsConfig(root);
   const { trustLevel, maxMergesPerDay } = readEvolutionConfig(root);
-  const onMain = new Map(featureManifests.map((manifest) => [manifest.id, manifest.riskLevel]));
+  const onMain = featureRisks(root);
   const features = new Set(onMain.keys());
   mkdirSync(join(root, "artifacts", "evolution"), { recursive: true });
   const fields = `${PR_FIELDS},autoMergeRequest`;
