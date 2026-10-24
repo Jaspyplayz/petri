@@ -36,7 +36,7 @@ test.describe("feedback writes", () => {
   });
 
   test("each browser on one connection votes, up to 5 per item", async ({ request }) => {
-    const id = "00000000-0000-4000-8000-000000000005";
+    const id = "00000000-0000-4000-8000-000000000001";
     const statuses: number[] = [];
     for (let browser = 1; browser <= 6; browser += 1) {
       const vote = await request.post(`/api/feedback/${id}/vote`, {
