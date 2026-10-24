@@ -66,8 +66,8 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 8 — Safety, cost, kill switch
 
-- [ ] 8.1 pause/resume + `app_flags` · [ ] 8.2 rate limits + caps · [ ] 8.3 secrets/env hygiene · [ ] 8.4 `docs/costs.md` + budget gate · [ ] 8.5 guardian (Sentry spike → rollback → revert → pause) · [ ] 8.6 moderation + report button
-- [ ] Exit: kill switch stops a run, 429, gitleaks catches fake key, simulated spike → revert + pause
+- [x] 8.1 pause/resume + `app_flags` (#76) · [x] 8.2 rate limits + caps (#77) · [x] 8.3 secrets/env hygiene (this PR) · [ ] 8.4 `docs/costs.md` + budget gate · [ ] 8.5 guardian (Sentry spike → rollback → revert → pause) · [ ] 8.6 moderation + report button
+- [ ] Exit: kill switch stops a run, 429, gitleaks catches fake key, simulated spike → revert + pause (the first three pass, evidence below; the spike waits for 8.5)
 - [ ] Follow-up from Phase 6: run agent-written and PR code (the builder's Bash commands, the verify `run` job) as a separate OS user without sudo or docker, so it can't read `CLAUDE_CODE_OAUTH_TOKEN` or a runtime token from another process of the job. In the verify `run` job, run the verify CLI from main's checkout and only the PR's app as that user, so the app can't write the evidence the judge reads (docs/decisions.md)
 - [ ] Follow-up from Phase 6: `ci.yml` (no secrets) still restores the pnpm, Playwright and Next caches from main's scope, and untrusted code that runs in main's scope (the build agent job, the verify `run` job; both have sudo and docker on hosted runners) could write those keys. That would let it make `ci-ok` lie for later PRs. Fix: run untrusted code only in PR-scoped workflows, or stop restoring caches in `ci.yml`. Needs the user's OK, because it slows CI
 
@@ -78,6 +78,12 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 8 exit, so far (2026-10-24)
+
+- **Kill switch stops a run (#76):** `pnpm evolution:pause` set `EVOLUTION_ENABLED=false` and cancelled run 40052794630 while it ran. A triage started after that (run 40052836753) closed at its gate. `pnpm evolution:resume` turned the variable back on. With `feedback_open` off, posting returned 503 `feedback_closed` and the board showed the closed note, while votes still worked. With `read_only_mode` on, posts and votes returned 503 `read_only`.
+- **429 (#77):** against the local app, posts 1–5 from one IP returned 201, and post 6 returned `429 Retry-After 3600 {"error":"rate_limited"}`. `feedback-writes.e2e.ts:96` covers the same limit in CI.
+- **gitleaks catches a fake key (8.3):** a file with a random `ghp_…` token and a random `sk-ant-api03-…` key was staged in a clean checkout, and a normal `git commit` with hooks on failed. lefthook's `secrets` job reported `leaks found: 2` (rules `github-pat` and `anthropic-api-key`), and HEAD stayed where it was. CI's own command (`gitleaks git --log-opts="--text HEAD~1..HEAD" --ignore-gitleaks-allow --redact`, gitleaks 8.30.1 as in `ci.yml`) was run on a throwaway local clone with no remote and no hooks, holding one commit with a fake `ghp_…` token. It printed `leaks found: 1` and exited 1, which fails the `secrets` job and so `ci-ok`. No key was pushed anywhere, and the clone was deleted.
 
 ### Phase 7 exit: the full eval run (2026-10-24)
 

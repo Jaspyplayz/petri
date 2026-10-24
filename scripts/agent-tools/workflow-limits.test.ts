@@ -20,10 +20,20 @@ jobs:
       contents: read
       issues: write
     steps:
+      - name: Context
+        env:
+          TOKEN: \${{ secrets.TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "$TOKEN" ] && echo "token is set"
       - uses: anthropics/claude-code-action@${SHA} # v1.0.259
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
         with:
           claude_args: "--max-turns 30 --allowedTools Read"
 `;
+
+const PRINT = "print" + "env";
 
 describe("workflowLimitProblems", () => {
   it("passes a workflow that keeps every limit", () => {
@@ -48,9 +58,30 @@ jobs:
     expect(workflowLimitProblems("claude.yml", before)).toEqual([
       'claude.yml: no top-level permissions; set "permissions: contents: read" and grant writes per job',
       "claude.yml: job claude needs timeout-minutes between 1 and 240",
+      "claude.yml: job claude runs claude-code-action without env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: \"1\"",
       "claude.yml: job claude uses anthropics/claude-code-action@v1; pin claude-code-action to a commit SHA",
       "claude.yml: job claude runs claude-code-action without --max-turns in claude_args",
     ]);
+  });
+
+  it("refuses an agent step whose secret scrub is off", () => {
+    expect(workflowLimitProblems("w.yml", good.replace('SCRUB: "1"', 'SCRUB: "0"'))).toEqual([
+      'w.yml: job agent runs claude-code-action without env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"',
+    ]);
+  });
+
+  it("refuses a secret written into a script and every way a step prints the environment", () => {
+    const inline = good.replace('[ -n "$TOKEN" ]', "curl -H \"x: ${{ secrets.TOKEN }}\" x.dev; [ -n \"$TOKEN\" ]");
+    expect(workflowLimitProblems("w.yml", inline)).toEqual(['w.yml: job agent, "Context" puts a secret in the script; pass it through env:']);
+    for (const dump of [PRINT, `${PRINT} TOKEN`, "env", "env | sort", "env > all.txt", "set", "export -p", "declare -x", "set -x", "set -eux", "set -o xtrace", "bash -x run.sh", "true && env"]) {
+      expect(workflowLimitProblems("w.yml", good.replace("set -euo pipefail", dump)), dump).toEqual(['w.yml: job agent, "Context" prints the environment']);
+    }
+  });
+
+  it("allows scripts that only mention env in passing", () => {
+    for (const line of ["echo env-ok", "node scripts/env-local.ts", "pnpm env:local", "cat .env.example", "set -euo pipefail", "VAR=1 env-tool"]) {
+      expect(workflowLimitProblems("w.yml", good.replace("set -euo pipefail", line)), line).toEqual([]);
+    }
   });
 
   it("refuses write permissions at the top and timeouts that are missing or too long", () => {
