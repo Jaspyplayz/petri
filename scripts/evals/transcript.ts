@@ -1,6 +1,7 @@
 // Turns a `claude -p --output-format stream-json` transcript into markdown the judge can read, and pulls out the shell
 // commands the agent ran, so "did it actually run verify-app?" is a fact and not the agent's own claim.
-const MAX_RESULT_CHARS = 1500;
+// Long enough that a whole source file the agent read fits, so the judge can check its path:line citations.
+const MAX_RESULT_CHARS = 12_000;
 
 type Block = { type?: string; text?: string; name?: string; input?: unknown; content?: unknown; is_error?: boolean };
 type Event = { type?: string; message?: { content?: Block[] | string } };
