@@ -1,6 +1,6 @@
 # Agent mistakes
 
-Every observed agent mistake gets an entry: what happened, evidence, root cause, category, and the fix rung reached (design → hard rule → skill → CLAUDE.md). Phase 7 adds the `postmortem` skill and eval cases; these first entries come from building Phase 1.
+Every observed agent mistake gets an entry: what happened, evidence, root cause, category, and the fix rung reached (design → hard rule → skill → CLAUDE.md). The `postmortem` skill (or `/postmortem`) writes them, climbs that ladder and adds an eval case. The first entries come from building Phase 1.
 
 ## 2026-10-22 · CSS Modules silently empty under the Tailwind Turbopack rule
 
@@ -149,4 +149,4 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Evidence:** A local headless run with the exact list from `evolution-build.yml` (`--setting-sources project`) refused all five ways of running a flow, including a plain `pnpm verify:flow blob.poke`. With `Bash(pnpm verify:flow:*)` or `Bash(pnpm verify:flow *)` the same command ran, and so did an exact rule from the same list.
 - **Root cause:** `Bash(pnpm verify:*)` matches `pnpm verify` followed by a space, not `pnpm verify:flow`. The rule was written when the workflow was built and never tested against a real command, and the builder's report only said "needed approval".
 - **Category:** permission config that was never exercised (caught while looking into the post-merge failure)
-- **Fix rung:** config. The list names each verify script, with a comment on the matching rule. The headless test is how to check a change to it.
+- **Fix rung:** config (#67), then (b) hard rule: `scripts/agent-tools/allowed-tools.test.ts` reads every `--allowedTools` list in the workflows and fails when a `Bash(pnpm …)` rule doesn't name a whole `package.json` script. Run against the workflow from before #67, it fails on `Bash(pnpm verify:*)`; on the current one it passes.
