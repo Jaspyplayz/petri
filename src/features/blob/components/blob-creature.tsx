@@ -6,14 +6,18 @@ import { useLocalStorage } from "@/shared/lib/use-local-storage";
 import { Button } from "@/shared/ui/button";
 import {
   BLOB_NAME_MAX_LENGTH,
+  BLOB_COLORS,
   BLOB_STORAGE_KEY,
+  blobColor,
   feed,
   formatSize,
   isFullyGrown,
   parseBlobState,
   poke,
+  recolor,
   rename,
   serializeBlobState,
+  type BlobColorId,
   type BlobState,
 } from "../lib/blob-state";
 import styles from "./blob.module.css";
@@ -49,6 +53,11 @@ export function BlobCreature() {
     track("blob", "feed");
   };
 
+  const handleColor = (color: BlobColorId) => {
+    save(recolor(state, color));
+    track("blob", "recolor");
+  };
+
   const handleRename = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const result = rename(state, draftName ?? state.name);
@@ -69,6 +78,7 @@ export function BlobCreature() {
   };
 
   const full = isFullyGrown(state);
+  const body = blobColor(state);
 
   return (
     <section data-testid="blob-panel" aria-labelledby="blob-name" className="flex flex-col items-center gap-6">
@@ -91,11 +101,12 @@ export function BlobCreature() {
               className={wobbling ? styles.wobble : styles.breathe}
               data-mood={mood}
               data-testid="blob-body"
+              style={{ fill: body.fill }}
               onAnimationEnd={handleAnimationEnd}
             >
               <path
                 d="M100 38c34 0 64 22 68 62 4 38-18 78-68 78s-74-36-70-76c4-40 36-64 70-64z"
-                className="fill-culture stroke-culture-deep"
+                style={{ stroke: body.stroke }}
                 strokeWidth="4"
               />
               <ellipse cx="78" cy="96" rx="9" ry={mood === "poked" ? 3 : 11} className="fill-blob-face" />
@@ -103,8 +114,8 @@ export function BlobCreature() {
               <circle cx="81" cy="91" r="3" className="fill-white" />
               <circle cx="125" cy="91" r="3" className="fill-white" />
               <g data-testid="blob-eyelid" className={styles.eyelid}>
-                <ellipse cx="78" cy="96" rx="11" ry="12" className="fill-culture" />
-                <ellipse cx="122" cy="96" rx="11" ry="12" className="fill-culture" />
+                <ellipse cx="78" cy="96" rx="11" ry="12" />
+                <ellipse cx="122" cy="96" rx="11" ry="12" />
                 <path d="M69 98q9 5 18 0M113 98q9 5 18 0" className="fill-none stroke-blob-face" strokeWidth="3" strokeLinecap="round" />
               </g>
               {mood === "fed" ? (
@@ -147,6 +158,23 @@ export function BlobCreature() {
         <Button onClick={handleFeed} disabled={full} data-testid="blob-feed-button">
           {full ? "Too full" : "Feed"}
         </Button>
+      </div>
+
+      <div role="group" aria-label="Blob colour" data-testid="blob-color-picker" className="flex gap-3">
+        {BLOB_COLORS.map((color) => (
+          <button
+            key={color.id}
+            type="button"
+            onClick={() => {
+              handleColor(color.id);
+            }}
+            data-testid={`blob-color-swatch-${color.id}`}
+            aria-label={color.label}
+            aria-pressed={state.color === color.id}
+            style={{ backgroundColor: color.fill, borderColor: color.stroke }}
+            className={`h-8 w-8 rounded-full border-2 ${state.color === color.id ? "ring-2 ring-ink ring-offset-2 ring-offset-agar" : ""}`}
+          />
+        ))}
       </div>
 
       <form onSubmit={handleRename} className="flex flex-col items-center gap-2" noValidate>

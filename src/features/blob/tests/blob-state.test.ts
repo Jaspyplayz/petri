@@ -7,6 +7,7 @@ import {
   isFullyGrown,
   parseBlobState,
   poke,
+  recolor,
   rename,
   serializeBlobState,
 } from "../lib/blob-state";
@@ -33,6 +34,22 @@ describe("feed", () => {
     expect(state.size).toBe(BLOB_MAX_SIZE);
     expect(isFullyGrown(state)).toBe(true);
     expect(state.feeds).toBe(100);
+  });
+});
+
+describe("recolor", () => {
+  it("changes the colour and keeps it through serialization", () => {
+    const pink = recolor(initialBlobState, "pink");
+    expect(pink.color).toBe("pink");
+    expect(parseBlobState(serializeBlobState(pink)).color).toBe("pink");
+  });
+
+  it("defaults old stored state without a colour to green", () => {
+    expect(parseBlobState('{"name":"Old","size":1.1,"pokes":2,"feeds":1}').color).toBe("green");
+  });
+
+  it("falls back to the initial state for an unknown colour", () => {
+    expect(parseBlobState('{"name":"x","size":1,"pokes":0,"feeds":0,"color":"plaid"}')).toEqual(initialBlobState);
   });
 });
 
