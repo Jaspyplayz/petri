@@ -1,4 +1,5 @@
 import type { RiskLevel } from "../../src/shared/lib/feature-manifest";
+import { GUARDIAN_ISSUE_LABEL } from "../evolution/guardian";
 import { RISK_ORDER } from "../evolution/triage-output";
 import { EVOLUTION_LABEL, NEEDS_HUMAN_LABEL, REVERT_LABEL } from "../trust-report/ladder";
 
@@ -17,6 +18,7 @@ export const LOOP_LABELS: readonly LabelSpec[] = [
   { name: "evolution:ready", color: "0E8A16", description: "Triaged and ready for the build agent" },
   { name: "evolution:stuck", color: "B60205", description: "Verification failed three times; an agent stopped and needs a human" },
   { name: REVERT_LABEL, color: "5319E7", description: "A guardian revert; trust-report counts it" },
+  { name: GUARDIAN_ISSUE_LABEL, color: "B60205", description: "The guardian rolled production back; a human follows up" },
   { name: NEEDS_HUMAN_LABEL, color: "B60205", description: "Automerge refused it; a human decides" },
   ...RISK_ORDER.map((level) => ({ name: `risk:${level}`, ...risk[level] })),
   { name: "protected-ok", color: "B60205", description: "Human-only: maintainer approves an agent PR touching protected paths" },
