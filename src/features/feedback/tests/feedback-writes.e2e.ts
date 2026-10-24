@@ -60,15 +60,21 @@ test.describe("feedback writes", () => {
     const target = page.locator(`[data-feedback-id="${id}"]`);
     const button = target.getByTestId("feedback-report-button");
 
+    await button.dblclick();
+    await expect(target.getByTestId("feedback-report-note")).toHaveCount(0);
+    await page.reload();
+
     await button.click();
     await expect(button).toHaveText("Confirm report");
     await target.getByTestId("feedback-report-cancel").click();
     await expect(button).toHaveText("Report");
+    await expect(button).toBeFocused();
 
     await button.click();
     await expect(button).toHaveText("Confirm report");
     await button.click();
     await expect(target.getByTestId("feedback-report-note")).toHaveText("Reported. Thanks.");
+    await expect(target.getByTestId("feedback-report-note")).toBeFocused();
 
     await page.reload();
     await button.click();
@@ -83,17 +89,19 @@ test.describe("feedback writes", () => {
     const posted = await request.post("/api/feedback", { data: { body: text, category: "idea" } });
     expect(posted.status()).toBe(201);
     const { id } = (await posted.json()) as { id: string };
-    const statuses: number[] = [];
-    for (let network = 1; network <= 3; network += 1) {
+    const reportFrom = async (network: number) => {
       const report = await request.post(`/api/feedback/${id}/report`, {
         data: {},
         headers: { "x-forwarded-for": `198.19.${String(network)}.${String(randomInt(1, 255))}` },
       });
-      statuses.push(report.status());
-    }
-    expect(statuses).toEqual([201, 201, 201]);
-
+      return report.status();
+    };
+    expect([await reportFrom(1), await reportFrom(2)]).toEqual([201, 201]);
     await page.goto("/feedback?sort=new");
+    await expect(page.locator(`[data-feedback-id="${id}"]`)).toBeVisible();
+
+    expect(await reportFrom(3)).toBe(201);
+    await page.reload();
     await expect(page.getByTestId("feedback-list")).toBeVisible();
     await expect(page.locator(`[data-feedback-id="${id}"]`)).toHaveCount(0);
     await expect(page.getByTestId("feedback-list")).not.toContainText(text);

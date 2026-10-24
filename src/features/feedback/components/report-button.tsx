@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { type MouseEvent, useRef, useState, useTransition } from "react";
 import { track } from "@/shared/lib/track";
 import { feedbackErrorMessage, parseFeedbackApiError } from "../lib/feedback-input";
 import { REPORTS_TO_HIDE } from "../lib/feedback-report";
@@ -11,9 +11,14 @@ type ReportState =
   | { readonly kind: "done"; readonly text: string }
   | { readonly kind: "error"; readonly text: string };
 
+function focusOnMount(node: HTMLElement | null) {
+  node?.focus();
+}
+
 export function ReportButton({ feedbackId }: { readonly feedbackId: string }) {
   const [state, setState] = useState<ReportState>({ kind: "idle" });
   const [pending, startTransition] = useTransition();
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const report = () => {
     startTransition(async () => {
@@ -21,30 +26,30 @@ export function ReportButton({ feedbackId }: { readonly feedbackId: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
-      });
-      if (response.status === 201) {
+      }).catch(() => null);
+      if (response?.status === 201) {
         setState({ kind: "done", text: "Reported. Thanks." });
         track("feedback", "report");
         return;
       }
-      if (response.ok) {
+      if (response?.ok) {
         setState({ kind: "done", text: "Already reported" });
         return;
       }
-      const error = parseFeedbackApiError(await response.json().catch(() => null));
+      const error = parseFeedbackApiError(await response?.json().catch(() => null));
       setState({ kind: "error", text: feedbackErrorMessage(error) });
     });
   };
 
-  const handleClick = () => {
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (pending) return;
-    if (state.kind === "confirming") report();
-    else setState({ kind: "confirming" });
+    if (state.kind !== "confirming") setState({ kind: "confirming" });
+    else if (event.detail <= 1) report();
   };
 
   if (state.kind === "done") {
     return (
-      <span data-testid="feedback-report-note" role="status" className="ml-auto text-ink-soft">
+      <span ref={focusOnMount} tabIndex={-1} data-testid="feedback-report-note" role="status" className="ml-auto text-ink-soft">
         {state.text}
       </span>
     );
@@ -59,6 +64,7 @@ export function ReportButton({ feedbackId }: { readonly feedbackId: string }) {
         </span>
       ) : null}
       <button
+        ref={buttonRef}
         type="button"
         onClick={handleClick}
         disabled={pending}
@@ -77,6 +83,7 @@ export function ReportButton({ feedbackId }: { readonly feedbackId: string }) {
             type="button"
             onClick={() => {
               setState({ kind: "idle" });
+              buttonRef.current?.focus();
             }}
             data-testid="feedback-report-cancel"
             className="text-ink-soft underline"

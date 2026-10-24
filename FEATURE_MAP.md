@@ -248,16 +248,21 @@ Upvoting an item marks the button as voted. Run it with `pnpm verify:flow feedba
 
 ### `feedback.report`
 
-Reporting an item asks for a confirmation, then says it's reported (or already reported from this network); the item stays until 3 networks report it. Run it with `pnpm verify:flow feedback.report`. It writes data, so `verify:all --read-only` (production) skips it.
+Reporting the flow's own new post asks for a confirmation, then thanks the reporter; the item stays on the board until 3 networks report it. Run it with `pnpm verify:flow feedback.report`. It writes data, so `verify:all --read-only` (production) skips it.
 
 1. goto `/feedback?sort=new`
-2. click `reportButton`
-3. expectText `reportButton` contains "Confirm report"
-4. expectVisible `reportCancel`
-5. screenshot "report-confirm"
+2. fill `bodyInput` with "Verification flow: report this post"
+3. click `categoryIdea`
+4. click `submit`
+5. expectText `list` contains "Verification flow: report this post"
 6. click `reportButton`
-7. expectVisible `reportNote`
-8. screenshot "after-report"
+7. expectText `reportButton` contains "Confirm report"
+8. expectVisible `reportCancel`
+9. screenshot "report-confirm"
+10. click `reportButton`
+11. expectText `reportNote` contains "Reported. Thanks."
+12. expectText `list` contains "Verification flow: report this post"
+13. screenshot "after-report"
 
 ## Timeline (`timeline`)
 
