@@ -82,6 +82,7 @@
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.2",
     "eslint-plugin-jsx-a11y": "6.10.2",
+    "js-yaml": "4.3.2",
     "lefthook": "2.1.17",
     "supabase": "2.121.0",
     "tailwindcss": "4.3.3",

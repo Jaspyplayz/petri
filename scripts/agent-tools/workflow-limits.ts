@@ -1,0 +1,65 @@
+// Limits every workflow must keep (Phase 8): read-only permissions at the top so write access is granted per job, a
+// timeout on every job, and on every claude-code-action step a pinned commit and a --max-turns. A schedule runs at
+// most every 15 minutes. The test runs these on every file in .github/workflows, so a new or edited workflow can't drop
+// them.
+import { load } from "js-yaml";
+
+const MAX_TIMEOUT_MINUTES = 240;
+const MIN_CRON_GAP_MINUTES = 15;
+
+type Json = Record<string, unknown>;
+
+function record(value: unknown): Json | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Json) : undefined;
+}
+
+export function cronProblem(cron: string): string | undefined {
+  const minute = cron.trim().split(/\s+/)[0] ?? "";
+  const every = /^\*\/(\d+)$/.exec(minute);
+  if (every) return Number(every[1]) >= MIN_CRON_GAP_MINUTES ? undefined : `"${cron}" runs every ${every[1] ?? "?"} minutes`;
+  if (!/^\d+(,\d+)*$/.test(minute)) return `"${cron}" has a minute field that isn't a number, a list or */N`;
+  const minutes = minute.split(",").map(Number).sort((a, b) => a - b);
+  const gaps = minutes.map((m, i) => ((minutes[i + 1] ?? (minutes[0] ?? 0) + 60) - m));
+  return minutes.length > 1 && Math.min(...gaps) < MIN_CRON_GAP_MINUTES ? `"${cron}" runs less than ${String(MIN_CRON_GAP_MINUTES)} minutes apart` : undefined;
+}
+
+export function workflowLimitProblems(file: string, text: string): string[] {
+  const doc = record(load(text));
+  if (!doc) return [`${file}: not a YAML mapping`];
+  const problems: string[] = [];
+  const top = doc.permissions;
+  const topPermissions = record(top);
+  if (!topPermissions && top !== "read-all" && top !== "{}") {
+    problems.push(`${file}: no top-level permissions; set "permissions: contents: read" and grant writes per job`);
+  }
+  for (const [scope, level] of Object.entries(topPermissions ?? {})) {
+    if (level === "write") problems.push(`${file}: top-level permissions give ${scope}: write to every job; grant it in the job that needs it`);
+  }
+  const on = record(doc.on) ?? record(doc.true);
+  const schedule = Array.isArray(on?.schedule) ? on.schedule : [];
+  for (const entry of schedule) {
+    const cron = record(entry)?.cron;
+    const problem = typeof cron === "string" ? cronProblem(cron) : "a schedule entry has no cron";
+    if (problem) problems.push(`${file}: ${problem}`);
+  }
+  for (const [name, rawJob] of Object.entries(record(doc.jobs) ?? {})) {
+    const job = record(rawJob) ?? {};
+    if (typeof job.uses === "string") continue;
+    const timeout = job["timeout-minutes"];
+    if (typeof timeout !== "number" || timeout <= 0 || timeout > MAX_TIMEOUT_MINUTES) {
+      problems.push(`${file}: job ${name} needs timeout-minutes between 1 and ${String(MAX_TIMEOUT_MINUTES)}`);
+    }
+    const steps = Array.isArray(job.steps) ? job.steps : [];
+    for (const rawStep of steps) {
+      const step = record(rawStep) ?? {};
+      const uses = typeof step.uses === "string" ? step.uses : "";
+      if (!uses.startsWith("anthropics/claude-code-action")) continue;
+      if (!/@[0-9a-f]{40}$/.test(uses)) problems.push(`${file}: job ${name} uses ${uses}; pin claude-code-action to a commit SHA`);
+      const args = record(step.with)?.claude_args;
+      if (typeof args !== "string" || !/--max-turns\s+\S/.test(args)) {
+        problems.push(`${file}: job ${name} runs claude-code-action without --max-turns in claude_args`);
+      }
+    }
+  }
+  return problems;
+}

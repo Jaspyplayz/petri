@@ -185,3 +185,10 @@ One line per decision, newest at the bottom. Format: `YYYY-MM-DD · phase · dec
   - **If the read fails:** the last known flags stay, or the defaults (open) if none was ever read. A database that can't serve the flags can't take writes either.
   - **The form:** the post area reads the flags at request time in its own `<Suspense>` (Cache Components) and shows a note instead of the form.
   - **Changing a flag:** `pnpm app:flags set <flag> <true|false> [--prod]`, which uses `.env.local` or `.env.setup`.
+- 2026-10-24 · P8 · Every workflow keeps four limits, enforced by `scripts/agent-tools/workflow-limits.test.ts` (in `pnpm check` and CI):
+  - top-level permissions are read-only, so write access is granted per job
+  - every job has `timeout-minutes` between 1 and 240
+  - every claude-code-action step is pinned to a commit and has `--max-turns`
+  - a schedule runs at most every 15 minutes (the guardian's rate)
+  `claude.yml` and `claude-code-review.yml`, as `/install-github-app` wrote them, broke all four. They now have top-level `contents: read`, 30 and 20 minute timeouts, 40 and 30 turns, and the same pinned action as the loop (v1.0.259, which has the `plugins` inputs the review uses). The other caps were already in place: per-IP limits (5 posts and 30 votes an hour, 429 with `Retry-After`), `maxIssuesPerTriage`, `maxOpenEvolutionPRs`, `maxMergesPerDay` and each agent's turn limit in `.evolution/config.json`.
+- 2026-10-24 · P8 · `js-yaml` 4.3.2 is a direct devDependency, pinned exactly, so the workflow check parses YAML rather than matching it with regexes. It was already in the lockfile through ESLint, so nothing new is downloaded. It has no `@types`; `scripts/agent-tools/js-yaml.d.ts` declares the one function used (`load`, which is safe by default in v4).
