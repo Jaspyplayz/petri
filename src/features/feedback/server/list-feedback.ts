@@ -2,7 +2,6 @@ import "server-only";
 import { publicSupabase } from "@/shared/supabase/public-client";
 import type { Tables } from "@/shared/supabase/types";
 import type { FeedbackSort } from "../lib/feedback-sort";
-import type { FeedbackCategory } from "../lib/feedback-status";
 
 export type FeedbackItem = Pick<
   Tables<"feedback">,
@@ -15,12 +14,11 @@ export function boardTimestamp(): number {
   return Date.now();
 }
 
-export async function listFeedback(sort: FeedbackSort, category?: FeedbackCategory): Promise<readonly FeedbackItem[]> {
+export async function listFeedback(sort: FeedbackSort): Promise<readonly FeedbackItem[]> {
   let query = publicSupabase()
     .from("feedback")
     .select("id, body, category, status, vote_count, issue_url, issue_number, pr_url, created_at")
     .limit(FEEDBACK_LIMIT);
-  if (category !== undefined) query = query.eq("category", category);
   query =
     sort === "top"
       ? query.order("vote_count", { ascending: false }).order("created_at", { ascending: false })

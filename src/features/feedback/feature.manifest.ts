@@ -5,7 +5,7 @@ export const feedbackManifest = defineFeature({
   title: "Feedback board",
   summary: "Anonymous visitors post ideas or bug reports (max 280 characters), upvote others, report abuse and follow each item's status, sorted by top votes or newest. Reports from 3 different networks hide an item.",
   routes: ["/feedback"],
-  uiLocation: "The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button; a 'Posting is closed' note instead while the feedback_open flag is off or the app is read-only), then the board with Top / Newest sort tabs on the right, a 'Showing bugs only' (or ideas) note with a 'Show all' link when the URL has ?category=bug or ?category=idea, and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, issue/PR links, and a small 'Report' link at the right end of that row, which asks 'Confirm report' before it counts).",
+  uiLocation: "The /feedback page: heading at the top, then a post form (textarea, Idea/Bug radios, character counter, Post button; a 'Posting is closed' note instead while the feedback_open flag is off or the app is read-only), then the board with Top / Newest sort tabs on the right and one card per item (votes on the left, text, category, status badge, relative age such as 3 days ago, issue/PR links, and a small 'Report' link at the right end of that row, which asks 'Confirm report' before it counts).",
   howToReach: ["Open /", "Click 'Feedback' in the top navigation (the middle one of the three links on the right)"],
   keyboardShortcuts: [],
   selectors: {
@@ -37,8 +37,6 @@ export const feedbackManifest = defineFeature({
     closedNote: "feedback-closed-note",
     sortTop: "feedback-sort-top",
     sortNew: "feedback-sort-new",
-    filterNote: "feedback-filter-note",
-    filterClear: "feedback-filter-clear",
   },
   flows: {
     browse: {
@@ -50,17 +48,6 @@ export const feedbackManifest = defineFeature({
         { action: "click", target: "sortNew" },
         { action: "expectVisible", target: "item" },
         { action: "screenshot", name: "board-newest" },
-      ],
-    },
-    filter: {
-      description: "?category=bug shows only bug reports with a 'Showing bugs only' note; 'Show all' goes back to the whole board.",
-      steps: [
-        { action: "goto", path: "/feedback?category=bug" },
-        { action: "expectText", target: "filterNote", text: "Showing bugs only" },
-        { action: "screenshot", name: "board-bugs" },
-        { action: "click", target: "filterClear" },
-        { action: "expectVisible", target: "item" },
-        { action: "screenshot", name: "board-all" },
       ],
     },
     post: {
