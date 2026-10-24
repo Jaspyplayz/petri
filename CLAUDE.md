@@ -6,7 +6,7 @@ Petri is a small public Next.js app that changes itself. Visitors leave feedback
 - [`FEATURE_MAP.md`](./FEATURE_MAP.md): what's on screen → feature folder, `data-testid` selectors, flows. Read it before any task.
 - [`docs/architecture.md`](./docs/architecture.md): folder layout, data model, workflows, the evolution loop.
 - [`docs/decisions.md`](./docs/decisions.md): one line per decision. [`docs/agent-mistakes.md`](./docs/agent-mistakes.md): log every agent mistake you catch.
-- Skills (`.claude/skills/`): `verify-app` (build, drive and screenshot the real app), `maintain-feature-map` (keep manifests and the map true).
+- Skills (`.claude/skills/`): `verify-app` (build, drive and screenshot the real app), `maintain-feature-map` (keep manifests and the map true), `investigate-before-claiming` (cite lines, reproduce, no guesses), `new-feature`, `triage-feedback`, `build-evolution-issue`, `review-evolution-pr` and `write-skill`.
 
 Detail lives in the skills and docs. This file is the short version.
 
