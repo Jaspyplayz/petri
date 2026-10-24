@@ -1,0 +1,130 @@
+name: evolution-guardian
+
+# Watches production (Phase 8.5). It compares the Sentry errors of the release production serves with the release
+# before it. On a spike it rolls production back with Vercel's Instant Rollback. When an evolution change went live, it
+# opens two PRs with auto-merge on: one extends .evolution/PAUSED by 24 hours and lowers trustLevel by one, the other
+# reverts the change. Then it opens an issue. Without the act input it only reports what it would do. Dispatch only
+# until Phase 9.1 adds the 15-minute cron, which acts. No gate: the kill switch and the pause stop agents, and the
+# guardian only lowers risk.
+on:
+  workflow_dispatch:
+    inputs:
+      act:
+        description: "Act on a spike (roll back, open the pause and revert PRs, notify). Off: only report what it would do."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evolution-guardian
+  cancel-in-progress: false
+
+jobs:
+  guardian:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The bot token pushes the guardian's branches and opens their PRs, so CI runs on them. The issue and comments use
+    # this job's token, so they come from github-actions and notify the maintainer (nobody is notified of their own
+    # actions). pull-requests: write is for a retried rollback's comment on an earlier run's PR.
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      ACT: ${{ github.event_name == 'schedule' || inputs.act == true }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+
+      - name: Check production against Sentry (changes nothing)
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: pnpm -s evolution:guardian check
+
+      - name: Roll production back
+        id: rollback
+        if: ${{ env.ACT == 'true' && steps.check.outputs.spike == 'true' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: pnpm -s evolution:guardian rollback
+
+      # A failed rollback still gets the PRs and the issue, so the steps below don't depend on it. A deployment an
+      # earlier run already acted on (check's handled output) only gets the rollback retried.
+      - name: Push the pause branch (pause, lower trust)
+        id: pause
+        if: ${{ !cancelled() && env.ACT == 'true' && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' && steps.check.outputs.culprit != '' && steps.check.outputs.handled == '' }}
+        env:
+          BOT_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BRANCH: ${{ steps.check.outputs.pause_branch }}
+          PR: ${{ steps.check.outputs.pr }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          git worktree add --detach "$RUNNER_TEMP/pause" origin/main
+          pnpm -s evolution:guardian pause-files "$RUNNER_TEMP/pause"
+          cd "$RUNNER_TEMP/pause"
+          git add -A .evolution
+          if git diff --cached --quiet; then
+            echo "Nothing to change: the loop is already paused for longer and trustLevel is 0."
+            exit 0
+          fi
+          git -c user.name="petri-guardian" -c user.email="petri-guardian@users.noreply.github.com" commit -q -m "chore(evolution): guardian pause after #$PR"
+          git push "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Open the pause PR with auto-merge on
+        if: ${{ !cancelled() && steps.pause.outputs.sha != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BRANCH: ${{ steps.check.outputs.pause_branch }}
+          HEAD_SHA: ${{ steps.pause.outputs.sha }}
+        run: pnpm -s evolution:guardian open-pr pause
+
+      - name: Push the revert branch
+        id: revert
+        if: ${{ !cancelled() && env.ACT == 'true' && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' && steps.check.outputs.culprit != '' && steps.check.outputs.handled == '' }}
+        env:
+          BOT_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BRANCH: ${{ steps.check.outputs.revert_branch }}
+          CULPRIT: ${{ steps.check.outputs.culprit }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          git worktree add --detach "$RUNNER_TEMP/revert" origin/main
+          cd "$RUNNER_TEMP/revert"
+          if ! git -c user.name="petri-guardian" -c user.email="petri-guardian@users.noreply.github.com" revert --no-edit "$CULPRIT"; then
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            git revert --abort || true
+            exit 1
+          fi
+          git push "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Open the revert PR with auto-merge on
+        if: ${{ !cancelled() && steps.revert.outputs.sha != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BRANCH: ${{ steps.check.outputs.revert_branch }}
+          HEAD_SHA: ${{ steps.revert.outputs.sha }}
+        run: pnpm -s evolution:guardian open-pr revert
+
+      - name: Tell the maintainer
+        if: ${{ !cancelled() && env.ACT == 'true' && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVERT_CONFLICT: ${{ steps.revert.outputs.conflict }}
+        run: pnpm -s evolution:guardian notify

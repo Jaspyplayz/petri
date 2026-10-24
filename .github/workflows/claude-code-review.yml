@@ -23,6 +23,7 @@ jobs:
       && !contains(github.event.pull_request.labels.*.name, 'evolution')
       && !startsWith(github.head_ref, 'evo/')
       && !startsWith(github.head_ref, 'claude/')
+      && !startsWith(github.head_ref, 'guardian/')
       && github.event.pull_request.user.type != 'Bot'
 
     runs-on: ubuntu-latest
