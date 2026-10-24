@@ -31,7 +31,23 @@ test.describe("feedback writes", () => {
     await page.reload();
     await target.getByTestId("feedback-vote-button").click();
     await expect(target.getByTestId("feedback-vote-button")).toHaveAttribute("aria-pressed", "true");
+    await expect(target.getByTestId("feedback-vote-note")).toHaveText("Already counted");
     await expect(target.getByTestId("feedback-vote-count")).toHaveText(String(before + 1));
+  });
+
+  test("each browser on one connection votes, up to 5 per item", async ({ request }) => {
+    const id = "00000000-0000-4000-8000-000000000005";
+    const statuses: number[] = [];
+    for (let browser = 1; browser <= 6; browser += 1) {
+      const vote = await request.post(`/api/feedback/${id}/vote`, {
+        data: {},
+        headers: { cookie: `petri_voter=${crypto.randomUUID()}` },
+      });
+      statuses.push(vote.status());
+      if (browser === 6) expect(await vote.json()).toEqual({ error: "vote_limit" });
+    }
+    expect(statuses.every((status) => status === 201 || status === 409)).toBe(true);
+    expect(statuses.at(-1)).toBe(409);
   });
 
   test("the API validates input and caps length", async ({ request }) => {

@@ -11,13 +11,26 @@ import {
   feedbackInputSchema,
   type FeedbackApiError,
 } from "../lib/feedback-input";
-import { RATE_LIMITS } from "../lib/rate-limits";
-
-const UNIQUE_VIOLATION = "23505";
-const FOREIGN_KEY_VIOLATION = "23503";
+import { RATE_LIMITS, VOTES_PER_NETWORK_PER_ITEM } from "../lib/rate-limits";
+import { hashVoter, voterCookie, voterFromCookies } from "./voter";
 
 function errorResponse(error: FeedbackApiError, status: number): Response {
   return Response.json({ error }, { status });
+}
+
+function voteResponse(outcome: string): Response {
+  switch (outcome) {
+    case "voted":
+      return new Response(null, { status: 201 });
+    case "already_voted":
+      return Response.json({ alreadyVoted: true }, { status: 200 });
+    case "ip_cap":
+      return errorResponse("vote_limit", 409);
+    case "not_found":
+      return errorResponse("not_found", 404);
+    default:
+      throw new Error(`cast_vote returned ${outcome}`);
+  }
 }
 
 async function readJson(request: Request): Promise<{ ok: true; json: unknown } | { ok: false; response: Response }> {
@@ -70,14 +83,20 @@ export async function handleVote(request: Request, rawId: string): Promise<Respo
   if (writesOff) return writesOff;
 
   try {
-    const voterHash = hashClientIp(request.headers);
-    if (!(await consumeRateLimit(voterHash, "vote", RATE_LIMITS.vote))) return rateLimitedResponse(RATE_LIMITS.vote);
+    const ipHash = hashClientIp(request.headers);
+    if (!(await consumeRateLimit(ipHash, "vote", RATE_LIMITS.vote))) return rateLimitedResponse(RATE_LIMITS.vote);
 
-    const { error } = await serviceSupabase().from("votes").insert({ feedback_id: id.data, voter_hash: voterHash });
-    if (error?.code === UNIQUE_VIOLATION) return Response.json({ alreadyVoted: true }, { status: 200 });
-    if (error?.code === FOREIGN_KEY_VIOLATION) return errorResponse("not_found", 404);
+    const voter = voterFromCookies(request.headers.get("cookie"));
+    const { data: outcome, error } = await serviceSupabase().rpc("cast_vote", {
+      p_feedback_id: id.data,
+      p_voter_hash: hashVoter(voter.id),
+      p_ip_hash: ipHash,
+      p_ip_cap: VOTES_PER_NETWORK_PER_ITEM,
+    });
     if (error) throw new Error(error.message);
-    return new Response(null, { status: 201 });
+    const response = voteResponse(outcome);
+    if (voter.isNew) response.headers.append("Set-Cookie", voterCookie(voter.id, new URL(request.url).protocol === "https:"));
+    return response;
   } catch (error) {
     log.error("feedback: failed to vote", error, { feedbackId: id.data });
     return errorResponse("unavailable", 503);

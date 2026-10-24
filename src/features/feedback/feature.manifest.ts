@@ -22,6 +22,7 @@ export const feedbackManifest = defineFeature({
     voteButton: "feedback-vote-button",
     voteCount: "feedback-vote-count",
     voteError: "feedback-vote-error",
+    voteNote: "feedback-vote-note",
     form: "feedback-form",
     bodyInput: "feedback-body-input",
     categoryIdea: "feedback-category-idea",

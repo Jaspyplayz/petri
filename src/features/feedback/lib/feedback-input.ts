@@ -20,7 +20,7 @@ export function charactersLeft(body: string): number {
   return FEEDBACK_MAX_LENGTH - body.trim().length;
 }
 
-export type FeedbackApiError = "invalid" | "too_large" | "rate_limited" | "not_found" | "unavailable";
+export type FeedbackApiError = "invalid" | "too_large" | "rate_limited" | "vote_limit" | "not_found" | "unavailable";
 
 export function feedbackErrorMessage(error: FeedbackApiError): string {
   switch (error) {
@@ -30,6 +30,8 @@ export function feedbackErrorMessage(error: FeedbackApiError): string {
       return "That request is too big.";
     case "rate_limited":
       return "You're going a bit fast. Try again later.";
+    case "vote_limit":
+      return "This connection has given this idea all the votes it can.";
     case "not_found":
       return "That feedback no longer exists.";
     case "unavailable":
@@ -38,7 +40,7 @@ export function feedbackErrorMessage(error: FeedbackApiError): string {
 }
 
 const apiErrorSchema = z.object({
-  error: z.enum(["invalid", "too_large", "rate_limited", "not_found", "unavailable"]),
+  error: z.enum(["invalid", "too_large", "rate_limited", "vote_limit", "not_found", "unavailable"]),
 });
 
 export function parseFeedbackApiError(json: unknown): FeedbackApiError {

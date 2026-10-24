@@ -9,3 +9,5 @@ export const RATE_LIMITS: Readonly<Record<RateLimitedAction, RateLimit>> = {
   post: { limit: 5, windowSeconds: 60 * 60 },
   vote: { limit: 30, windowSeconds: 60 * 60 },
 };
+
+export const VOTES_PER_NETWORK_PER_ITEM = 5;
