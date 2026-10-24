@@ -26,6 +26,10 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "$TOKEN" ] && echo "token is set"
+      - name: Agent sandbox
+        run: |
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - uses: anthropics/claude-code-action@${SHA} # v1.0.259
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
@@ -59,6 +63,7 @@ jobs:
       'claude.yml: no top-level permissions; set "permissions: contents: read" and grant writes per job',
       "claude.yml: job claude needs timeout-minutes between 1 and 240",
       "claude.yml: job claude runs claude-code-action without env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: \"1\"",
+      "claude.yml: job claude runs claude-code-action before a step that installs bubblewrap and allows user namespaces",
       "claude.yml: job claude uses anthropics/claude-code-action@v1; pin claude-code-action to a commit SHA",
       "claude.yml: job claude runs claude-code-action without --max-turns in claude_args",
     ]);
@@ -68,6 +73,15 @@ jobs:
     expect(workflowLimitProblems("w.yml", good.replace('SCRUB: "1"', 'SCRUB: "0"'))).toEqual([
       'w.yml: job agent runs claude-code-action without env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"',
     ]);
+  });
+
+  it("refuses an agent step with no bubblewrap install before it in the same job", () => {
+    const missing = "w.yml: job agent runs claude-code-action before a step that installs bubblewrap and allows user namespaces";
+    const sandbox = "      - name: Agent sandbox\n        run: |\n          sudo apt-get install -y --no-install-recommends bubblewrap socat\n          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0\n";
+    expect(good).toContain(sandbox);
+    expect(workflowLimitProblems("w.yml", good.replace("bubblewrap socat", "socat"))).toEqual([missing]);
+    expect(workflowLimitProblems("w.yml", good.replace("          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0\n", ""))).toEqual([missing]);
+    expect(workflowLimitProblems("w.yml", `${good.replace(sandbox, "")}${sandbox}`)).toEqual([missing]);
   });
 
   it("refuses a secret written into a script and every way a step prints the environment", () => {

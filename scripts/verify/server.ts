@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { supabaseCli, writeEnvLocal } from "../env-local/write";
+import { parseEnvFile } from "../setup-secrets/plan";
 import { sourceFingerprint } from "./fingerprint";
 import { parseServerState, planServer, type ServerState } from "./server-plan";
 import { VerifyError } from "./verify-error";
@@ -91,8 +92,18 @@ function runLogged(
   }
 }
 
-function ensureSupabase(root: string): void {
-  const status = spawnSync(process.execPath, [supabaseCli, "status", "-o", "json"], { cwd: root, stdio: "ignore" });
+async function supabaseAnswers(root: string): Promise<boolean> {
+  const envLocal = join(root, ".env.local");
+  if (!existsSync(envLocal)) return false;
+  const url = parseEnvFile(readFileSync(envLocal, "utf8")).get("NEXT_PUBLIC_SUPABASE_URL");
+  return url !== undefined && url !== "" && (await answers(`${url}/rest/v1/`));
+}
+
+// The Supabase CLI asks Docker, which the build agent's commands can't reach (CLAUDE_CODE_SUBPROCESS_ENV_SCRUB runs
+// them in bubblewrap). The app stack is already up there, so a database that answers over HTTP is enough.
+async function ensureSupabase(root: string): Promise<void> {
+  if (await supabaseAnswers(root)) return;
+  const status =spawnSync(process.execPath, [supabaseCli, "status", "-o", "json"], { cwd: root, stdio: "ignore" });
   if (status.status === 0) return;
   say("starting local Supabase (first start can take a few minutes)");
   const started = runLogged(root, "supabase.log", [supabaseCli, "start", "-x", supabaseServicesVerifyDoesNotUse], false);
@@ -166,7 +177,7 @@ export function verifyPort(): number {
 
 export async function ensureServer(root: string, port: number): Promise<string> {
   mkdirSync(verifyDirectory(root), { recursive: true });
-  ensureSupabase(root);
+  await ensureSupabase(root);
   ensureEnvLocal(root);
   const state = readState(root);
   const fingerprint = sourceFingerprint(root);

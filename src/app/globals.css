@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source("../");
 
 @theme {
   --color-agar: #f6f3e7;

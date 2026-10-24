@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { VerifyError } from "./verify-error";
-import { prepareBaseWorktree, resolveCommit, shareEnvLocal, worktreePaths } from "./worktree";
+import { prepareBaseCheckout, resolveCommit, shareEnvLocal } from "./worktree";
 
 const cleanup: string[] = [];
 
@@ -49,48 +49,66 @@ describe("resolveCommit", { timeout: 30_000 }, () => {
   });
 });
 
-describe("prepareBaseWorktree", { timeout: 30_000 }, () => {
-  it("checks the base out once, reuses it, and removes older base worktrees", () => {
+describe("prepareBaseCheckout", { timeout: 30_000 }, () => {
+  it("checks the base out once, reuses it, and removes older base checkouts", () => {
     const { root, first, second } = repoWithTwoCommits();
     const parent = parentDir();
 
-    const base = prepareBaseWorktree(root, first, parent);
+    const base = prepareBaseCheckout(root, first, parent);
     expect(base).toEqual({ dir: join(parent, first.slice(0, 12)), created: true });
     expect(readFileSync(join(base.dir, "page.txt"), "utf8")).toBe("before");
-    expect(prepareBaseWorktree(root, first, parent)).toEqual({ dir: base.dir, created: false });
+    expect(prepareBaseCheckout(root, first, parent)).toEqual({ dir: base.dir, created: false });
 
-    const next = prepareBaseWorktree(root, second, parent);
+    const next = prepareBaseCheckout(root, second, parent);
     expect(next.created).toBe(true);
     expect(readFileSync(join(next.dir, "page.txt"), "utf8")).toBe("after");
     expect(existsSync(base.dir)).toBe(false);
-    expect(worktreePaths(root)).toHaveLength(2);
   });
 
-  it("leaves worktrees outside its parent folder alone", () => {
+  it("writes nothing into the repo's .git, so it works when .git is read-only", () => {
+    const { root, first } = repoWithTwoCommits();
+    const worktrees = git(root, "worktree", "list", "--porcelain");
+    const refs = git(root, "for-each-ref");
+    prepareBaseCheckout(root, first, parentDir());
+    expect(git(root, "worktree", "list", "--porcelain")).toBe(worktrees);
+    expect(git(root, "for-each-ref")).toBe(refs);
+    expect(existsSync(join(root, ".git", "worktrees"))).toBe(false);
+  });
+
+  it("checks out a commit no branch points at", () => {
     const { root, first, second } = repoWithTwoCommits();
-    const elsewhere = join(parentDir(), "mine");
-    git(root, "worktree", "add", "--detach", elsewhere, first);
-    prepareBaseWorktree(root, second, parentDir());
-    expect(existsSync(join(elsewhere, "page.txt"))).toBe(true);
-    expect(worktreePaths(root)).toHaveLength(3);
+    git(root, "reset", "-q", "--hard", first);
+    const base = prepareBaseCheckout(root, second, parentDir());
+    expect(readFileSync(join(base.dir, "page.txt"), "utf8")).toBe("after");
+  });
+
+  it("leaves other folders in its parent alone", () => {
+    const { root, first } = repoWithTwoCommits();
+    const parent = parentDir();
+    mkdirSync(join(parent, "mine"));
+    writeFileSync(join(parent, "mine", "keep.txt"), "x");
+    prepareBaseCheckout(root, first, parent);
+    expect(existsSync(join(parent, "mine", "keep.txt"))).toBe(true);
   });
 
   it("reports a git failure as a VerifyError that quotes git", () => {
-    expect(() => prepareBaseWorktree(parentDir(), "0123456789abcdef", parentDir())).toThrow(/^git worktree list --porcelain failed: fatal: not a git repository/);
+    expect(() => prepareBaseCheckout(parentDir(), "0123456789abcdef", parentDir())).toThrow(/^git clone .* failed: fatal: /);
   });
 
-  it("recreates a base worktree whose folder was deleted", () => {
+  it("recreates a base checkout whose folder was deleted or left half made", () => {
     const { root, first } = repoWithTwoCommits();
     const parent = parentDir();
-    const base = prepareBaseWorktree(root, first, parent);
+    const base = prepareBaseCheckout(root, first, parent);
     rmSync(base.dir, { recursive: true, force: true });
-    expect(prepareBaseWorktree(root, first, parent)).toEqual({ dir: base.dir, created: true });
+    expect(prepareBaseCheckout(root, first, parent)).toEqual({ dir: base.dir, created: true });
+    rmSync(join(base.dir, ".git"), { recursive: true, force: true });
+    expect(prepareBaseCheckout(root, first, parent)).toEqual({ dir: base.dir, created: true });
     expect(readFileSync(join(base.dir, "page.txt"), "utf8")).toBe("before");
   });
 });
 
 describe("shareEnvLocal", () => {
-  it("copies .env.local into the base worktree when there is one", () => {
+  it("copies .env.local into the base checkout when there is one", () => {
     const root = parentDir();
     const dir = parentDir();
     shareEnvLocal(root, dir);

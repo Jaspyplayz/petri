@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { closeSync, copyFileSync, existsSync, mkdirSync, openSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { VerifyError } from "./verify-error";
 
 function git(cwd: string, args: readonly string[]): string {
@@ -8,18 +8,14 @@ function git(cwd: string, args: readonly string[]): string {
     return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   } catch (error) {
     const stderr = error instanceof Error && "stderr" in error && typeof error.stderr === "string" ? error.stderr.trim() : "";
-    throw new VerifyError(`git ${args.join(" ")} failed${stderr === "" ? "" : `: ${stderr.split(/\r?\n/)[0] ?? ""}`}`);
+    const lines = stderr.split(/\r?\n/).filter((line) => line.trim() !== "");
+    throw new VerifyError(`git ${args.join(" ")} failed${lines.length === 0 ? "" : `: ${lines.slice(-3).join(" / ")}`}`);
   }
 }
 
 function normalized(path: string): string {
   const absolute = resolve(path);
   return process.platform === "win32" ? absolute.toLowerCase() : absolute;
-}
-
-function isInside(parent: string, path: string): boolean {
-  const fromParent = relative(normalized(parent), normalized(path));
-  return fromParent !== "" && !fromParent.startsWith("..") && !isAbsolute(fromParent);
 }
 
 export function resolveCommit(root: string, ref: string): string {
@@ -31,23 +27,28 @@ export function resolveCommit(root: string, ref: string): string {
   }
 }
 
-export function worktreePaths(root: string): string[] {
-  return git(root, ["worktree", "list", "--porcelain"])
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("worktree "))
-    .map((line) => line.slice("worktree ".length));
+const BASE_DIR_NAME = /^[0-9a-f]{12}$/;
+
+function checkedOutAt(dir: string): string | undefined {
+  if (!existsSync(join(dir, ".git"))) return undefined;
+  try {
+    return git(dir, ["rev-parse", "HEAD"]);
+  } catch {
+    return undefined;
+  }
 }
 
-export function prepareBaseWorktree(root: string, sha: string, parent: string): { dir: string; created: boolean } {
+export function prepareBaseCheckout(root: string, sha: string, parent: string): { dir: string; created: boolean } {
   const dir = join(parent, sha.slice(0, 12));
-  const existing = worktreePaths(root);
-  for (const other of existing.filter((path) => isInside(parent, path) && normalized(path) !== normalized(dir))) {
-    git(root, ["worktree", "remove", "--force", other]);
-  }
-  if (existing.some((path) => normalized(path) === normalized(dir)) && existsSync(dir)) return { dir, created: false };
-  git(root, ["worktree", "prune"]);
   mkdirSync(parent, { recursive: true });
-  git(root, ["worktree", "add", "--detach", "--force", dir, sha]);
+  for (const name of readdirSync(parent).filter((entry) => BASE_DIR_NAME.test(entry))) {
+    const other = join(parent, name);
+    if (normalized(other) !== normalized(dir)) rmSync(other, { recursive: true, force: true });
+  }
+  if (checkedOutAt(dir) === sha) return { dir, created: false };
+  rmSync(dir, { recursive: true, force: true });
+  git(parent, ["clone", "--quiet", "--shared", "--no-checkout", root, dir]);
+  git(dir, ["checkout", "--quiet", "--detach", sha]);
   return { dir, created: true };
 }
 
@@ -63,7 +64,7 @@ export function installBaseDependencies(dir: string, logPath: string): void {
       stdio: ["ignore", fd, fd],
       windowsHide: true,
     });
-    if (result.status !== 0) throw new VerifyError(`pnpm install failed in the base worktree; see ${logPath}`);
+    if (result.status !== 0) throw new VerifyError(`pnpm install failed in the base checkout; see ${logPath}`);
   } finally {
     closeSync(fd);
   }
