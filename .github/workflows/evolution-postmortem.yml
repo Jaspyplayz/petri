@@ -142,6 +142,10 @@ jobs:
           EVOLUTION_POSTMORTEM: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Post-merge dispatches this with its job token, so the actor is github-actions, and the action refuses a
+          # bot it isn't told about (the first guardian revert's postmortem did). Only this repository's workflows
+          # can dispatch as github-actions.
+          allowed_bots: github-actions
           github_token: ${{ github.token }}
           prompt: ${{ steps.agent.outputs.prompt }}
           claude_args: >-
@@ -217,6 +221,14 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache: "false"
+      # pnpm check's unit tests drive a real browser (scripts/verify). Restore only, as in app-stack: this job runs
+      # the agent's patch. No --with-deps, as in ci.yml's unit job.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install Chromium
+        run: pnpm exec playwright install --only-shell chromium
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: postmortem-patch
