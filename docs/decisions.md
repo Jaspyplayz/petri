@@ -289,3 +289,7 @@ One line per decision, newest at the bottom. Format: `YYYY-MM-DD · phase · dec
   - **Still open:**
     - On the maintainer's machine, the agent under test follows `task.md` and runs the copy's code (tests, verify scripts) without a sandbox, as any local agent run does. Read a case before running it.
     - The judge's `Read` isn't limited to its run folder.
+- 2026-10-24 · P8 · `lint-config.test.ts` checks every source file's ESLint config, not only its 16 reference files. This covers the second "Not covered yet" item above, since a postmortem may edit `eslint.config.mjs`. Tracked and new files alike:
+  - Each must get exactly the config (rules, their options and linter options) of one of the reference files the bans are tested on. A block that loosens a rule for only some files of a kind gives them a config no reference has.
+  - None may be ignored except the generated database types.
+  - Today's 258 files fall into 15 configs. A new kind of file needs a reference file in the test, and a lint rule a postmortem adds must cover a whole kind. Loosening a rule for a whole kind is still caught only for the bans the test lints, or by a human reading the diff.
