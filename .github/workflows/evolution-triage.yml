@@ -29,11 +29,13 @@ jobs:
         with:
           cache: "false"
 
-      - name: Gate (EVOLUTION_ENABLED, .evolution/PAUSED, caps)
+      - name: Gate (EVOLUTION_ENABLED, .evolution/PAUSED, caps, weekly budget)
         id: gate
         env:
           EVOLUTION_ENABLED: ${{ vars.EVOLUTION_ENABLED }}
           GH_TOKEN: ${{ github.token }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: pnpm -s evolution:gate triage
 
       - name: Read the top untriaged feedback (read-only)
@@ -64,6 +66,25 @@ jobs:
             --allowedTools "Read,Glob,Grep"
             --disallowedTools "Bash,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch,Task"
             --json-schema '${{ steps.agent.outputs.json_schema }}'
+
+      # The triage agent has no Bash, so this job's later steps can run main's scripts with secrets.
+      - name: Agent usage (jq reads the action's log)
+        if: always() && steps.gate.outputs.open == 'true'
+        id: usage
+        env:
+          LOG: ${{ steps.triage.outputs.execution_file }}
+        run: |
+          if [ -n "$LOG" ] && [ -f "$LOG" ]; then
+            echo "json=$(jq -c '[.[] | select(.type == "result")] | last | {turns: .num_turns, durationMs: .duration_ms, costUsd: .total_cost_usd, isError: .is_error, subtype: .subtype}' "$LOG")" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Record the run in agent_runs
+        if: always() && steps.gate.outputs.open == 'true'
+        env:
+          RESULT: ${{ steps.triage.outcome }}
+          USAGE: ${{ steps.usage.outputs.json }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm -s evolution:record-run triage
 
       - name: Save the agent's JSON
         if: steps.gate.outputs.open == 'true'

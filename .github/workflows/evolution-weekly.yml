@@ -1,0 +1,41 @@
+name: evolution-weekly
+
+# The weekly report: the last 7 days of agent_runs against the weekly budget, then the trust report (which only
+# suggests a promotion). It runs no agent and only reports; the triage and build gates close themselves when the loop
+# is over budget. The weekly cron is added with the other crons in Phase 9.1 (docs/decisions.md).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evolution-weekly
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the trust report reads .evolution/config.json's history
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - name: Agent usage this week (issue)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm -s evolution:weekly --issue
+      - name: Trust report (an issue only when it suggests a promotion)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm -s trust-report --issue

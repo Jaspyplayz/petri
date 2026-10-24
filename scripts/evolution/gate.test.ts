@@ -7,9 +7,10 @@ import { gate, pauseState, type GateInput } from "./gate";
 const root = join(import.meta.dirname, "..", "..");
 const config = readEvolutionConfig(root);
 const now = new Date("2026-11-01T12:00:00Z");
+const quiet = { runs: 3, failed: 0, turns: 40, agentMinutes: 12, costUsd: 1 };
 
 function input(overrides: Partial<GateInput> = {}): GateInput {
-  return { workflow: "triage", enabled: "true", paused: undefined, now, config, openEvolutionPRs: 0, mergesToday: 0, ...overrides };
+  return { workflow: "triage", enabled: "true", paused: undefined, now, config, openEvolutionPRs: 0, mergesToday: 0, weekUsage: quiet, ...overrides };
 }
 
 describe("the evolution config", () => {
@@ -64,6 +65,19 @@ describe("gate", () => {
     expect(gate(input({ workflow: "automerge", mergesToday: 6 })).open).toBe(false);
     expect(gate(input({ workflow: "automerge", mergesToday: 5 })).open).toBe(true);
     expect(gate(input({ workflow: "triage", openEvolutionPRs: 9, mergesToday: 9 })).open).toBe(true);
+  });
+
+  it("closes triage and build over the weekly budget, or when the usage wasn't read, and leaves verify and automerge alone", () => {
+    const busy = { ...quiet, turns: config.weeklyBudget.turns };
+    for (const workflow of ["triage", "build"] as const) {
+      expect(gate(input({ workflow, weekUsage: busy })).reason).toMatch(/^over the weekly budget/);
+      expect(gate(input({ workflow, weekUsage: { ...quiet, agentMinutes: config.weeklyBudget.agentMinutes } })).open).toBe(false);
+      expect(gate(input({ workflow, weekUsage: undefined }))).toEqual({ open: false, reason: "the weekly agent usage wasn't read, so the budget can't be checked" });
+    }
+    for (const workflow of ["verify", "automerge"] as const) {
+      expect(gate(input({ workflow, weekUsage: busy })).open).toBe(true);
+      expect(gate(input({ workflow, weekUsage: undefined })).open).toBe(true);
+    }
   });
 
   it("closes triage when it may create no issues", () => {

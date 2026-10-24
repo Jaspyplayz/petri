@@ -7,5 +7,6 @@
   "maxAgentTurns": { "triage": 15, "build": 80, "verify": 40 },
   "minVotesToConsider": 2,
   "models": { "triage": "claude-opus-5-5", "build": "claude-opus-5-5", "verify": "claude-opus-5-5" },
+  "weeklyBudget": { "turns": 3000, "agentMinutes": 900 },
   "sentry": { "windowMinutes": 60, "spikeMultiplier": 3, "minEvents": 5 }
 }

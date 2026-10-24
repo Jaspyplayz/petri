@@ -2,7 +2,8 @@ name: evolution-build
 
 # Builds one evolution:ready issue. The agent's code never runs where the secrets are:
 #   pick     trusted code: gate, pick the issue, mark its feedback building
-#   agent    no secrets: the builder edits a checkout; only its patch and JSON report leave the job
+#   agent    no secrets: the builder edits a checkout; only its patch, JSON report and usage numbers leave the job
+#   usage    secrets, but never runs the agent's code: records the builder's turns and runtime in agent_runs
 #   verify   no secrets: checks and applies the patch, runs pnpm check, verify:all and verify:compare
 #   publish  secrets, but never runs the PR's code: pushes the branch and opens the PR with EVOLUTION_BOT_TOKEN
 # The cron fallback is added after the Phase 6 dry run (docs/decisions.md).
@@ -54,11 +55,13 @@ jobs:
         id: base
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Gate (EVOLUTION_ENABLED, .evolution/PAUSED, maxOpenEvolutionPRs)
+      - name: Gate (EVOLUTION_ENABLED, .evolution/PAUSED, maxOpenEvolutionPRs, weekly budget)
         id: gate
         env:
           EVOLUTION_ENABLED: ${{ vars.EVOLUTION_ENABLED }}
           GH_TOKEN: ${{ github.token }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: pnpm -s evolution:gate build
 
       - name: Pick the issue (only one triage filed)
@@ -96,6 +99,7 @@ jobs:
       contents: read
     outputs:
       report: ${{ steps.builder.outputs.structured_output }}
+      usage: ${{ steps.usage.outputs.json }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -131,6 +135,18 @@ jobs:
             --disallowedTools "WebFetch,WebSearch"
             --json-schema '${{ steps.agent.outputs.json_schema }}'
 
+      # Only jq, never the checkout's code. The builder could have changed this runner, so the usage job treats the
+      # numbers as a report and bounds them; --max-turns and the timeout cap the run whatever it reports.
+      - name: Agent usage (jq reads the action's log)
+        if: always()
+        id: usage
+        env:
+          LOG: ${{ steps.builder.outputs.execution_file }}
+        run: |
+          if [ -n "$LOG" ] && [ -f "$LOG" ]; then
+            echo "json=$(jq -c '[.[] | select(.type == "result")] | last | {turns: .num_turns, durationMs: .duration_ms, costUsd: .total_cost_usd, isError: .is_error, subtype: .subtype}' "$LOG")" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: The builder's patch
         run: |
           git add -A
@@ -141,6 +157,31 @@ jobs:
           name: evolution-patch
           path: ${{ runner.temp }}/evolution.patch
           retention-days: 30
+
+  usage:
+    needs: [pick, agent]
+    if: always() && needs.pick.outputs.found == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # main's code only: this job never sees the agent's checkout or patch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.pick.outputs.base }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - name: Record the run in agent_runs
+        env:
+          RESULT: ${{ needs.agent.result }}
+          USAGE: ${{ needs.agent.outputs.usage }}
+          ISSUE: ${{ needs.pick.outputs.number }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm -s evolution:record-run builder
 
   verify:
     needs: [pick, agent]
