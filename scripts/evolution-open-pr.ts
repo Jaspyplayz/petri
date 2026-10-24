@@ -9,7 +9,7 @@ import { loopSupabase } from "./evolution/supabase";
 // pnpm evolution:open-pr <evo/branch> <issue> <report.json> <verify run dir> <compare run dir> opens the evolution PR
 // for a branch that is already pushed. The build workflow runs it in a job that never executes the PR's code: the
 // issue comes from GitHub, and the report, summaries and screenshots are checked before they're used.
-// GH_TOKEN must be EVOLUTION_BOT_TOKEN so CI runs on the PR.
+// GH_TOKEN must be the evolution app's token so CI runs on the PR.
 const root = join(import.meta.dirname, "..");
 const usage = "usage: pnpm evolution:open-pr <evo/branch> <issue number> <report.json> <verify run dir> <compare run dir>";
 const MAX_SUMMARY = 20_000;

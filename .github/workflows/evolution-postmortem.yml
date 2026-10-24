@@ -11,7 +11,7 @@ name: evolution-postmortem
 #   check    no secrets: checks the report and the patch, applies it, checks the patch adds the entry and the eval
 #            case the report names, and runs pnpm check
 #   publish  secrets, but never runs the PR's code: pushes postmortem/<pr>-<sha7> and opens the PR with
-#            EVOLUTION_BOT_TOKEN, labelled postmortem, and needs-human when it adds or changes protected files
+#            the evolution app's token, labelled postmortem, and needs-human when it adds or changes protected files
 #   failed   says on the incident issue, or the change, that no PR came
 # A human merges every postmortem PR: automerge only takes evolution PRs, and guardrails wants protected-ok for the
 # protected files a postmortem may add or change (postmortem in .github/guardrails.json; it never deletes one).
@@ -294,13 +294,19 @@ jobs:
           fi
           pnpm -s evolution:check-patch "$RUNNER_TEMP/postmortem.patch" --postmortem
 
+      - name: Evolution app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.EVOLUTION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.EVOLUTION_APP_PRIVATE_KEY }}
       # On main as it is now, like the build's publish: the bot token can't push a branch whose workflows differ from
-      # main's (it never gets the workflow scope). No git hooks run: the patch may change eslint.config.mjs, which a
-      # lint hook would run next to the bot token. gather found no open PR from this branch, so one that exists is
+      # main's (it never gets the workflows permission). No git hooks run: the patch may change eslint.config.mjs, which
+      # a lint hook would run next to the bot token. gather found no open PR from this branch, so one that exists is
       # left from an earlier run that didn't open its PR, and the push replaces it.
       - name: Push the branch (in a separate worktree, so nothing here runs the PR's code)
         env:
-          BOT_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BOT_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ needs.gather.outputs.branch }}
           NUMBER: ${{ needs.gather.outputs.number }}
         run: |
@@ -322,7 +328,7 @@ jobs:
       - name: Open the PR from the template
         id: pr
         env:
-          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ needs.gather.outputs.branch }}
           PROTECTED_ADDED: ${{ needs.check.outputs.added }}
           PROTECTED_MODIFIED: ${{ needs.check.outputs.modified }}

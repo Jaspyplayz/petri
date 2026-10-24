@@ -5,7 +5,8 @@ name: evals
 #                 secrets), and never an agent PR, because the evals job hands the PR's code a Claude token. The gate
 #                 job decides with the base branch's scripts/check-agent-pr.ts, the same rules guardrails uses (label,
 #                 author or bot account, branch prefix, bot commits); the PR head is fetched as data only. The `if`
-#                 below repeats the cheap part. An agent can't edit this file: the bot token has no workflow scope.
+#                 below repeats the cheap part. An agent can't edit this file: the bot token has no workflows
+#                 permission.
 #   schedule      the first case of every skill, nightly, only while the EVALS_NIGHTLY variable is "true".
 # The results go to the job summary and the artifact. evals/results.jsonl is committed only from local runs.
 on:

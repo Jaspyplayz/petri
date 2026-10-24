@@ -80,9 +80,15 @@ export const SECRET_SPECS: readonly SecretSpec[] = [
     github: "secret",
   },
   {
-    key: "EVOLUTION_BOT_TOKEN",
+    key: "EVOLUTION_APP_CLIENT_ID",
     required: false,
-    how: "Only if needed: fine-grained PAT for this repo (Contents, Pull requests, Issues: read/write)",
+    how: "The evolution GitHub App's Client ID, from its General page (docs/MANUAL_STEPS.md step 10)",
+    github: "variable",
+  },
+  {
+    key: "EVOLUTION_APP_PRIVATE_KEY",
+    required: false,
+    how: "The evolution GitHub App's private key: paste the whole .pem file between double quotes, keeping its lines",
     github: "secret",
   },
   {
@@ -107,13 +113,19 @@ export const SECRET_SPECS: readonly SecretSpec[] = [
 
 export function parseEnvFile(text: string): Map<string, string> {
   const values = new Map<string, string>();
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
+  const lines = text.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = (lines[index] ?? "").trim();
     if (line === "" || line.startsWith("#")) continue;
     const match = /^(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*(.*)$/.exec(line);
     if (!match?.[1]) continue;
-    const rawValue = match[2] ?? "";
-    const quoted = /^(["'])(.*)\1$/.exec(rawValue);
+    let rawValue = match[2] ?? "";
+    const close = /^"[^"]*$/.test(rawValue) ? lines.findIndex((next, at) => at > index && next.trim().endsWith('"')) : -1;
+    if (close !== -1) {
+      rawValue = [rawValue, ...lines.slice(index + 1, close + 1).map((next) => next.trim())].join("\n");
+      index = close;
+    }
+    const quoted = /^(["'])(.*)\1$/s.exec(rawValue);
     const value = quoted ? (quoted[2] ?? "") : rawValue.replace(/\s+#.*$/, "");
     values.set(match[1], value.trim());
   }

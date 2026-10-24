@@ -3,7 +3,7 @@ name: evolution-automerge
 # Auto-merges evolution PRs that the trust level allows (the ladder in CLAUDE.md), or labels them needs-human.
 # The verify workflow sets its status with GITHUB_TOKEN, which doesn't trigger other workflows, so this runs when
 # evolution-verify or CI finishes and checks every open evolution PR itself. gh pr merge --auto then waits for the
-# required checks (ci-ok and evolution-verify) before GitHub merges. It merges with EVOLUTION_BOT_TOKEN, because a
+# required checks (ci-ok and evolution-verify) before GitHub merges. It merges with the evolution app's token, because a
 # push to main by GITHUB_TOKEN wouldn't start the post-merge workflow. The hourly run picks up PRs that waited for
 # maxMergesPerDay to reset.
 on:
@@ -53,10 +53,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: pnpm -s evolution:automerge
 
+      - name: Evolution app token
+        if: steps.policy.outputs.merge != ''
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.EVOLUTION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.EVOLUTION_APP_PRIVATE_KEY }}
+
       - name: Turn on auto-merge (squash, only for the head that was verified)
         if: steps.policy.outputs.merge != ''
         env:
-          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           MERGE: ${{ steps.policy.outputs.merge }}
         run: |
           for entry in $MERGE; do

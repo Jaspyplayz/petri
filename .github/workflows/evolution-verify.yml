@@ -130,6 +130,8 @@ jobs:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The evolution app opens evolution PRs, so it is the actor, and the action refuses a bot it isn't told about.
+          allowed_bots: petri-evolution-bot
           github_token: ${{ github.token }}
           prompt: ${{ steps.agent.outputs.prompt }}
           claude_args: >-
@@ -253,6 +255,7 @@ jobs:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: petri-evolution-bot
           github_token: ${{ github.token }}
           prompt: ${{ steps.agent.outputs.prompt }}
           claude_args: >-

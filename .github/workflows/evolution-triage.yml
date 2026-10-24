@@ -102,10 +102,18 @@ jobs:
           TRIAGE_OUTPUT: ${{ steps.triage.outputs.structured_output }}
         run: printf '%s' "$TRIAGE_OUTPUT" > artifacts/evolution/triage-output.json
 
+      - name: Evolution app token
+        if: steps.gate.outputs.open == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.EVOLUTION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.EVOLUTION_APP_PRIVATE_KEY }}
+
       - name: Create the issues and mark the feedback (script, not the agent)
         if: steps.gate.outputs.open == 'true'
         env:
-          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: pnpm -s evolution:create-issues

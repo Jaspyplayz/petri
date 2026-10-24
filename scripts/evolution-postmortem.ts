@@ -41,7 +41,7 @@ import { NEEDS_HUMAN_LABEL } from "./trust-report/ladder";
 // labels: create the labels open-pr puts on the PR.
 // open-pr: open the PR for the pushed BRANCH from the report and the evidence (which must still hash to EVIDENCE_SHA),
 //   listing the protected files it adds (PROTECTED_ADDED) and changes (PROTECTED_MODIFIED), labelled postmortem, and
-//   needs-human when there are any. GH_TOKEN must be EVOLUTION_BOT_TOKEN so CI runs on the PR. Outputs url.
+//   needs-human when there are any. GH_TOKEN must be the evolution app's token so CI runs on the PR. Outputs url.
 const root = join(import.meta.dirname, "..");
 const dir = join(root, "artifacts", "postmortem");
 const SENTRY_DAYS = 14;

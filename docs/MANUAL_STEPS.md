@@ -21,12 +21,17 @@ Status key: ⬜ todo · ✅ done
 ## To do
 
 9. ⬜ **Keep running the setup phases (3–9) in an `EVOLUTION_HUMAN=1` session.** Most of them write protected files (`scripts/`, `.claude/`, `package.json`, workflows, `CLAUDE.md`), which the hooks block in a normal session. Start Claude Code with `$env:EVOLUTION_HUMAN = "1"; claude --continue` in PowerShell, or `EVOLUTION_HUMAN=1 claude --continue` in bash. The evolution agents never run with it, and CI still fails agent PRs that touch protected paths. Start Claude normally again after the Phase 9 handoff.
-10. ✅ **Create `EVOLUTION_BOT_TOKEN` (Phase 6; the loop needs it before the dry run).** Done 2026-10-23 (repo secret added at 18:14 UTC; it expires after 90 days, so make a new one before then). Issues, branches and PRs made with the default `GITHUB_TOKEN` don't start other workflows, and claude-code-action revokes its own app token when it finishes. So the loop's scripts use a token of yours.
-    1. Go to GitHub → Settings → Developer settings → Fine-grained personal access tokens → Generate new token.
-    2. Name it `petri-evolution-bot`. Resource owner: Jaspyplayz. Repository access: **only `Jaspyplayz/petri`**. Expiration: 90 days or more.
-    3. Repository permissions: **Contents: Read and write**, **Issues: Read and write**, **Pull requests: Read and write** (Metadata: Read is added for you). Leave everything else, including Workflows, at No access.
-    4. Copy the token. In the repo, go to Settings → Secrets and variables → Actions → New repository secret. Name it `EVOLUTION_BOT_TOKEN` and paste the token.
-    5. Tell Claude it's done. Don't paste the token in the chat.
+10. ⬜ **Create the `petri-evolution-bot` GitHub App (Phase 9, red-team finding 1; before the PR that switches the loop to it merges).** Issues, branches and PRs made with the default `GITHUB_TOKEN` don't start other workflows, so the loop writes with a token of its own. That was `EVOLUTION_BOT_TOKEN`, a token on your account, so its labels counted as yours, and a leaked token could approve its own protected change with `protected-ok`. The app acts as `petri-evolution-bot[bot]`, which the guardrails never count as a human. Each job makes a token from the app's key, and it lasts an hour.
+    1. Go to GitHub → Settings → Developer settings → GitHub Apps → New GitHub App.
+    2. GitHub App name: `petri-evolution-bot`. Homepage URL: `https://github.com/Jaspyplayz/petri`. Under Webhook, untick **Active**.
+    3. Repository permissions: **Contents: Read and write**, **Issues: Read and write**, **Pull requests: Read and write** (Metadata: Read-only is added for you). Leave everything else at No access, Workflows above all. No account permissions and no events.
+    4. Where can this GitHub App be installed: **Only on this account**. Create it.
+    5. On the app's page, copy the **Client ID**. Under Private keys, click **Generate a private key**, which downloads a `.pem` file.
+    6. Click **Install App**, then **Install** next to Jaspyplayz. Choose **Only select repositories**, pick `Jaspyplayz/petri` and install.
+    7. In PowerShell at the repo, run `gh variable set EVOLUTION_APP_CLIENT_ID --body <client id>`, then `Get-Content -Raw <path to the .pem> | gh secret set EVOLUTION_APP_PRIVATE_KEY`. Then delete the `.pem`, or keep it only in `.env.setup` (between double quotes, over its lines).
+    8. If GitHub won't take the name, pick another and tell Claude. The name is in `allowed_bots` in `evolution-build.yml` and `evolution-verify.yml`, and in `scripts/check-pr/pull-request.test.ts`.
+    9. Tell Claude it's done. Don't paste the key in the chat.
+    10. After that PR merges and a loop run has opened an issue or a PR as `petri-evolution-bot[bot]`, delete the old token (Settings → Developer settings → Fine-grained personal access tokens → `petri-evolution-bot` → Delete) and its secret (`gh secret delete EVOLUTION_BOT_TOKEN`).
 11. ✅ **Loop labels.** Created by hand on 2026-10-23, after the first dry-run triage failed on a missing label. For a fresh repo, Claude runs `pnpm setup:labels --apply` (it needs only a `gh` login). It creates or updates every label the loop and the guardrails use, and it's safe to rerun.
 12. ⬜ **Go live (Phase 9, after everything above).** Open the Vercel production URL and check the three pages load, then run `pnpm evolution:resume` (or set the repo variable `EVOLUTION_ENABLED=true` in the GitHub app).
 
