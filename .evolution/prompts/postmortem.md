@@ -24,6 +24,7 @@ Read `CLAUDE.md`, then `.claude/skills/postmortem/SKILL.md` and `.claude/skills/
 - Protected files, which a maintainer approves with the `protected-ok` label (`postmortem` in `.github/guardrails.json`):
   - **add** new files matching `.claude/skills/*/SKILL.md` (a new skill), `evals/*/cases/*/{task.md,setup.sh,rubric.md}`, `lint-rules/*.mjs`, `lint-rules/*.test.ts`, `scripts/agent-tools/*.test.ts`, `scripts/check-boundaries/**/*.test.ts`, `scripts/check-features/**/*.test.ts`, `scripts/check-featuremap/**/*.test.ts`, `scripts/featuremap/**/*.test.ts` and `scripts/new-feature/**/*.test.ts`;
   - **change** only `.claude/skills/*/SKILL.md`, the root `CLAUDE.md`, `eslint.config.mjs` and `lint-rules/index.mjs`. Every other protected file stays as it is: add a new test or rule next to it instead.
+  - A new lint rule applies to a whole kind of file, such as every file `petri/src` covers. `lint-rules/lint-config.test.ts` fails when a block gives only some files of a kind their own config. Put a rule that fits only some files in `forAHuman`.
   - Never delete a protected file.
   - A skill's frontmatter is its folder's `name` and a `description`, nothing else.
 - Anywhere: never write a dotfile, a dot folder or another `CLAUDE.md` or `AGENTS.md`, and never add a file whose name differs from an existing one only in case or in extension (`x.js` next to `x.ts`). Protected files use plain names: letters, digits, `.`, `_` and `-`.
