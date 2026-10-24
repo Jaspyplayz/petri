@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { ESLint } from "eslint";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -292,5 +293,41 @@ describe("lint config allow-list", { timeout: 30_000 }, () => {
     ["comments and console in scripts/", files.script, '// a CLI note\nconsole.log("done");\n'],
   ])("%s is allowed", async (_name, filePath, code) => {
     expect(await problems(filePath, code)).toEqual([]);
+  });
+});
+
+// The bans above are tested on the reference files only. A config block that turns a rule off or changes its options
+// for some other files (a postmortem may edit eslint.config.mjs), or a new ignore, would pass them, so every source file,
+// tracked or new, must get exactly the config of one of the reference files. A new kind of file needs a reference here.
+const references = [...Object.values(files), "lint-rules/index.mjs", ".dependency-cruiser.cjs"];
+const generated = ["src/shared/supabase/database.types.ts"];
+
+function sourceFiles(): string[] {
+  return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
+    .split("\0")
+    .filter((file) => /\.[cm]?[jt]sx?$/.test(file));
+}
+
+async function configOf(filePath: string): Promise<string> {
+  const config = (await eslint.calculateConfigForFile(filePath)) as { readonly rules?: unknown; readonly linterOptions?: unknown };
+  return JSON.stringify({ rules: config.rules, linterOptions: config.linterOptions });
+}
+
+describe("lint config across the repo's files", { timeout: 120_000 }, () => {
+  it("lints every source file but the generated database types", async () => {
+    const ignored: string[] = [];
+    for (const file of sourceFiles()) {
+      if (await eslint.isPathIgnored(file)) ignored.push(file);
+    }
+    expect(ignored).toEqual(generated);
+  });
+
+  it("gives every source file the config of one of the reference files", async () => {
+    const tested = new Set(await Promise.all(references.map(configOf)));
+    const untested: string[] = [];
+    for (const file of sourceFiles().filter((path) => !generated.includes(path))) {
+      if (!tested.has(await configOf(file))) untested.push(file);
+    }
+    expect(untested).toEqual([]);
   });
 });

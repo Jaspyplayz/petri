@@ -84,6 +84,17 @@ jobs:
     expect(workflowLimitProblems("w.yml", `${good.replace(sandbox, "")}${sandbox}`)).toEqual([missing]);
   });
 
+  it("refuses a run step that gets the Claude token before the bubblewrap install", () => {
+    const evals = (token: string) =>
+      `${good}      - name: Run the evals\n        env:\n          ${token}: \${{ secrets.X }}\n        run: pnpm evals\n`;
+    expect(workflowLimitProblems("w.yml", evals("CLAUDE_CODE_OAUTH_TOKEN"))).toEqual([]);
+    expect(workflowLimitProblems("w.yml", evals("OTHER_TOKEN"))).toEqual([]);
+    const early = good.replace("      - name: Context\n        env:\n          TOKEN:", "      - name: Context\n        env:\n          ANTHROPIC_API_KEY:");
+    expect(workflowLimitProblems("w.yml", early)).toEqual([
+      'w.yml: job agent, "Context" gets the Claude token before a step that installs bubblewrap and allows user namespaces',
+    ]);
+  });
+
   it("refuses a secret written into a script and every way a step prints the environment", () => {
     const inline = good.replace('[ -n "$TOKEN" ]', "curl -H \"x: ${{ secrets.TOKEN }}\" x.dev; [ -n \"$TOKEN\" ]");
     expect(workflowLimitProblems("w.yml", inline)).toEqual(['w.yml: job agent, "Context" puts a secret in the script; pass it through env:']);
