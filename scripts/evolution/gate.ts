@@ -1,4 +1,5 @@
 import type { EvolutionConfig } from "./config";
+import { overBudget, type Totals } from "./usage";
 
 export const gatedWorkflows = ["triage", "build", "verify", "automerge"] as const;
 
@@ -12,7 +13,13 @@ export type GateInput = {
   readonly config: EvolutionConfig;
   readonly openEvolutionPRs: number;
   readonly mergesToday: number;
+  // The last 7 days of agent runs; only triage and build read it, since they start new work.
+  readonly weekUsage: Totals | undefined;
 };
+
+export function readsBudget(workflow: GatedWorkflow): boolean {
+  return workflow === "triage" || workflow === "build";
+}
 
 export type GateResult = { readonly open: boolean; readonly reason: string };
 
@@ -42,6 +49,11 @@ export function gate(input: GateInput): GateResult {
   const pause = pauseState(input.paused, input.now);
   if (pause.paused) return { open: false, reason: pause.reason };
   const { config } = input;
+  if (readsBudget(input.workflow)) {
+    if (!input.weekUsage) return { open: false, reason: "the weekly agent usage wasn't read, so the budget can't be checked" };
+    const over = overBudget(input.weekUsage, config.weeklyBudget);
+    if (over) return { open: false, reason: over };
+  }
   if (input.workflow === "triage" && config.maxIssuesPerTriage === 0) return { open: false, reason: "maxIssuesPerTriage is 0" };
   if (input.workflow === "build" && input.openEvolutionPRs >= config.maxOpenEvolutionPRs) {
     return { open: false, reason: `${String(input.openEvolutionPRs)} evolution PR(s) open; maxOpenEvolutionPRs is ${String(config.maxOpenEvolutionPRs)}` };

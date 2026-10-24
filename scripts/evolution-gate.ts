@@ -2,10 +2,14 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PAUSED_PATH, readEvolutionConfig } from "./evolution/config";
-import { gate, gatedWorkflows, mergedTodayArgs, type GatedWorkflow } from "./evolution/gate";
+import { gate, gatedWorkflows, mergedTodayArgs, readsBudget, type GatedWorkflow } from "./evolution/gate";
+import { loopSupabase } from "./evolution/supabase";
+import { budgetTotals, windowStart, type Totals } from "./evolution/usage";
 
 // pnpm evolution:gate <triage|build|verify|automerge> writes open=true|false and reason to $GITHUB_OUTPUT.
-// A closed gate isn't a failure: the workflow skips its agent steps and exits green.
+// A closed gate isn't a failure: the workflow skips its agent steps and exits green. Triage and build also read the
+// last 7 days of agent_runs (NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY); if that read fails, the step
+// fails rather than run without a budget.
 const root = join(import.meta.dirname, "..");
 
 function gh(args: readonly string[]): unknown {
@@ -19,7 +23,16 @@ function countOf(args: readonly string[]): number {
   return Array.isArray(items) ? items.length : 0;
 }
 
-function main(): void {
+async function weekUsage(now: Date): Promise<Totals> {
+  const { data, error } = await loopSupabase()
+    .from("agent_runs")
+    .select("workflow, status, turns, duration_ms, details")
+    .gte("started_at", windowStart(now).toISOString());
+  if (error) throw new Error(`reading agent_runs failed: ${error.message}`);
+  return budgetTotals(data);
+}
+
+async function main(): Promise<void> {
   const workflow = process.argv[2];
   if (!gatedWorkflows.some((name) => name === workflow)) throw new Error(`usage: pnpm evolution:gate <${gatedWorkflows.join("|")}>`);
   const name = workflow as GatedWorkflow;
@@ -33,6 +46,7 @@ function main(): void {
     config: readEvolutionConfig(root),
     openEvolutionPRs: name === "build" ? countOf(["pr", "list", "--state", "open", "--label", "evolution", "--json", "number"]) : 0,
     mergesToday: name === "automerge" ? countOf(mergedTodayArgs(now)) : 0,
+    weekUsage: readsBudget(name) && process.env.EVOLUTION_ENABLED === "true" ? await weekUsage(now) : undefined,
   });
   const line = `evolution gate (${name}): ${result.open ? "open" : "closed"}: ${result.reason}`;
   process.stdout.write(`${line}\n`);
@@ -42,4 +56,4 @@ function main(): void {
   if (summary) appendFileSync(summary, `### ${line}\n`);
 }
 
-main();
+await main();

@@ -19,6 +19,8 @@ export const evolutionConfigSchema = z
     maxAgentTurns: perAgent(z.number().int().min(1)),
     minVotesToConsider: count,
     models: perAgent(z.string().regex(/^claude-[a-z0-9-]+$/)),
+    // Rolling 7-day totals of the triage, build and verify agents. Past either one, the gate closes triage and build.
+    weeklyBudget: z.object({ turns: z.number().int().min(1), agentMinutes: z.number().int().min(1) }).strict(),
     sentry: z
       .object({ windowMinutes: z.number().int().min(1), spikeMultiplier: z.number().min(1), minEvents: z.number().int().min(1) })
       .strict(),

@@ -7,6 +7,7 @@ name: evolution-verify
 #   plan     trusted code + a read-only agent: verify scripts per acceptance criterion, before any PR code runs
 #   run      no secrets: the PR's app, the planned scripts and verify:all; only the evidence leaves the job
 #   judge    a read-only agent on a fresh runner: issue, diff and evidence in, a verdict out
+#   usage    trusted code: records the planner's and judge's turns and runtime in agent_runs
 #   verdict  trusted code: the sticky comment and the commit status
 on:
   pull_request_target:
@@ -90,6 +91,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    outputs:
+      usage: ${{ steps.usage.outputs.json }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -126,6 +129,15 @@ jobs:
             --allowedTools "Read,Glob,Grep"
             --disallowedTools "Bash,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch,Task"
             --json-schema '${{ steps.agent.outputs.json_schema }}'
+      - name: Agent usage (jq reads the action's log)
+        if: always()
+        id: usage
+        env:
+          LOG: ${{ steps.planner.outputs.execution_file }}
+        run: |
+          if [ -n "$LOG" ] && [ -f "$LOG" ]; then
+            echo "json=$(jq -c '[.[] | select(.type == "result")] | last | {turns: .num_turns, durationMs: .duration_ms, costUsd: .total_cost_usd, isError: .is_error, subtype: .subtype}' "$LOG")" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Check the plan and write the verify scripts
         env:
@@ -196,6 +208,7 @@ jobs:
       pull-requests: read
     outputs:
       verdict: ${{ steps.judge.outputs.structured_output }}
+      usage: ${{ steps.usage.outputs.json }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -230,6 +243,45 @@ jobs:
             --allowedTools "Read,Glob,Grep"
             --disallowedTools "Bash,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch,Task"
             --json-schema '${{ steps.agent.outputs.json_schema }}'
+      - name: Agent usage (jq reads the action's log)
+        if: always()
+        id: usage
+        env:
+          LOG: ${{ steps.judge.outputs.execution_file }}
+        run: |
+          if [ -n "$LOG" ] && [ -f "$LOG" ]; then
+            echo "json=$(jq -c '[.[] | select(.type == "result")] | last | {turns: .num_turns, durationMs: .duration_ms, costUsd: .total_cost_usd, isError: .is_error, subtype: .subtype}' "$LOG")" >> "$GITHUB_OUTPUT"
+          fi
+
+  usage:
+    needs: [plan, judge]
+    if: always() && needs.plan.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - name: Record the planner's run in agent_runs
+        env:
+          RESULT: ${{ needs.plan.result }}
+          USAGE: ${{ needs.plan.outputs.usage }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm -s evolution:record-run planner
+      - name: Record the judge's run in agent_runs
+        if: always()
+        env:
+          RESULT: ${{ needs.judge.result }}
+          USAGE: ${{ needs.judge.outputs.usage }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm -s evolution:record-run judge
 
   verdict:
     needs: [context, plan, run, judge]

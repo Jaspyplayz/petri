@@ -45,7 +45,8 @@ function mergedSince(since: string | undefined): MergedPullRequest[] {
 }
 
 function postIssue(level: number, report: string): string {
-  const open = JSON.parse(run("gh", ["issue", "list", "--state", "open", "--label", ISSUE_LABEL, "--json", "number"])) as { number: number }[];
+  run("gh", ["label", "create", ISSUE_LABEL, "--color", "0E8A16", "--description", "Suggested trust promotion (a human decides)", "--force"]);
+  const open =JSON.parse(run("gh", ["issue", "list", "--state", "open", "--label", ISSUE_LABEL, "--json", "number"])) as { number: number }[];
   const existing = open[0];
   if (existing !== undefined) {
     run("gh", ["issue", "comment", String(existing.number), "--body", report]);

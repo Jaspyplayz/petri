@@ -201,7 +201,7 @@ Every agent workflow starts with a gate step that exits early when `vars.EVOLUTI
 | `evolution-guardian.yml` | cron every 15m + 10/30/60m after deploy | 8 | On a Sentry spike: Vercel instant rollback → one auto-merged revert PR (it reverts the commit, adds `.evolution/PAUSED` with `{"until": now+24h}`, and lowers the trust level by one) → a "Reverted" Timeline entry → postmortem → a notify issue. |
 | `evolution-postmortem.yml` | `workflow_run` failure / revert / scope-creep verdict + `workflow_dispatch` | 7 | Appends to `docs/agent-mistakes.md` and climbs the fix ladder (design → hard rule → skill → CLAUDE.md). Adds an eval case. |
 | `evals.yml` | PRs touching `.claude/skills/**` (capped) + nightly while `EVALS_NIGHTLY` is `true` | 7 | Runs `pnpm evals` for the changed skills and reports in the job summary and an artifact. `evals/results.jsonl` is committed only from local runs. |
-| `evolution-weekly.yml` | weekly cron | 5/8 | `trust-report.ts` suggests (never applies) a promotion in an issue, posts the `agent_runs` cost/turns summary, and pauses the loop if over budget. |
+| `evolution-weekly.yml` | `workflow_dispatch` (weekly cron from 9.1) | 5/8 | Opens the weekly `agent_runs` issue (runs, turns, agent minutes and API-equivalent $ per workflow against `weeklyBudget`), then `trust-report.ts` suggests (never applies) a promotion in an issue. It only reports; the gate closes triage and build when over budget. |
 
 **Branch protection on `main`:** require `ci-ok` and `evolution-verify`, require the branch to be up to date, no force pushes, 0 approvals. Repo auto-merge is enabled.
 
@@ -216,7 +216,7 @@ Read-only jobs get only `GITHUB_TOKEN` with minimal `permissions:`.
 **Gate step details:**
 
 - `.evolution/PAUSED` holds `{"until": ISO-8601 | null}`. The gate treats a past `until` as not paused. `null` means paused until a human runs `pnpm evolution:resume`.
-- The gate also checks the `agent_runs` weekly budget from `config.json` and exits when it's over budget. `evolution-weekly.yml` only reports.
+- The triage and build gates also check the `agent_runs` weekly budget (`weeklyBudget` in `config.json`, rolling 7 days) and close when it's reached. Each agent run is recorded by trusted code after the agent finishes (see `docs/costs.md`). `evolution-weekly.yml` only reports.
 
 **Trust-lowering carve-out:** `check-protected-paths.ts` normally blocks agent edits to `.evolution/config.json` and `.evolution/PAUSED`. It allows them only when the diff does nothing except lower `trustLevel` and/or add `PAUSED`, so the guardian's revert PR can auto-merge. Raising trust or removing `PAUSED` always needs a human PR.
 
