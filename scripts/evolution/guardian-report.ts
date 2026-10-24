@@ -1,5 +1,5 @@
 import type { EvolutionConfig } from "./config";
-import { incidentMarker, type Deployed, type SentryNumbers, type Verdict } from "./guardian";
+import { incidentMarker, PROMOTED_LABEL, type Deployed, type SentryNumbers, type Verdict } from "./guardian";
 
 // What one guardian check found. The check step writes it as JSON for the steps after it in the same job.
 export type Incident = {
@@ -225,6 +225,12 @@ export function promotedComment(revert: { readonly number: number; readonly url:
   ].join("\n");
 }
 
+const NO_RETRY = `The guardian doesn't retry a promote, and its checks fail while the rollback still holds production. Promote it by hand (Vercel → the project → Deployments → Promote), or remove \`${PROMOTED_LABEL}\` from the revert to let the guardian try again.`;
+
 export function promoteUnconfirmedComment(target: Deployed, runUrl: string): string {
-  return `**The promote isn't confirmed.** The guardian promoted ${target.url ?? target.id} (${short(target.sha)}) (${runUrl}), but production hadn't switched to it after 3 minutes. Check Vercel → the project → Deployments, and promote it by hand if the promote failed. The guardian doesn't retry a promote.`;
+  return `**The promote isn't confirmed.** The guardian promoted ${target.url ?? target.id} (${short(target.sha)}) (${runUrl}), but production hadn't switched to it after 3 minutes. Check Vercel → the project → Deployments. ${NO_RETRY}`;
+}
+
+export function promoteFailedComment(target: Deployed, error: string, runUrl: string): string {
+  return `**The promote failed.** The guardian tried to promote ${target.url ?? target.id} (${short(target.sha)}) (${runUrl}): ${error}. ${NO_RETRY}`;
 }

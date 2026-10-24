@@ -8,6 +8,7 @@ import {
   pausePrBody,
   pauseTitle,
   promotedComment,
+  promoteFailedComment,
   promoteUnconfirmedComment,
   retriedRollbackComment,
   revertPrBody,
@@ -171,5 +172,15 @@ describe("notifyIssue", () => {
     expect(promoteUnconfirmedComment(target, "https://github.com/x/y/actions/runs/2")).toContain(
       "**The promote isn't confirmed.** The guardian promoted petri-rev.vercel.app (`ddddddd`) (https://github.com/x/y/actions/runs/2), but production hadn't switched to it after 3 minutes.",
     );
+  });
+
+  it("tells the issue a promote failed, how to promote by hand and how to let the guardian retry", () => {
+    const target = { id: "dpl_rev", url: "petri-rev.vercel.app", sha: "d".repeat(40), liveAt: 0 };
+    const comment = promoteFailedComment(target, "promoting the revert's deployment failed: HTTP 500", "https://github.com/x/y/actions/runs/3");
+    expect(comment).toContain(
+      "**The promote failed.** The guardian tried to promote petri-rev.vercel.app (`ddddddd`) (https://github.com/x/y/actions/runs/3): promoting the revert's deployment failed: HTTP 500.",
+    );
+    expect(comment).toContain("its checks fail while the rollback still holds production");
+    expect(comment).toContain("remove `guardian:promoted` from the revert to let the guardian try again");
   });
 });
