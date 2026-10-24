@@ -114,6 +114,15 @@ jobs:
         id: agent
         run: pnpm -s evolution:agent-config verify-plan
 
+      - name: Agent sandbox (the secret scrub needs bubblewrap, or the CLI won't install)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          bwrap --version
+
       - name: Planner agent (read-only)
         id: planner
         uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
@@ -227,6 +236,15 @@ jobs:
       - name: Agent settings from .evolution/
         id: agent
         run: pnpm -s evolution:agent-config verify-judge
+
+      - name: Agent sandbox (the secret scrub needs bubblewrap, or the CLI won't install)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          bwrap --version
 
       - name: Judge agent (read-only)
         id: judge

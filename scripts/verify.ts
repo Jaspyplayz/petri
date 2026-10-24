@@ -10,7 +10,7 @@ import { runVerification } from "./verify/runner";
 import { ensureServer, stopServer, verifyDirectory, verifyPort } from "./verify/server";
 import { flowNames, parseScript, resolveFlow, type VerifyRun } from "./verify/steps";
 import { VerifyError } from "./verify/verify-error";
-import { installBaseDependencies, prepareBaseWorktree, resolveCommit, shareEnvLocal } from "./verify/worktree";
+import { installBaseDependencies, prepareBaseCheckout, resolveCommit, shareEnvLocal } from "./verify/worktree";
 
 const root = join(import.meta.dirname, "..");
 const usage = [
@@ -95,7 +95,7 @@ async function verifyRuns(runs: readonly VerifyRun[], baseUrl: string, withSumma
 }
 
 async function startBase(sha: string, label: string, port: number, runDir: string): Promise<{ dir: string; url: string }> {
-  const base = prepareBaseWorktree(root, sha, join(tmpdir(), `${basename(root)}-verify-base`));
+  const base = prepareBaseCheckout(root, sha, join(tmpdir(), `${basename(root)}-verify-base`));
   if (base.created || !existsSync(join(base.dir, "node_modules"))) {
     process.stdout.write(`verify: installing ${label}'s dependencies in ${base.dir}\n`);
     installBaseDependencies(base.dir, join(runDir, "base-install.log"));
