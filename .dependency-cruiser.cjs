@@ -23,6 +23,14 @@ module.exports = {
       to: { path: "^src/(features|app)/" },
     },
     {
+      name: "service-client-outside-server",
+      comment:
+        "Only server/ folders and src/shared/supabase/ may import the service-role client. Automerge requires trust level 3 for both, while lib/ or components/ code can auto-merge at level 1 or 2.",
+      severity: "error",
+      from: { pathNot: ["(^|/)server/", "^src/shared/supabase/"] },
+      to: { path: "^src/shared/supabase/service-client\\.ts$" },
+    },
+    {
       name: "app-imports-feature-internals",
       comment: "Routes may import a feature only through its index.ts.",
       severity: "error",
@@ -77,7 +85,12 @@ module.exports = {
     {
       comment: "Features, routes and root files import src/shared/, and src/shared/ imports only itself.",
       from: { path: "^src/((app|features|shared)/|[^/]+$)" },
-      to: { path: "^src/shared/" },
+      to: { path: "^src/shared/", pathNot: "^src/shared/supabase/service-client\\.ts$" },
+    },
+    {
+      comment: "Server folders and src/shared/supabase/ import the service-role client.",
+      from: { path: ["(^|/)server/", "^src/shared/supabase/"] },
+      to: { path: "^src/shared/supabase/service-client\\.ts$" },
     },
     {
       comment: "The registry lists the feature manifests.",

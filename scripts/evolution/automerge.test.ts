@@ -62,8 +62,9 @@ describe("requiredLevel", () => {
     ["a rename into server/", "feedback", [renamed("src/features/feedback/lib/x.ts", "src/features/feedback/server/x.ts")], "low"],
     ["a rename out of server/", "feedback", [renamed("src/features/feedback/server/x.ts", "src/features/feedback/lib/x.ts")], "low"],
     ["a new feature with a server/ file", "hats", [added("src/features/hats/index.ts"), added("src/features/hats/server/x.ts")], "low"],
+    ["a nested server/ folder", "feedback", [modified("src/features/feedback/lib/server/x.ts")], "low"],
   ] as const)("needs level 3 for a feature's server code: %s", (_, feature, files, risk) => {
-    expect(requiredLevel(fp([...files]), risk)).toEqual({ level: 3, why: `it changes src/features/${feature}/server/` });
+    expect(requiredLevel(fp([...files]), risk)).toEqual({ level: 3, why: `it changes server/ code in src/features/${feature}/` });
   });
 
   it("keeps today's level for a feature's components", () => {

@@ -82,6 +82,7 @@ petri/
 | `src/features/X/**` | its own files and `src/shared/**` (**never** another feature) |
 | `src/shared/**` | `src/shared/**` only (never `features/`) |
 | client components | never `server/**` or the service-role client (dependency-graph check) |
+| anything outside `server/**` and `src/shared/supabase/` | never the service-role client |
 
 ## 2. Data model (Supabase Postgres, RLS on every table)
 
