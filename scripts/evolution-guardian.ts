@@ -15,6 +15,7 @@ import {
   GUARDIAN_BRANCH_PREFIX,
   GUARDIAN_ISSUE_LABEL,
   guardianRunStatus,
+  heldAfterIncident,
   incidentMarker,
   incidentRevert,
   loweredTrust,
@@ -54,6 +55,7 @@ import {
   pausePrBody,
   pauseTitle,
   promotedComment,
+  promoteFailedComment,
   promoteUnconfirmedComment,
   retriedRollbackComment,
   revertPrBody,
@@ -192,6 +194,12 @@ function openIncidentIssue(servingId: string): { readonly url: string; readonly 
   return issue === undefined ? undefined : { url: issue.url, labels: issue.labels.map((label) => label.name) };
 }
 
+// The bodies of the guardian's incident issues, open or closed.
+function incidentBodies(): string[] {
+  const issues = JSON.parse(gh(root, ["issue", "list", "--state", "all", "--label", GUARDIAN_ISSUE_LABEL, "--limit", "50", "--json", "body"])) as { body: string }[];
+  return issues.map((issue) => issue.body);
+}
+
 // The guardian's open issue or PR for this deployment, when an earlier run already acted on it. Then only the
 // rollback is retried: the PRs and the issue exist.
 function handledBy(servingId: string): Handled | undefined {
@@ -229,28 +237,39 @@ function vercelLine(deployments: readonly VercelDeployment[], aliasRequest: Alia
 }
 
 // While the guardian's rollback holds production, the way back to normal deploys is promoting a deployment that has
-// the merged revert. Says what it found, for the summary, and saves the plan when there's something to promote.
-function planPromotion(deployments: readonly VercelDeployment[], servingId: string, aliasRequest: AliasRequest | undefined): string | undefined {
+// the merged revert. Says what it found, for the summary, and saves the plan when there's something to promote. stuck:
+// the guardian already promoted for this revert, yet the rollback still holds production, so a human has to act.
+function planPromotion(
+  deployments: readonly VercelDeployment[],
+  servingId: string,
+  aliasRequest: AliasRequest | undefined,
+): { readonly text: string; readonly stuck: boolean } | undefined {
   const from = rolledBackFrom(servingId, aliasRequest, deployments);
   if (from === undefined) return undefined;
   const fields = "number,url,body,headRefName,isCrossRepository,labels,mergeCommit";
   const prs = JSON.parse(gh(root, ["pr", "list", "--state", "merged", "--base", "main", "--label", REVERT_LABEL, "--limit", "30", "--json", fields])) as ListedPr[];
   const revert = incidentRevert(prs, from);
-  if (revert === undefined) return `production was rolled back from ${from}, and no guardian revert of it has merged yet, so there's nothing to promote`;
+  if (revert === undefined) return { text: `production was rolled back from ${from}, and no guardian revert of it has merged yet, so there's nothing to promote`, stuck: false };
   const number = `#${String(revert.number)}`;
   if (revert.promoted) {
-    return `the guardian already promoted (or tried to promote) the deployment of the revert ${number}, which has ${PROMOTED_LABEL}, so it won't again; a human promotes now, or removes the label to let it retry`;
+    return {
+      text: `the guardian already promoted (or tried to promote) the deployment of the revert ${number}, which has ${PROMOTED_LABEL}, yet production is still on the rollback. It won't promote again: a human promotes now, or removes the label to let it retry`,
+      stuck: true,
+    };
   }
   const pausedPath = join(root, PAUSED_PATH);
   const block = promoteBlock(existsSync(pausedPath) ? readFileSync(pausedPath, "utf8") : undefined, new Date(), openIncidentIssue(from)?.labels ?? []);
-  if (block !== undefined) return `the revert ${number} merged, but ${block}`;
+  if (block !== undefined) return { text: `the revert ${number} merged, but ${block}`, stuck: false };
   const target = promoteTarget(deployments, servingId, (sha) => git(["merge-base", "--is-ancestor", revert.mergeCommit, sha]) !== undefined);
-  if (target === undefined) return `the revert ${number} merged, but no ready production deployment has it yet, so there's nothing to promote`;
+  if (target === undefined) return { text: `the revert ${number} merged, but no ready production deployment has it yet, so there's nothing to promote`, stuck: false };
   const plan: Promotion = { from, servingId, revert, target };
   save("promote.json", plan);
   output({ promote: target.id });
   const act = process.env.ACT === "true";
-  return `the revert ${number} merged, and ${target.url ?? target.id} (\`${target.sha.slice(0, 7)}\`) has it, so ${act ? "the guardian promotes it" : "**dry run:** acting would promote it"}`;
+  return {
+    text: `the revert ${number} merged, and ${target.url ?? target.id} (\`${target.sha.slice(0, 7)}\`) has it, so ${act ? "the guardian promotes it" : "**dry run:** acting would promote it"}`,
+    stuck: false,
+  };
 }
 
 async function readProduction(vercel: VercelAccess): Promise<{
@@ -271,19 +290,26 @@ async function check(): Promise<void> {
   output({ "started-at": new Date().toISOString() });
   const config = readEvolutionConfig(root);
   const vercel = vercelAccess();
-  const { deployments, servingId, aliasRequest, production } = await readProduction(vercel);
+  const read = await readProduction(vercel);
+  const { deployments, servingId, aliasRequest } = read;
+  // The GitHub lookups can't stop a rollback: a failed one is reported, and the check goes on without it. Without the
+  // incidents, production is judged as Vercel shows it.
+  const problems: string[] = [];
+  const incidents =
+    read.production.kind === "ok" && read.production.previous !== undefined ? attempt("looking for the guardian's incidents", problems, incidentBodies) : [];
+  const production = heldAfterIncident(read.production, incidents ?? []);
   if (production.kind === "held") {
     output({ spike: "false" });
     // A lookup that fails here only delays the promote to the next run, so it's reported, not thrown.
-    const problems: string[] = [];
     const promotion = attempt("looking for the merged revert to promote", problems, () => planPromotion(deployments, servingId, aliasRequest));
-    const next = [promotion === undefined ? undefined : `After the rollback: ${promotion}.`, ...problems.map((problem) => `**Lookup failed:** ${problem}`)];
+    const next = [promotion === undefined ? undefined : `After the rollback: ${promotion.text}.`, ...problems.map((problem) => `**Lookup failed:** ${problem}`)];
     stepSummary(["## Guardian", `Not checking: ${production.reason}.`, ...next.filter((line) => line !== undefined), vercelLine(deployments, aliasRequest)].join("\n\n"));
-    // Production is held and Vercel's last promote or rollback failed (a promote the guardian started, say): a human
+    // Production is held and Vercel's last promote or rollback failed, or the guardian's promote never took: a human
     // has to look, so the run goes red on every check until one does.
     if (aliasRequest?.jobStatus === "failed") {
       throw new Error(`Vercel's last ${aliasRequest.type} (to ${aliasRequest.toDeploymentId}) failed while production is held: ${production.reason}`);
     }
+    if (promotion?.stuck === true) throw new Error(`the rollback still holds production: ${promotion.text}`);
     return;
   }
   const { serving, previous } = production;
@@ -291,8 +317,7 @@ async function check(): Promise<void> {
   const windows = checkWindows(serving.liveAt, previous?.liveAt, now, config.sentry.windowMinutes);
   const numbers = await sentryNumbers(sentryAccess(), { serving: serving.sha, previous: previous?.sha, ...windows });
   const verdict = spikeVerdict(numbers, config.sentry, (now.getTime() - serving.liveAt) / 60_000);
-  // The GitHub lookups can't stop a rollback: a failed one leaves no culprit (so no PRs) and is reported.
-  const problems: string[] = [];
+  // A failed culprit lookup leaves no culprit, so no PRs.
   const found = attempt("finding the evolution change that went live", problems, () => culpritCommit(liveCommits(serving.sha, previous?.sha)));
   const lookedUp = verdict.spike ? attempt("looking for an earlier run's issue or PR", problems, () => ({ handled: handledBy(serving.id) })) : { handled: undefined };
   const handled = lookedUp?.handled;
@@ -360,7 +385,8 @@ function commentOnIncident(plan: Promotion, body: string): void {
 }
 
 // The revert gets PROMOTED_LABEL before the promote, so later runs never promote for it again, even when Vercel
-// reports no promote. An unconfirmed promote is reported on the incident instead of retried.
+// reports no promote. A promote that fails or isn't confirmed is reported on the incident instead of retried, and the
+// checks go red while the rollback still holds production.
 async function promoteRevert(): Promise<void> {
   const plan = load("promote.json") as Promotion | undefined;
   if (plan === undefined) throw new Error("run `evolution:guardian check` first");
@@ -370,8 +396,18 @@ async function promoteRevert(): Promise<void> {
   if (now !== plan.servingId) throw new Error(`production changed since the check (it serves ${now}, not ${plan.servingId}), so the guardian won't promote`);
   ensureLabel(PROMOTED_LABEL);
   gh(root, ["pr", "edit", plan.revert.url, "--add-label", PROMOTED_LABEL]);
-  await promoteDeployment(vercel, plan.target.id);
-  if (!(await servesWithin(vercel, host, plan.target.id))) {
+  let serves: boolean;
+  try {
+    await promoteDeployment(vercel, plan.target.id);
+    serves = await servesWithin(vercel, host, plan.target.id);
+  } catch (error) {
+    const problems: string[] = [];
+    attempt("reporting it on the incident", problems, () => {
+      commentOnIncident(plan, promoteFailedComment(plan.target, errorText(error), runUrl()));
+    });
+    throw new Error([`promoting ${plan.target.id} failed: ${errorText(error)}`, ...problems].join("; "));
+  }
+  if (!serves) {
     commentOnIncident(plan, promoteUnconfirmedComment(plan.target, runUrl()));
     throw new Error(`Vercel accepted the promote, but ${host} didn't switch to ${plan.target.id} within 3 minutes`);
   }
