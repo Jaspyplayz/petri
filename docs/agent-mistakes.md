@@ -150,3 +150,11 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** `Bash(pnpm verify:*)` matches `pnpm verify` followed by a space, not `pnpm verify:flow`. The rule was written when the workflow was built and never tested against a real command, and the builder's report only said "needed approval".
 - **Category:** permission config that was never exercised (caught while looking into the post-merge failure)
 - **Fix rung:** config (#67), then (b) hard rule: `scripts/agent-tools/allowed-tools.test.ts` reads every `--allowedTools` list in the workflows and fails when a `Bash(pnpm …)` rule doesn't name a whole `package.json` script. Run against the workflow from before #67, it fails on `Bash(pnpm verify:*)`; on the current one it passes.
+
+## 2026-10-24 · The first full eval run scored the machine, not the skills
+
+- **What happened:** 4 of the 8 cases failed (3/10 to 6/10). In verify-app/01, verify-app/02 and build-evolution-issue/01, verify was never run or every attempt failed on a port conflict. In maintain-feature-map/01 the agent couldn't run `pnpm featuremap` or `pnpm check`.
+- **Evidence:** Run `2026-10-24T01-05-57-432Z`. Port 3200 was held by `next start -p 3200` (PID 4512), started at 20:03 from the main repo by an earlier verify run of mine that was never stopped. The transcripts' `permission_denials` hold 3–4 `PowerShell` calls per failing case, among them a plain `pnpm featuremap`. The allow-list has only `Bash(...)` rules.
+- **Root cause:** Three runner gaps. Nothing checked that verify's port was free. Nothing stopped the verify server a case had started, so it would hold the port for the next case. And on Windows the agent had a PowerShell tool that the allow-list doesn't cover; the CI builder has only Bash.
+- **Category:** test harness, plus a leftover process (mine)
+- **Fix rung:** (a) design, in `scripts/evals.ts`: before each case the runner fails if the verify port answers (shown failing against PID 4512 before it was stopped). After each case it runs `pnpm verify:down` in the copy. `SUBJECT_DISALLOWED_TOOLS` removes PowerShell. The 4 cases were run again.

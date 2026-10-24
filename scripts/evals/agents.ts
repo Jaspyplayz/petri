@@ -54,6 +54,10 @@ export function redactCredentials(text: string, env: Readonly<Record<string, str
   }, text);
 }
 
+// No web, and no PowerShell tool: on Windows the agent reached for it, and the Bash(...) rules above don't cover it, so
+// every pnpm command it ran there was denied. The CI builder only has Bash.
+export const SUBJECT_DISALLOWED_TOOLS = "WebFetch,WebSearch,PowerShell";
+
 export const JUDGE_SCHEMA = {
   type: "object",
   properties: {

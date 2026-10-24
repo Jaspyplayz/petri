@@ -13,6 +13,7 @@ import {
   DEFAULT_JUDGE_MODEL,
   JUDGE_SCHEMA,
   SUBJECT_ALLOWED_TOOLS,
+  SUBJECT_DISALLOWED_TOOLS,
   SUBJECT_MAX_TURNS,
   claudeEnv,
   judgePrompt,
@@ -106,13 +107,15 @@ function runCase(evalCase: EvalCase, options: { runId: string; commit: string; s
   try {
     transcript = claude(
       ["-p", task, "--model", options.subjectModel, "--max-turns", String(SUBJECT_MAX_TURNS), "--output-format", "stream-json", "--verbose",
-        "--setting-sources", "project", "--allowedTools", SUBJECT_ALLOWED_TOOLS, "--disallowedTools", "WebFetch,WebSearch"],
+        "--setting-sources", "project", "--allowedTools", SUBJECT_ALLOWED_TOOLS, "--disallowedTools", SUBJECT_DISALLOWED_TOOLS],
       repo,
       SUBJECT_TIMEOUT_MS,
     );
   } catch (error) {
     transcript += `\n${JSON.stringify({ type: "runner_error", message: redactCredentials(String(error), process.env) })}`;
   }
+  // A verify server the agent started outlives the copy and would hold the port for the next case.
+  spawnSync("pnpm", ["-s", "verify:down"], { cwd: repo, env: withoutSecrets(process.env) as NodeJS.ProcessEnv, shell: process.platform === "win32", timeout: 60_000 });
   const lines = transcript.split("\n");
   const commands = bashCommands(lines);
   run("git", ["add", "-A"], { cwd: repo });
@@ -151,7 +154,19 @@ function runCase(evalCase: EvalCase, options: { runId: string; commit: string; s
   };
 }
 
-function main(): void {
+// Verify in every copy uses the same port. A server already on it fails every verify the agent runs, and the case then
+// scores the machine, not the skill (the first full run, 2026-10-24), so the run stops before it spends anything.
+async function verifyPortProblem(): Promise<string | undefined> {
+  const port = process.env.VERIFY_PORT ?? "3200";
+  try {
+    await fetch(`http://127.0.0.1:${port}`, { signal: AbortSignal.timeout(2000) });
+    return `port ${port} already answers. Stop that server (pnpm verify:down in the repo that started it) before running evals.`;
+  } catch {
+    return undefined;
+  }
+}
+
+async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
@@ -177,6 +192,8 @@ function main(): void {
   process.stdout.write(`evals: ${String(cases.length)} case(s) at ${commit.slice(0, 7)}, subject ${options.subjectModel}, judge ${options.judgeModel}\n`);
   let failed = 0;
   for (const evalCase of cases) {
+    const portProblem = await verifyPortProblem();
+    if (portProblem) throw new Error(`evals: ${portProblem}`);
     const result = runCase(evalCase, options);
     appendFileSync(join(evalsDir, "results.jsonl"), `${JSON.stringify(result)}\n`);
     if (!result.passed) failed += 1;
@@ -186,4 +203,4 @@ function main(): void {
   if (failed > 0) process.exitCode = 1;
 }
 
-main();
+await main();
