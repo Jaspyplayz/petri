@@ -30,9 +30,10 @@ export const SUBJECT_ALLOWED_TOOLS = [
   "Bash(git log:*)",
 ].join(",");
 
-// The Claude CLI needs its own credential, and nothing else needs any. The repo copy's pnpm install, setup.sh and every
-// tool the agent runs get an env with no secrets; the CLI gets the Claude credential back, and
-// CLAUDE_CODE_SUBPROCESS_ENV_SCRUB keeps it out of its Bash tool and hooks.
+// The Claude CLI needs its own credential, and nothing else needs any. The repo copy's pnpm install and every git
+// command get an env with no secrets (setup.sh runs in a container with none of the host's env); the CLI gets the
+// Claude credential back, and CLAUDE_CODE_SUBPROCESS_ENV_SCRUB keeps it out of its Bash tool and hooks. On Linux the
+// scrub needs bubblewrap, which also hides the runner's processes from them.
 const CLAUDE_CREDENTIALS = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"];
 const SECRET_NAME = /TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|_KEY$|^KEY$|SALT|DSN/i;
 

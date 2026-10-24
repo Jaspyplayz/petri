@@ -1,13 +1,18 @@
 import { z } from "zod";
 
-const serverStateSchema = z.object({
-  pid: z.number().int().positive(),
-  port: z.number().int().positive(),
-  url: z.url(),
-  fingerprint: z.string().min(1),
-  buildId: z.string().min(1),
-  startedAt: z.string(),
-});
+// Stopping a server signals its pid's whole process group, so a state file whose pid is 1 (every process the user
+// owns) or whose url isn't the one verify starts on doesn't count as ours. The evals runner reads the state file from a
+// repo copy an agent worked in.
+const serverStateSchema = z
+  .object({
+    pid: z.number().int().gt(1),
+    port: z.number().int().min(1).max(65_535),
+    url: z.url(),
+    fingerprint: z.string().min(1),
+    buildId: z.string().min(1),
+    startedAt: z.string(),
+  })
+  .refine((state) => state.url === `http://127.0.0.1:${String(state.port)}`);
 
 export type ServerState = z.infer<typeof serverStateSchema>;
 

@@ -276,6 +276,19 @@ One line per decision, newest at the bottom. Format: `YYYY-MM-DD · phase · dec
     - `pnpm check` doesn't notice an `eslint.config.mjs` change that turns a rule off for files `lint-config.test.ts` doesn't lint. The PR body asks for a line-by-line read of every changed protected file.
     - It can't query Sentry for stack traces, only the error groups the evidence lists.
   - **Globs match across newlines:** `**` in `scripts/check-pr/glob.ts` now matches any character, so a file name with a newline can't slip past `.github/**`. Agent patches also refuse control characters, format characters (bidi overrides, zero-width) and backticks in names.
+- 2026-10-24 · P8 · An eval case's code stays away from the Claude token. This covers the first "Not covered yet" item above, since a postmortem can now write cases. The case format stays `task.md`, `setup.sh` and `rubric.md` (STARTER_PROMPT.md).
+  - **`setup.sh` runs in a container:** `debian:trixie-slim`, pinned to its multi-arch index digest. It has no network, no capabilities and a read-only root, and none of the host's processes, environment or home folder. The repo copy is its only writable folder, and the copy's `.git` is mounted read-only. On Linux it runs as the host user, so the runner can still change and delete what it writes.
+    - Docker, not bubblewrap, because `/run-evals` runs on the maintainer's Windows machine. Evals already need Docker for local Supabase.
+    - Every case's setup so far is a `sed` on one file, which the container runs unchanged.
+  - **The evals job installs bubblewrap** like every agent job, because the runner starts the agent under test with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, which needs it. The job had never run in CI (`EVALS_NIGHTLY` isn't set). `workflow-limits.ts` now also refuses a run step that gets the Claude token before that install.
+  - **After the agent, the runner runs none of the copy's code.**
+    - It stops a leftover verify server with its own `stopServer`, not the copy's `verify:down`.
+    - It puts back its own `.git/config` before each git command, so a config the agent's code wrote can't name a program for git to run (`core.fsmonitor`, a diff or filter driver).
+    - It skips links when it copies the verify artifacts for the judge.
+    - The verify state file is only "ours" with a pid above 1 and the `http://127.0.0.1:<port>` url verify starts on, because stopping a server signals its whole process group.
+  - **Still open:**
+    - On the maintainer's machine, the agent under test follows `task.md` and runs the copy's code (tests, verify scripts) without a sandbox, as any local agent run does. Read a case before running it.
+    - The judge's `Read` isn't limited to its run folder.
 - 2026-10-24 · P8 · `lint-config.test.ts` checks every source file's ESLint config, not only its 16 reference files. This covers the second "Not covered yet" item above, since a postmortem may edit `eslint.config.mjs`. Tracked and new files alike:
   - Each must get exactly the config (rules, their options and linter options) of one of the reference files the bans are tested on. A block that loosens a rule for only some files of a kind gives them a config no reference has.
   - None may be ignored except the generated database types.

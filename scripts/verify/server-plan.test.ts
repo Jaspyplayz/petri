@@ -59,7 +59,11 @@ describe("parseServerState", () => {
     "not json",
     "{}",
     JSON.stringify({ ...state, pid: -1 }),
+    JSON.stringify({ ...state, pid: 1 }),
     JSON.stringify({ ...state, url: "nope" }),
+    JSON.stringify({ ...state, url: "http://127.0.0.1:54321" }),
+    JSON.stringify({ ...state, url: "http://example.com:3200" }),
+    JSON.stringify({ ...state, port: 70_000, url: "http://127.0.0.1:70000" }),
     JSON.stringify({ ...state, buildId: undefined }),
   ])(
     "treats %j as no state",
