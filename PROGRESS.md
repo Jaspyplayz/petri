@@ -1,8 +1,8 @@
 # PROGRESS
 
-**Current phase:** 6's exit check passed on 2026-10-23 (the dry run below): feedback → triage → #48 → PR #50 → verified → merged by hand (b4d7a38) → on the Timeline. Parts 1–9 (#34–#42), the `unit` fix (#43) and post-merge (#45, #46) are on `main`. The level is still 0. The `guardrails-ok` stall that would have blocked auto-merge is fixed (#53). The second loop, #47 → #63, merged on 2026-10-23. Phase 5 is done once #31 (`pnpm check` and the PR template), #32 (`.evolution/config.json` at level 0 and `pnpm trust-report`) and #33 (CLAUDE.md) are on `main`; the exit checks pass (evidence below). Phase 4 is done: #27 (generator, 0120ab6), #28 (CI check, 34ff736) and #30 (the `maintain-feature-map` skill and the CLAUDE.md rule) are on `main`. The exit check passed on throwaway #29 (evidence below). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
+**Current phase:** 7's exit check passed on 2026-10-24 (8/8 evals, evidence below). It's done once #72–#75 are on `main`. 6's exit check passed on 2026-10-23 (the dry run below): feedback → triage → #48 → PR #50 → verified → merged by hand (b4d7a38) → on the Timeline. Parts 1–9 (#34–#42), the `unit` fix (#43) and post-merge (#45, #46) are on `main`. The level is still 0. The `guardrails-ok` stall that would have blocked auto-merge is fixed (#53). The second loop, #47 → #63, merged on 2026-10-23. Phase 5 is done once #31 (`pnpm check` and the PR template), #32 (`.evolution/config.json` at level 0 and `pnpm trust-report`) and #33 (CLAUDE.md) are on `main`; the exit checks pass (evidence below). Phase 4 is done: #27 (generator, 0120ab6), #28 (CI check, 34ff736) and #30 (the `maintain-feature-map` skill and the CLAUDE.md rule) are on `main`. The exit check passed on throwaway #29 (evidence below). Phase 3 is done: #21 (`verify:up`, 2f915f1), #22 (contrast fix, fa329d8), #23 (runner, a64c522), #24 (`verify:compare`, e74bdf3) and #25 (the `verify-app` skill) are on `main`. The exit checks pass (evidence below). Phase 2 is done: PR #8 and the review fixes #17, #18 and #19 are on `main` (7c30736).
 **Local setup after a fresh clone:** `pnpm install && pnpm db:start && pnpm env:local && pnpm dev`.
-**Next action:** the Phase 6 follow-ups below, `guardrails-ok` first, each as its own human PR from a session started with `EVOLUTION_HUMAN=1` (MANUAL_STEPS step 9). Then a human decides on level 1, and Phase 7 starts. Read `CLAUDE.md` and `FEATURE_MAP.md` first.
+**Next action:** Phase 8 (safety, cost, kill switch), including its two follow-ups from Phase 6. Keep the loop quiet (no triage runs) until the guardian exists. Level 1 is the maintainer's to commit. Read `CLAUDE.md` and `FEATURE_MAP.md` first.
 
 Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decisions.md` and `docs/architecture.md`.
 
@@ -61,8 +61,8 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 7 — Skills, postmortems, evals
 
-- [ ] 7.1 skills/agents/commands · [ ] 7.2 `docs/agent-mistakes.md` + postmortem · [ ] 7.3 `evals/` runner, judge, report, CI job
-- [ ] Exit: ≥2 cases per core skill, one full eval run, one postmortem → lint rule
+- [x] 7.1 skills/agents/commands (#72, #73) · [x] 7.2 `docs/agent-mistakes.md` + postmortem (#74) · [x] 7.3 `evals/` runner, judge, report, CI job (#75)
+- [x] Exit: 2 cases for each of the 4 core skills, one full eval run (8/8 passed, evidence below), one postmortem → hard rule (`allowed-tools.test.ts`, which runs in `pnpm check` and CI; a test rather than an ESLint rule, because the rule is about workflow YAML)
 
 ## Phase 8 — Safety, cost, kill switch
 
@@ -78,6 +78,25 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 ---
 
 ## Evidence
+
+### Phase 7 exit: the full eval run (2026-10-24)
+
+`pnpm evals` at 9927bae, subject `claude-opus-5-5`, judge `claude-sonnet-5-5`, run `2026-10-24T01-19-39-566Z`. 8/8 passed:
+
+| Case | Score | Ran verify | Cost |
+|---|---|---|---|
+| build-evolution-issue/01-greeting | 9 | yes | $1.87 |
+| build-evolution-issue/02-needs-a-dependency | 10 | no (blocked, as it should) | $1.37 |
+| investigate-before-claiming/01-explain-repeat-vote | 9 | no (read-only task) | $1.40 |
+| investigate-before-claiming/02-false-premise | 8 | no (read-only task) | $1.44 |
+| maintain-feature-map/01-new-button | 9 | yes | $1.92 |
+| maintain-feature-map/02-stale-testid | 9 | yes | $1.44 |
+| verify-app/01-reproduce-before-fixing | 9 | yes | $1.61 |
+| verify-app/02-show-a-ui-change | 9 | yes | $1.80 |
+
+- Checked by hand, not just taken from the judge: verify-app/01's commands show `pnpm verify:flow blob.feed` before the first edit; no transcript contains a credential; the remaining permission denials are compound `cd … &&` commands and branch switches, which the agents recovered from.
+- The run before it (`2026-10-24T01-05-57-432Z`) passed 4/8 because a verify server I'd left running held port 3200, and the agent used PowerShell on Windows. Both runs are in `evals/results.jsonl`; the runner fix and the entry are in `docs/agent-mistakes.md`.
+- Weakest: investigate-before-claiming/02 at 8. The agent listed possible causes it labelled as guesses, where the rubric asks for what it would look at next. That's the first hill-climb target.
 
 ### Phase 6 exit: the dry run, feedback → Timeline (2026-10-23)
 
