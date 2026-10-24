@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { NEEDS_HUMAN_LABEL, REVERT_LABEL } from "../trust-report/ladder";
 import type { EvolutionConfig } from "./config";
+import { pauseState } from "./gate";
 
 // The guardian (evolution-guardian.yml) watches production. This file holds its pure parts: what Vercel and Sentry
 // answered, the spike rule, and the files and text it writes. scripts/evolution-guardian.ts does the I/O.
@@ -34,9 +36,11 @@ export type VercelDeployment = z.infer<typeof vercelDeploymentSchema>;
 export const vercelAliasSchema = z.object({ deploymentId: z.string().min(1) });
 
 // GET /v9/projects/{id}: the project's last promote or rollback, if it ever had one. jobStatus is succeeded, pending,
-// in-progress, failed or skipped.
+// in-progress, failed or skipped. fromDeploymentId is the deployment production served before it.
 export const vercelProjectSchema = z.object({
-  lastAliasRequest: z.object({ type: z.string(), toDeploymentId: z.string(), requestedAt: z.number(), jobStatus: z.string() }).nullish(),
+  lastAliasRequest: z
+    .object({ type: z.string(), fromDeploymentId: z.string().nullish(), toDeploymentId: z.string(), requestedAt: z.number(), jobStatus: z.string() })
+    .nullish(),
 });
 export type AliasRequest = NonNullable<z.infer<typeof vercelProjectSchema>["lastAliasRequest"]>;
 
@@ -80,6 +84,73 @@ export function productionState(deployments: readonly VercelDeployment[], servin
   const before = older.find((deployment) => deployment.readySubstate === "PROMOTED");
   const dating = request !== undefined && request.jobStatus === "succeeded" && request.requestedAt <= serving.liveAt ? request : undefined;
   return { kind: "ok", serving, previous: before === undefined ? undefined : deployed(before, dating) };
+}
+
+// After Instant Rollback, Vercel builds new production deployments but doesn't put them live until one is promoted.
+// While a rollback that succeeded holds production (it still serves the rollback's target), this is the deployment the
+// rollback replaced, which names the guardian's incident. Otherwise undefined.
+export function rolledBackFrom(servingId: string, aliasRequest: AliasRequest | undefined): string | undefined {
+  if (aliasRequest?.type !== "rollback" || aliasRequest.jobStatus !== "succeeded" || aliasRequest.toDeploymentId !== servingId) return undefined;
+  return aliasRequest.fromDeploymentId ?? undefined;
+}
+
+// A PR as `gh pr list --json number,url,body,headRefName,isCrossRepository,labels,mergeCommit` lists it.
+export type ListedPr = {
+  readonly number: number;
+  readonly url: string;
+  readonly body: string;
+  readonly headRefName: string;
+  readonly isCrossRepository: boolean;
+  readonly labels: readonly { readonly name: string }[];
+  readonly mergeCommit: { readonly oid: string } | null;
+};
+
+const INCIDENT_MARKER = /<!-- guardian-incident: \S+ -->/;
+
+// A revert the guardian opened: a revert branch of this repository, the revert label and an incident marker. The
+// guardian's promote and post-merge's "Reverted" row both ask this.
+export function isGuardianRevert(pr: Pick<ListedPr, "body" | "headRefName" | "isCrossRepository" | "labels">): boolean {
+  return (
+    !pr.isCrossRepository &&
+    parseRevertBranch(pr.headRefName) !== undefined &&
+    pr.labels.some((label) => label.name === REVERT_LABEL) &&
+    INCIDENT_MARKER.test(pr.body)
+  );
+}
+
+export type MergedRevert = { readonly number: number; readonly url: string; readonly mergeCommit: string };
+
+// The guardian's merged revert for an incident: one whose body has that incident's marker.
+export function incidentRevert(prs: readonly ListedPr[], servingId: string): MergedRevert | undefined {
+  const marker = incidentMarker(servingId);
+  for (const pr of prs) {
+    if (!isGuardianRevert(pr) || !pr.body.includes(marker) || pr.mergeCommit === null) continue;
+    return { number: pr.number, url: pr.url, mergeCommit: pr.mergeCommit.oid };
+  }
+  return undefined;
+}
+
+// Why the guardian won't promote yet, or undefined. Once promoted, Vercel deploys main automatically again, so the
+// pause has to be on main first: no agent change rides along. A human keeps production on the rollback by adding
+// needs-human to the incident issue.
+export function promoteBlock(pausedOnMain: string | undefined, now: Date, issueLabels: readonly string[]): string | undefined {
+  if (issueLabels.includes(NEEDS_HUMAN_LABEL)) return `the incident issue has ${NEEDS_HUMAN_LABEL}, so production stays on the rollback until a human promotes`;
+  if (!pauseState(pausedOnMain, now).paused) return "the loop isn't paused on main yet (.evolution/PAUSED), so it waits for the pause PR";
+  return undefined;
+}
+
+// The deployment to promote once the revert merged: the oldest ready production deployment whose commit has the
+// revert (hasRevert asks git), other than the one production serves. That's the revert's own deployment when Vercel
+// built it, so as few unjudged commits as possible go live with it.
+export function promoteTarget(deployments: readonly VercelDeployment[], servingId: string, hasRevert: (sha: string) => boolean): Deployed | undefined {
+  const candidates = deployments
+    .filter((deployment) => deployment.state === "READY" && deployment.target === "production" && deployment.uid !== servingId)
+    .sort((a, b) => a.created - b.created);
+  for (const candidate of candidates) {
+    const live = deployed(candidate, undefined);
+    if (live !== undefined && hasRevert(live.sha)) return live;
+  }
+  return undefined;
 }
 
 export type Window = { readonly start: Date; readonly end: Date };
@@ -174,6 +245,12 @@ export function culpritCommit(commits: readonly MainCommit[]): (MainCommit & { r
 
 export function revertBranch(prNumber: number, sha: string): string {
   return `${GUARDIAN_BRANCH_PREFIX}revert-${String(prNumber)}-${sha.slice(0, 7)}`;
+}
+
+// The PR and the short commit a guardian revert branch names, or undefined for any other branch.
+export function parseRevertBranch(branch: string): { readonly pr: number; readonly sha7: string } | undefined {
+  const match = /^guardian\/revert-([1-9]\d*)-([0-9a-f]{7})$/.exec(branch);
+  return match?.[1] === undefined || match[2] === undefined ? undefined : { pr: Number(match[1]), sha7: match[2] };
 }
 
 export function pauseBranch(prNumber: number, sha: string): string {

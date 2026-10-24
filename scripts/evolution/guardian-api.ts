@@ -59,6 +59,13 @@ export async function servingDeploymentId(access: VercelAccess, host: string, fe
   return (await request(fetchImpl, url, vercelInit(access), vercelAliasSchema, `reading which deployment ${host} serves`)).deploymentId;
 }
 
+// Puts an existing production deployment live without rebuilding it. It also turns production's automatic deploys
+// back on, which a rollback turned off.
+export async function promoteDeployment(access: VercelAccess, deploymentId: string, fetchImpl: Fetch = fetch): Promise<void> {
+  const path = `/v10/projects/${encodeURIComponent(access.projectId)}/promote/${encodeURIComponent(deploymentId)}`;
+  await request(fetchImpl, vercelUrl(path, access, {}), vercelInit(access, "POST"), z.unknown(), "promoting the revert's deployment");
+}
+
 // Instant Rollback. On Hobby, Vercel allows it only to the deployment right before the current one.
 export async function rollBack(access: VercelAccess, deploymentId: string, description: string, fetchImpl: Fetch = fetch): Promise<void> {
   const path = `/v1/projects/${encodeURIComponent(access.projectId)}/rollback/${encodeURIComponent(deploymentId)}`;

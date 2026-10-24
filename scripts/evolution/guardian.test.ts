@@ -12,14 +12,21 @@ import {
   incidentMarker,
   issueCounts,
   loweredTrust,
+  incidentRevert,
+  isGuardianRevert,
   minutesIn,
   nextPause,
+  parseRevertBranch,
   pauseBranch,
   productionState,
+  promoteBlock,
+  promoteTarget,
   revertBranch,
+  rolledBackFrom,
   spikeVerdict,
   vercelDeploymentListSchema,
   vercelProjectSchema,
+  type ListedPr,
   type VercelDeployment,
 } from "./guardian";
 
@@ -136,9 +143,87 @@ describe("productionState", () => {
     });
     const request = { fromDeploymentId: "dpl_0", jobStatus: "succeeded", requestedAt: 3, toDeploymentId: "dpl_1", type: "rollback" };
     expect(vercelProjectSchema.parse({ id: "prj_1", name: "petri", lastAliasRequest: request })).toEqual({
-      lastAliasRequest: { jobStatus: "succeeded", requestedAt: 3, toDeploymentId: "dpl_1", type: "rollback" },
+      lastAliasRequest: { fromDeploymentId: "dpl_0", jobStatus: "succeeded", requestedAt: 3, toDeploymentId: "dpl_1", type: "rollback" },
     });
     expect(vercelProjectSchema.parse({ id: "prj_1" }).lastAliasRequest).toBeUndefined();
+  });
+});
+
+describe("after the guardian's rollback", () => {
+  const rollback = { type: "rollback", fromDeploymentId: "dpl_bad", toDeploymentId: "dpl_old", requestedAt: 5_000, jobStatus: "succeeded" };
+  const SHA_C = "c".repeat(40);
+  const SHA_R = "d".repeat(40);
+
+  it("names the deployment a rollback replaced while that rollback holds production", () => {
+    expect(rolledBackFrom("dpl_old", rollback)).toBe("dpl_bad");
+    expect(rolledBackFrom("dpl_new", rollback)).toBeUndefined();
+    expect(rolledBackFrom("dpl_old", { ...rollback, jobStatus: "in-progress" })).toBeUndefined();
+    expect(rolledBackFrom("dpl_old", { ...rollback, type: "promote" })).toBeUndefined();
+    expect(rolledBackFrom("dpl_old", { ...rollback, fromDeploymentId: null })).toBeUndefined();
+    expect(rolledBackFrom("dpl_old", undefined)).toBeUndefined();
+  });
+
+  const pr = (number: number, extra: Partial<ListedPr> = {}): ListedPr => ({
+    number,
+    url: `https://github.com/x/y/pull/${String(number)}`,
+    body: `Reverts #63.\n\n${incidentMarker("dpl_bad")}`,
+    headRefName: "guardian/revert-63-aaaaaaa",
+    isCrossRepository: false,
+    labels: [{ name: "evolution:revert" }],
+    mergeCommit: { oid: SHA_R },
+    ...extra,
+  });
+
+  it("knows a guardian revert by its branch, label and incident marker, from this repository", () => {
+    expect(isGuardianRevert(pr(1))).toBe(true);
+    expect(isGuardianRevert(pr(2, { headRefName: "guardian/pause-63-aaaaaaa" }))).toBe(false);
+    expect(isGuardianRevert(pr(3, { labels: [{ name: "evolution" }] }))).toBe(false);
+    expect(isGuardianRevert(pr(4, { body: "Reverts #63." }))).toBe(false);
+    expect(isGuardianRevert(pr(5, { isCrossRepository: true }))).toBe(false);
+  });
+
+  it("finds the incident's merged revert: a guardian revert with that incident's marker", () => {
+    const others = [pr(70, { body: incidentMarker("dpl_other") }), pr(71, { labels: [] }), pr(72, { isCrossRepository: true }), pr(73, { mergeCommit: null })];
+    expect(incidentRevert([...others, pr(74)], "dpl_bad")).toEqual({ number: 74, url: "https://github.com/x/y/pull/74", mergeCommit: SHA_R });
+    expect(incidentRevert(others, "dpl_bad")).toBeUndefined();
+  });
+
+  it("promotes only once the pause is on main, and not while a human holds the incident", () => {
+    const paused = JSON.stringify({ until: "2026-10-25T12:00:00.000Z", reason: "guardian" });
+    expect(promoteBlock(paused, NOW, ["evolution:guardian"])).toBeUndefined();
+    expect(promoteBlock(JSON.stringify({ until: null }), NOW, [])).toBeUndefined();
+    expect(promoteBlock(undefined, NOW, [])).toMatch(/isn't paused on main yet/);
+    expect(promoteBlock(JSON.stringify({ until: "2026-10-24T11:00:00.000Z" }), NOW, [])).toMatch(/isn't paused on main yet/);
+    expect(promoteBlock(paused, NOW, ["evolution:guardian", "needs-human"])).toMatch(/has needs-human, so production stays on the rollback/);
+  });
+
+  it("promotes the oldest ready production deployment that has the revert, never the one production serves", () => {
+    const served = deployment("dpl_old", 1_000, SHA_A);
+    const bad = deployment("dpl_bad", 2_000, SHA_B);
+    const reverted = deployment("dpl_rev", 3_000, SHA_R, { readySubstate: "STAGED" });
+    const later = deployment("dpl_later", 4_000, SHA_C, { readySubstate: "STAGED" });
+    const building = deployment("dpl_building", 2_500, SHA_R, { state: "BUILDING" });
+    const noCommit = deployment("dpl_cli", 2_600, undefined, { readySubstate: "STAGED" });
+    const hasRevert = (sha: string): boolean => sha === SHA_R || sha === SHA_C;
+    expect(promoteTarget([served, bad, building, noCommit, reverted, later], "dpl_old", hasRevert)).toMatchObject({ id: "dpl_rev", url: "dpl_rev.vercel.app", sha: SHA_R });
+    expect(promoteTarget([served, bad, later], "dpl_old", hasRevert)).toMatchObject({ id: "dpl_later", sha: SHA_C });
+    expect(promoteTarget([served, bad, building], "dpl_old", hasRevert)).toBeUndefined();
+    expect(promoteTarget([served, bad], "dpl_old", () => false)).toBeUndefined();
+    expect(promoteTarget([served], "dpl_old", () => true)).toBeUndefined();
+  });
+
+  it("judges the next deploy after the guardian's promote against the promoted deployment, from its promote", () => {
+    const served = deployment("dpl_old", 1_000, SHA_A);
+    const bad = deployment("dpl_bad", 2_000, SHA_B);
+    const reverted = deployment("dpl_rev", 3_000, SHA_R);
+    const next = deployment("dpl_next", 900_000, SHA_C);
+    const promote = { type: "promote", fromDeploymentId: "dpl_old", toDeploymentId: "dpl_rev", requestedAt: 500_000, jobStatus: "succeeded" };
+    expect(productionState([served, bad, reverted], "dpl_rev", promote)).toEqual({ kind: "held", reason: expect.stringContaining("through a promote") as string });
+    expect(productionState([served, bad, reverted, next], "dpl_next", promote)).toMatchObject({
+      kind: "ok",
+      serving: { id: "dpl_next", liveAt: 960_000 },
+      previous: { id: "dpl_rev", liveAt: 500_000 },
+    });
   });
 });
 
@@ -225,6 +310,13 @@ describe("culpritCommit", () => {
     expect(revertBranch(63, SHA_A)).toBe("guardian/revert-63-aaaaaaa");
     expect(pauseBranch(63, SHA_A)).toBe("guardian/pause-63-aaaaaaa");
     expect(incidentMarker("dpl_new")).toBe("<!-- guardian-incident: dpl_new -->");
+  });
+
+  it("reads the PR and commit back from a revert branch, and nothing from any other branch", () => {
+    expect(parseRevertBranch(revertBranch(63, SHA_A))).toEqual({ pr: 63, sha7: "aaaaaaa" });
+    for (const branch of [pauseBranch(63, SHA_A), "guardian/revert-63-aaaaaa", "guardian/revert-0-aaaaaaa", "guardian/revert-63-AAAAAAA", "x/guardian/revert-63-aaaaaaa", "evo/63-hat"]) {
+      expect(parseRevertBranch(branch)).toBeUndefined();
+    }
   });
 });
 

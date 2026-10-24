@@ -7,6 +7,8 @@ import {
   notifyIssue,
   pausePrBody,
   pauseTitle,
+  promotedComment,
+  promoteUnconfirmedComment,
   retriedRollbackComment,
   revertPrBody,
   revertTitle,
@@ -112,7 +114,8 @@ describe("notifyIssue", () => {
     expect(body).toContain("Rolled production back to petri-old.vercel.app (`aaaaaaa`).");
     expect(body).toContain("Opened https://github.com/x/y/pull/64 to revert #63. It merges itself once its checks pass.");
     expect(body).toContain("Opened https://github.com/x/y/pull/65, which merges itself once its checks pass. It pauses the loop until 2026-10-25T12:00:00.000Z and lowers trustLevel from 1 to 0.");
-    expect(body).toContain("promote its deployment");
+    expect(body).toContain("Once the revert and the pause have merged and the revert's deployment is ready, the guardian promotes it on its next run (dispatch `evolution-guardian` with `act` to run it now)");
+    expect(body).toContain("add `needs-human` to this issue");
     expect(body).toContain("`/postmortem #63`");
     expect(body).toContain("The pause ends on its own");
     expect(body).toContain(MARKER);
@@ -126,7 +129,7 @@ describe("notifyIssue", () => {
       pause: { problem: "opening the pause PR failed" },
     });
     expect(body).toContain("**The rollback failed.**");
-    expect(body).not.toContain("promote its deployment");
+    expect(body).not.toContain("the guardian promotes it");
     expect(body).toContain("**No revert PR:** the revert doesn't apply cleanly");
     expect(body).toContain("**No pause PR:** opening the pause PR failed");
     expect(body).toContain("The loop isn't paused yet: merge the pause PR if there is one, or pause it by hand (`pnpm evolution:pause`)");
@@ -136,7 +139,7 @@ describe("notifyIssue", () => {
   it("says a rollback Vercel accepted but didn't finish isn't confirmed, and still asks for the promote", () => {
     const { body } = notifyIssue(incident, "SUMMARY", { ...done, rollback: "pending" });
     expect(body).toContain("**The rollback isn't confirmed.** Vercel accepted the rollback to petri-old.vercel.app (`aaaaaaa`)");
-    expect(body).toContain("promote its deployment");
+    expect(body).toContain("the guardian promotes it");
   });
 
   it("says when there was nothing to pause or lower", () => {
@@ -148,12 +151,24 @@ describe("notifyIssue", () => {
     const { title, body } = notifyIssue({ ...incident, culprit: undefined }, "SUMMARY", { ...done, revert: undefined, pause: undefined, changes: undefined });
     expect(title).toBe("Guardian: error spike in production (bbbbbbb)");
     expect(body).toContain("No revert PR: the change that went live isn't an evolution PR");
+    expect(body).toContain("The guardian only promotes after its own revert, so once a fix has merged and deployed, promote it by hand");
+    expect(body).not.toContain("the guardian promotes it");
     expect(body).not.toContain("pause");
   });
 
   it("tells the open issue when a retried rollback worked", () => {
     const comment = retriedRollbackComment(incident);
     expect(comment).toContain("The guardian retried the rollback (https://github.com/x/y/actions/runs/1): production serves petri-old.vercel.app (`aaaaaaa`) again.");
-    expect(comment).toContain("promote its deployment");
+    expect(comment).toContain("the guardian promotes it");
+  });
+
+  it("tells the issue which deployment the guardian promoted, and that a human watches it until the next deploy", () => {
+    const target = { id: "dpl_rev", url: "petri-rev.vercel.app", sha: "d".repeat(40), liveAt: 0 };
+    const comment = promotedComment({ number: 64, url: "https://github.com/x/y/pull/64" }, target, "https://github.com/x/y/actions/runs/2");
+    expect(comment).toContain("The revert #64 merged, so the guardian promoted its deployment, petri-rev.vercel.app (`ddddddd`), to production (https://github.com/x/y/actions/runs/2).");
+    expect(comment).toContain("The guardian doesn't judge a promoted deployment until the next deploy. Watch Sentry for the next hour");
+    expect(promoteUnconfirmedComment(target, "https://github.com/x/y/actions/runs/2")).toContain(
+      "**The promote isn't confirmed.** The guardian promoted petri-rev.vercel.app (`ddddddd`) (https://github.com/x/y/actions/runs/2), but production hadn't switched to it after 3 minutes.",
+    );
   });
 });
