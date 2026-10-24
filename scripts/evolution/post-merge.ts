@@ -64,7 +64,19 @@ export function trustedScreenshots(urls: readonly string[], supabaseUrl: string)
 export type MergedPr = { readonly number: number; readonly url: string; readonly body: string; readonly mergedAt: string; readonly sha: string };
 
 // The change a guardian revert undid, as its Timeline row has it.
-export type RevertedChange = { readonly id: string; readonly title: string; readonly feedback_ids: readonly string[] };
+export type RevertedChange = { readonly id: string; readonly title: string; readonly feedback_ids: readonly string[]; readonly commit_sha: string | null };
+
+// Why the change row read for a revert branch isn't the change it names (its PR and short commit), or undefined.
+export function revertedChangeProblem(row: RevertedChange | null, reverted: { readonly pr: number; readonly sha7: string }): string | undefined {
+  if (row === null) return `#${String(reverted.pr)} has no Timeline entry`;
+  if (row.commit_sha?.startsWith(reverted.sha7) !== true) return `#${String(reverted.pr)}'s Timeline entry is commit ${row.commit_sha ?? "(none)"}, not ${reverted.sha7}`;
+  return undefined;
+}
+
+// Whether a post-merge run passed: a change needs its row and a passing production verify, a revert only its row.
+export function postMergePassed(kind: "change" | "revert", outcomes: { readonly record: string; readonly verify: string }): boolean {
+  return outcomes.record === "success" && (kind === "revert" || outcomes.verify === "success");
+}
 
 // The "Reverted" Timeline entry for a merged guardian revert. It links the change it undid and keeps that change's
 // feedback; the title and summary come from the change's row and fixed text, not from the PR.
@@ -74,7 +86,7 @@ export function revertRow(input: { readonly reverted: RevertedChange; readonly p
     kind: "revert",
     reverts_id: reverted.id,
     title: `Reverted: ${reverted.title}`.slice(0, 200),
-    summary: `Errors spiked in production after "${reverted.title}" went live, so the guardian rolled production back and reverted the change.`,
+    summary: `Errors spiked in production after "${reverted.title}" went live, so the guardian reverted the change.`,
     feedback_ids: [...reverted.feedback_ids],
     pr_number: pr.number,
     pr_url: pr.url,

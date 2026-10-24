@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { BuiltIssue, PrData } from "./build";
-import { changelogRow, changelogSummary, mergedPrNumber, revertRow, trustedScreenshots, vercelDeployment, whatChanged, type CommitPr } from "./post-merge";
+import {
+  changelogRow,
+  changelogSummary,
+  mergedPrNumber,
+  postMergePassed,
+  revertedChangeProblem,
+  revertRow,
+  trustedScreenshots,
+  vercelDeployment,
+  whatChanged,
+  type CommitPr,
+} from "./post-merge";
 
 const SHA = "a".repeat(40);
 const SUPABASE = "https://ref.supabase.co";
@@ -121,7 +132,12 @@ describe("changelogRow", () => {
 });
 
 describe("revertRow", () => {
-  const reverted = { id: "00000000-0000-4000-8000-0000000000aa", title: "Give the blob a tiny hat", feedback_ids: ["00000000-0000-4000-8000-000000000001"] };
+  const reverted = {
+    id: "00000000-0000-4000-8000-0000000000aa",
+    title: "Give the blob a tiny hat",
+    feedback_ids: ["00000000-0000-4000-8000-000000000001"],
+    commit_sha: "abcdef1".padEnd(40, "0"),
+  };
   const pr = { number: 64, url: "https://github.com/o/r/pull/64", mergedAt: "2026-10-24T13:00:00Z", sha: "ABCDEF2".padEnd(40, "0") };
 
   it("links the change it undid, keeps that change's feedback and names it from its row, not the PR", () => {
@@ -129,7 +145,7 @@ describe("revertRow", () => {
       kind: "revert",
       reverts_id: reverted.id,
       title: "Reverted: Give the blob a tiny hat",
-      summary: 'Errors spiked in production after "Give the blob a tiny hat" went live, so the guardian rolled production back and reverted the change.',
+      summary: 'Errors spiked in production after "Give the blob a tiny hat" went live, so the guardian reverted the change.',
       feedback_ids: ["00000000-0000-4000-8000-000000000001"],
       pr_number: 64,
       pr_url: "https://github.com/o/r/pull/64",
@@ -141,5 +157,23 @@ describe("revertRow", () => {
 
   it("keeps the title within the 200 characters the table allows", () => {
     expect(revertRow({ reverted: { ...reverted, title: "x".repeat(200) }, pr, trustLevel: 0 }).title).toHaveLength(200);
+  });
+
+  it("only accepts the change row the revert branch names, by PR and commit", () => {
+    const branch = { pr: 63, sha7: "abcdef1" };
+    expect(revertedChangeProblem(reverted, branch)).toBeUndefined();
+    expect(revertedChangeProblem(null, branch)).toBe("#63 has no Timeline entry");
+    expect(revertedChangeProblem({ ...reverted, commit_sha: "1234567".padEnd(40, "0") }, branch)).toMatch(/is commit 1234567.*, not abcdef1/);
+    expect(revertedChangeProblem({ ...reverted, commit_sha: null }, branch)).toMatch(/is commit \(none\)/);
+  });
+});
+
+describe("postMergePassed", () => {
+  it("needs a change's row and its production verify, and only a revert's row", () => {
+    expect(postMergePassed("change", { record: "success", verify: "success" })).toBe(true);
+    expect(postMergePassed("change", { record: "success", verify: "failure" })).toBe(false);
+    expect(postMergePassed("change", { record: "success", verify: "skipped" })).toBe(false);
+    expect(postMergePassed("revert", { record: "success", verify: "skipped" })).toBe(true);
+    expect(postMergePassed("revert", { record: "failure", verify: "skipped" })).toBe(false);
   });
 });

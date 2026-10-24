@@ -6,8 +6,17 @@ import { prDataFromBody } from "./evolution/build";
 import { readEvolutionConfig } from "./evolution/config";
 import { gh } from "./evolution/github-issue";
 import { isEvolutionPr, linkedIssue, PR_FIELDS, type GhPr } from "./evolution/github-pr";
-import { parseRevertBranch } from "./evolution/guardian";
-import { changelogRow, mergedPrNumber, revertRow, vercelDeployment, type CommitPr, type CommitStatus } from "./evolution/post-merge";
+import { isGuardianRevert, parseRevertBranch } from "./evolution/guardian";
+import {
+  changelogRow,
+  mergedPrNumber,
+  postMergePassed,
+  revertedChangeProblem,
+  revertRow,
+  vercelDeployment,
+  type CommitPr,
+  type CommitStatus,
+} from "./evolution/post-merge";
 import { loopSupabase } from "./evolution/supabase";
 
 // pnpm evolution:post-merge record|finish runs from main after a push (evolution-post-merge.yml).
@@ -60,7 +69,7 @@ async function record(): Promise<void> {
     return;
   }
   const pr = JSON.parse(gh(root, ["pr", "view", String(number), "--json", `${PR_FIELDS},url,mergedAt`])) as MergedGhPr;
-  if (!pr.isCrossRepository && parseRevertBranch(pr.headRefName) !== undefined) {
+  if (isGuardianRevert(pr)) {
     await recordRevert(pr, sha);
     return;
   }
@@ -96,9 +105,10 @@ async function record(): Promise<void> {
   process.stdout.write(`post-merge: #${String(number)} is on the Timeline (${id}); ${String(issue.feedbackIds.length)} feedback item(s) shipped\n`);
 }
 
-// A merged guardian revert goes on the Timeline as "Reverted", linked to the change it undid. The branch names that
-// change's PR and commit, and its row has to match both. Production already serves the rollback, and the guardian
-// promotes the revert's deployment, so there's no deployment to wait for or verify here.
+// A merged guardian revert (isGuardianRevert: its branch, label and incident marker) goes on the Timeline as
+// "Reverted", linked to the change it undid. The branch names that change's PR and commit, and its row has to match
+// both. Production serves the rollback until the guardian promotes the revert's deployment, so there's no deployment to
+// wait for or verify here.
 async function recordRevert(pr: MergedGhPr, sha: string): Promise<void> {
   const reverted = parseRevertBranch(pr.headRefName);
   if (reverted === undefined) throw new Error(`${pr.headRefName} isn't a guardian revert branch`);
@@ -107,9 +117,8 @@ async function recordRevert(pr: MergedGhPr, sha: string): Promise<void> {
   const supabase = loopSupabase();
   const original = await supabase.from("changelog").select("id,title,feedback_ids,commit_sha").eq("kind", "change").eq("pr_number", reverted.pr).maybeSingle();
   if (original.error) throw new Error(`reading the changelog failed: ${original.error.message}`);
-  if (original.data === null || original.data.commit_sha?.startsWith(reverted.sha7) !== true) {
-    throw new Error(`#${String(pr.number)} reverts #${String(reverted.pr)} (${reverted.sha7}), which has no Timeline entry for that commit`);
-  }
+  const problem = revertedChangeProblem(original.data, reverted);
+  if (problem !== undefined || original.data === null) throw new Error(`#${String(pr.number)} reverts #${String(reverted.pr)} (${reverted.sha7}), but ${problem ?? "it has no row"}`);
   const existing = await supabase.from("changelog").select("id").eq("kind", "revert").eq("pr_number", pr.number).maybeSingle();
   if (existing.error) throw new Error(`reading the changelog failed: ${existing.error.message}`);
   let id = existing.data?.id;
@@ -127,7 +136,7 @@ async function finish(): Promise<void> {
   const issue = process.env.ISSUE ? Number(process.env.ISSUE) : null;
   const kind = process.env.KIND === "revert" ? "revert" : "change";
   const outcomes = { record: env("RECORD_OUTCOME"), verify: process.env.VERIFY_OUTCOME || "skipped" };
-  const passed = outcomes.record === "success" && (kind === "revert" || outcomes.verify === "success");
+  const passed = postMergePassed(kind, outcomes);
   const runUrl = `${env("GITHUB_SERVER_URL")}/${env("GITHUB_REPOSITORY")}/actions/runs/${env("GITHUB_RUN_ID")}`;
   const startedAt = process.env.STARTED_AT || new Date().toISOString();
   const finishedAt = new Date();

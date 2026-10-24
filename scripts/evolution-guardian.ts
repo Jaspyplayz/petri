@@ -18,6 +18,7 @@ import {
   nextPause,
   pauseBranch,
   productionState,
+  promoteBlock,
   promoteTarget,
   revertBranch,
   rolledBackFrom,
@@ -45,6 +46,7 @@ import {
   pausePrBody,
   pauseTitle,
   promotedComment,
+  promoteUnconfirmedComment,
   retriedRollbackComment,
   revertPrBody,
   revertTitle,
@@ -162,10 +164,16 @@ function liveCommits(serving: string, previous: string | undefined): MainCommit[
   });
 }
 
-function openIncidentIssue(servingId: string): string | undefined {
+function openIncidentIssue(servingId: string): { readonly url: string; readonly labels: string[] } | undefined {
   const marker = incidentMarker(servingId);
-  const issues = JSON.parse(gh(root, ["issue", "list", "--state", "open", "--label", GUARDIAN_ISSUE_LABEL, "--limit", "50", "--json", "url,body"])) as { url: string; body: string }[];
-  return issues.find((item) => item.body.includes(marker))?.url;
+  const fields = "url,body,labels";
+  const issues = JSON.parse(gh(root, ["issue", "list", "--state", "open", "--label", GUARDIAN_ISSUE_LABEL, "--limit", "50", "--json", fields])) as {
+    url: string;
+    body: string;
+    labels: { name: string }[];
+  }[];
+  const issue = issues.find((item) => item.body.includes(marker));
+  return issue === undefined ? undefined : { url: issue.url, labels: issue.labels.map((label) => label.name) };
 }
 
 // The guardian's open issue or PR for this deployment, when an earlier run already acted on it. Then only the
@@ -173,7 +181,7 @@ function openIncidentIssue(servingId: string): string | undefined {
 function handledBy(servingId: string): Handled | undefined {
   const marker = incidentMarker(servingId);
   const issue = openIncidentIssue(servingId);
-  if (issue !== undefined) return { url: issue, kind: "issue" };
+  if (issue !== undefined) return { url: issue.url, kind: "issue" };
   const prs = JSON.parse(gh(root, ["pr", "list", "--state", "open", "--base", "main", "--limit", "100", "--json", "url,body,headRefName"])) as {
     url: string;
     body: string;
@@ -205,11 +213,14 @@ function vercelLine(deployments: readonly VercelDeployment[], aliasRequest: Alia
 function planPromotion(deployments: readonly VercelDeployment[], servingId: string, aliasRequest: AliasRequest | undefined): string | undefined {
   const from = rolledBackFrom(servingId, aliasRequest);
   if (from === undefined) return undefined;
-  const fields = "number,url,body,headRefName,isCrossRepository,mergeCommit";
+  const fields = "number,url,body,headRefName,isCrossRepository,labels,mergeCommit";
   const prs = JSON.parse(gh(root, ["pr", "list", "--state", "merged", "--base", "main", "--label", REVERT_LABEL, "--limit", "30", "--json", fields])) as ListedPr[];
   const revert = incidentRevert(prs, from);
   if (revert === undefined) return `production was rolled back from ${from}, and no guardian revert of it has merged yet, so there's nothing to promote`;
   const number = `#${String(revert.number)}`;
+  const pausedPath = join(root, PAUSED_PATH);
+  const block = promoteBlock(existsSync(pausedPath) ? readFileSync(pausedPath, "utf8") : undefined, new Date(), openIncidentIssue(from)?.labels ?? []);
+  if (block !== undefined) return `the revert ${number} merged, but ${block}`;
   const target = promoteTarget(deployments, servingId, (sha) => git(["merge-base", "--is-ancestor", revert.mergeCommit, sha]) !== undefined);
   if (target === undefined) return `the revert ${number} merged, but no ready production deployment has it yet, so there's nothing to promote`;
   const plan: Promotion = { from, servingId, revert, target };
@@ -230,9 +241,16 @@ async function check(): Promise<void> {
   const production = productionState(deployments, servingId, aliasRequest);
   if (production.kind === "held") {
     output({ spike: "false" });
-    const promotion = planPromotion(deployments, servingId, aliasRequest);
-    const next = promotion === undefined ? "" : `\n\nAfter the rollback: ${promotion}.`;
-    stepSummary(`## Guardian\n\nNot checking: ${production.reason}.${next}\n\n${vercelLine(deployments, aliasRequest)}`);
+    // A lookup that fails here only delays the promote to the next run, so it's reported, not thrown.
+    const problems: string[] = [];
+    const promotion = attempt("looking for the merged revert to promote", problems, () => planPromotion(deployments, servingId, aliasRequest));
+    const next = [promotion === undefined ? undefined : `After the rollback: ${promotion}.`, ...problems.map((problem) => `**Lookup failed:** ${problem}`)];
+    stepSummary(["## Guardian", `Not checking: ${production.reason}.`, ...next.filter((line) => line !== undefined), vercelLine(deployments, aliasRequest)].join("\n\n"));
+    // Production is held and Vercel's last promote or rollback failed (a promote the guardian started, say): a human
+    // has to look, so the run goes red on every check until one does.
+    if (aliasRequest?.jobStatus === "failed") {
+      throw new Error(`Vercel's last ${aliasRequest.type} (to ${aliasRequest.toDeploymentId}) failed while production is held: ${production.reason}`);
+    }
     return;
   }
   const { serving, previous } = production;
@@ -302,7 +320,14 @@ async function rollback(): Promise<void> {
   process.stdout.write(`guardian: ${host} serves ${previous.id} (${previous.sha.slice(0, 7)}) again\n`);
 }
 
-// The comment goes on the incident's open issue, or on the revert PR when the issue is closed.
+// On the incident's open issue, or on the revert PR when the issue is closed.
+function commentOnIncident(plan: Promotion, body: string): void {
+  const issue = openIncidentIssue(plan.from);
+  gh(root, issue === undefined ? ["pr", "comment", plan.revert.url, "--body", body] : ["issue", "comment", issue.url, "--body", body]);
+}
+
+// After the promote, lastAliasRequest is a promote, so later runs no longer see the rollback and never promote again.
+// An unconfirmed promote is reported on the incident instead of retried.
 async function promoteRevert(): Promise<void> {
   const plan = load("promote.json") as Promotion | undefined;
   if (plan === undefined) throw new Error("run `evolution:guardian check` first");
@@ -312,11 +337,10 @@ async function promoteRevert(): Promise<void> {
   if (now !== plan.servingId) throw new Error(`production changed since the check (it serves ${now}, not ${plan.servingId}), so the guardian won't promote`);
   await promoteDeployment(vercel, plan.target.id);
   if (!(await servesWithin(vercel, host, plan.target.id))) {
+    commentOnIncident(plan, promoteUnconfirmedComment(plan.target, runUrl()));
     throw new Error(`Vercel accepted the promote, but ${host} didn't switch to ${plan.target.id} within 3 minutes`);
   }
-  const body = promotedComment(plan.revert, plan.target, runUrl());
-  const issue = openIncidentIssue(plan.from);
-  gh(root, issue === undefined ? ["pr", "comment", plan.revert.url, "--body", body] : ["issue", "comment", issue, "--body", body]);
+  commentOnIncident(plan, promotedComment(plan.revert, plan.target, runUrl()));
   process.stdout.write(`guardian: ${host} serves ${plan.target.id} (${plan.target.sha.slice(0, 7)}), which has the revert #${String(plan.revert.number)}\n`);
 }
 

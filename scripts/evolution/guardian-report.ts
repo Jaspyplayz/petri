@@ -184,9 +184,13 @@ export function notifyIssue(incident: Incident, summary: string, outcome: Outcom
     );
   }
   const todo: string[] = [];
-  if (outcome.rollback === "done" || outcome.rollback === "pending") {
+  if ((outcome.rollback === "done" || outcome.rollback === "pending") && culprit !== undefined) {
     todo.push(
-      "- After a rollback, Vercel doesn't put new deployments live until one is promoted. Once the revert merges and its deployment is ready, the guardian promotes it on its next run (dispatch `evolution-guardian` with `act` to run it now). Until then production stays on the rolled-back deployment, which is safe. If the revert can't merge, promote a deployment by hand: Vercel → Deployments → Promote.",
+      "- After a rollback, Vercel doesn't put new deployments live until one is promoted. Once the revert and the pause have merged and the revert's deployment is ready, the guardian promotes it on its next run (dispatch `evolution-guardian` with `act` to run it now). Until then production stays on the rolled-back deployment, which is safe. To keep it there while you investigate, add `needs-human` to this issue. If the revert can't merge, promote a deployment by hand: Vercel → Deployments → Promote.",
+    );
+  } else if (outcome.rollback === "done" || outcome.rollback === "pending") {
+    todo.push(
+      "- After a rollback, Vercel doesn't put new deployments live until one is promoted. The guardian only promotes after its own revert, so once a fix has merged and deployed, promote it by hand: Vercel → Deployments → Promote. Until then production stays on the rolled-back deployment, which is safe.",
     );
   }
   todo.push(
@@ -209,7 +213,16 @@ export function retriedRollbackComment(incident: Incident): string {
   return `The guardian retried the rollback (${incident.runUrl}): production serves ${target} again. Once the revert merges and its deployment is ready, the guardian promotes it, because Vercel doesn't put new deployments live after a rollback.`;
 }
 
-// The guardian promoted the deployment that has the merged revert.
+// The guardian promoted the deployment that has the merged revert. It doesn't judge a promoted deployment (there's no
+// release before it to compare with), so the maintainer watches it until the next deploy.
 export function promotedComment(revert: { readonly number: number; readonly url: string }, target: Deployed, runUrl: string): string {
-  return `The revert #${String(revert.number)} merged, so the guardian promoted its deployment, ${target.url ?? target.id} (${short(target.sha)}), to production (${runUrl}). Production serves main with the revert, and Vercel puts new merges live again as usual.`;
+  return [
+    `The revert #${String(revert.number)} merged, so the guardian promoted its deployment, ${target.url ?? target.id} (${short(target.sha)}), to production (${runUrl}). Vercel puts new merges live again as usual.`,
+    "",
+    "The guardian doesn't judge a promoted deployment until the next deploy. Watch Sentry for the next hour: if errors come back, another change in the same deployment may have caused them, so roll back by hand (Vercel → Instant Rollback).",
+  ].join("\n");
+}
+
+export function promoteUnconfirmedComment(target: Deployed, runUrl: string): string {
+  return `**The promote isn't confirmed.** The guardian promoted ${target.url ?? target.id} (${short(target.sha)}) (${runUrl}), but production hadn't switched to it after 3 minutes. Check Vercel → the project → Deployments, and promote it by hand if the promote failed. The guardian doesn't retry a promote.`;
 }
