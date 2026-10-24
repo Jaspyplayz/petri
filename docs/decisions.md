@@ -276,3 +276,7 @@ One line per decision, newest at the bottom. Format: `YYYY-MM-DD · phase · dec
     - `pnpm check` doesn't notice an `eslint.config.mjs` change that turns a rule off for files `lint-config.test.ts` doesn't lint. The PR body asks for a line-by-line read of every changed protected file.
     - It can't query Sentry for stack traces, only the error groups the evidence lists.
   - **Globs match across newlines:** `**` in `scripts/check-pr/glob.ts` now matches any character, so a file name with a newline can't slip past `.github/**`. Agent patches also refuse control characters, format characters (bidi overrides, zero-width) and backticks in names.
+- 2026-10-24 · P8 · `lint-config.test.ts` checks every source file's ESLint config, not only its 16 reference files. This covers the second "Not covered yet" item above, since a postmortem may edit `eslint.config.mjs`. Tracked and new files alike:
+  - Each must get exactly the config (rules, their options and linter options) of one of the reference files the bans are tested on. A block that loosens a rule for only some files of a kind gives them a config no reference has.
+  - None may be ignored except the generated database types.
+  - Today's 258 files fall into 15 configs. A new kind of file needs a reference file in the test, and a lint rule a postmortem adds must cover a whole kind. Loosening a rule for a whole kind is still caught only for the bans the test lints, or by a human reading the diff.
