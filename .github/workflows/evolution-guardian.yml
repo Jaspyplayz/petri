@@ -1,15 +1,16 @@
 name: evolution-guardian
 
 # Watches production (Phase 8.5). It compares the Sentry errors of the release production serves with the release
-# before it. On a spike it rolls production back with Vercel's Instant Rollback, opens a revert PR for the evolution
-# change that went live (which also extends .evolution/PAUSED by 24 hours and lowers trustLevel by one) with
-# auto-merge on, and opens an issue. Without the act input it only reports what it would do. Dispatch only until
-# Phase 9.1 adds the 15-minute cron. No gate: the kill switch and the pause stop agents, and the guardian only lowers risk.
+# before it. On a spike it rolls production back with Vercel's Instant Rollback. When an evolution change went live, it
+# opens two PRs with auto-merge on: one extends .evolution/PAUSED by 24 hours and lowers trustLevel by one, the other
+# reverts the change. Then it opens an issue. Without the act input it only reports what it would do. Dispatch only
+# until Phase 9.1 adds the 15-minute cron, which acts. No gate: the kill switch and the pause stop agents, and the
+# guardian only lowers risk.
 on:
   workflow_dispatch:
     inputs:
       act:
-        description: "Act on a spike (roll back, open the revert PR, notify). Off: only report what it would do."
+        description: "Act on a spike (roll back, open the pause and revert PRs, notify). Off: only report what it would do."
         type: boolean
         default: false
 
@@ -24,12 +25,14 @@ jobs:
   guardian:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The bot token pushes the revert branch and opens its PR, so CI runs on it. The issue uses this job's token, so
-    # it comes from github-actions and notifies the maintainer (nobody is notified of their own actions).
+    # The bot token pushes the guardian's branches and opens their PRs, so CI runs on them. The issue uses this job's
+    # token, so it comes from github-actions and notifies the maintainer (nobody is notified of their own actions).
     permissions:
       contents: read
       issues: write
       pull-requests: read
+    env:
+      ACT: ${{ github.event_name == 'schedule' || inputs.act == true }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,7 +45,6 @@ jobs:
       - name: Check production against Sentry (changes nothing)
         id: check
         env:
-          ACT: ${{ inputs.act }}
           GH_TOKEN: ${{ github.token }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
@@ -54,47 +56,74 @@ jobs:
 
       - name: Roll production back
         id: rollback
-        if: ${{ inputs.act && steps.check.outputs.spike == 'true' }}
+        if: ${{ env.ACT == 'true' && steps.check.outputs.spike == 'true' }}
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: pnpm -s evolution:guardian rollback
 
-      # A failed rollback still gets the revert and the issue, so the steps below don't depend on it.
-      - name: Push the revert branch (revert, pause, lower trust)
-        id: branch
-        if: ${{ !cancelled() && inputs.act && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' && steps.check.outputs.culprit != '' }}
+      # A failed rollback still gets the PRs and the issue, so the steps below don't depend on it. A deployment an
+      # earlier run already acted on (check's handled output) only gets the rollback retried.
+      - name: Push the pause branch (pause, lower trust)
+        id: pause
+        if: ${{ !cancelled() && env.ACT == 'true' && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' && steps.check.outputs.culprit != '' && steps.check.outputs.handled == '' }}
         env:
           BOT_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
-          BRANCH: ${{ steps.check.outputs.branch }}
+          BRANCH: ${{ steps.check.outputs.pause_branch }}
+          PR: ${{ steps.check.outputs.pr }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          git worktree add --detach "$RUNNER_TEMP/pause" origin/main
+          pnpm -s evolution:guardian pause-files "$RUNNER_TEMP/pause"
+          cd "$RUNNER_TEMP/pause"
+          git add -A .evolution
+          if git diff --cached --quiet; then
+            echo "Nothing to change: the loop is already paused for longer and trustLevel is 0."
+            exit 0
+          fi
+          git -c user.name="petri-guardian" -c user.email="petri-guardian@users.noreply.github.com" commit -q -m "chore(evolution): pause the loop and lower trust after #$PR"
+          git push "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Open the pause PR with auto-merge on
+        if: ${{ !cancelled() && steps.pause.outputs.sha != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BRANCH: ${{ steps.check.outputs.pause_branch }}
+          HEAD_SHA: ${{ steps.pause.outputs.sha }}
+        run: pnpm -s evolution:guardian open-pr pause
+
+      - name: Push the revert branch
+        id: revert
+        if: ${{ !cancelled() && env.ACT == 'true' && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' && steps.check.outputs.culprit != '' && steps.check.outputs.handled == '' }}
+        env:
+          BOT_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BRANCH: ${{ steps.check.outputs.revert_branch }}
           CULPRIT: ${{ steps.check.outputs.culprit }}
         run: |
           git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
           git worktree add --detach "$RUNNER_TEMP/revert" origin/main
           cd "$RUNNER_TEMP/revert"
           if ! git -c user.name="petri-guardian" -c user.email="petri-guardian@users.noreply.github.com" revert --no-edit "$CULPRIT"; then
-            git revert --abort
             echo "conflict=true" >> "$GITHUB_OUTPUT"
+            git revert --abort || true
             exit 1
           fi
-          (cd "$GITHUB_WORKSPACE" && pnpm -s evolution:guardian pause-files "$RUNNER_TEMP/revert")
-          git add -A .evolution
-          if ! git diff --cached --quiet; then
-            git -c user.name="petri-guardian" -c user.email="petri-guardian@users.noreply.github.com" commit -q --amend --no-edit
-          fi
           git push "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Open the revert PR with auto-merge on
-        if: ${{ !cancelled() && steps.branch.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.revert.outputs.sha != '' }}
         env:
           GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
-          BRANCH: ${{ steps.check.outputs.branch }}
-        run: pnpm -s evolution:guardian open-pr
+          BRANCH: ${{ steps.check.outputs.revert_branch }}
+          HEAD_SHA: ${{ steps.revert.outputs.sha }}
+        run: pnpm -s evolution:guardian open-pr revert
 
       - name: Tell the maintainer
-        if: ${{ !cancelled() && inputs.act && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' }}
+        if: ${{ !cancelled() && env.ACT == 'true' && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          REVERT_CONFLICT: ${{ steps.branch.outputs.conflict }}
+          REVERT_CONFLICT: ${{ steps.revert.outputs.conflict }}
         run: pnpm -s evolution:guardian notify

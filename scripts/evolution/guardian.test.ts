@@ -9,14 +9,17 @@ import {
   checkWindows,
   countOf,
   culpritCommit,
+  incidentMarker,
   issueCounts,
   loweredTrust,
   minutesIn,
   nextPause,
+  pauseBranch,
   productionState,
   revertBranch,
   spikeVerdict,
   vercelDeploymentListSchema,
+  vercelProjectSchema,
   type VercelDeployment,
 } from "./guardian";
 
@@ -27,7 +30,17 @@ const SENTRY = { windowMinutes: 60, spikeMultiplier: 3, minEvents: 5 };
 const NOW = new Date("2026-10-24T12:00:00Z");
 
 function deployment(uid: string, created: number, sha: string | undefined, extra: Partial<VercelDeployment> = {}): VercelDeployment {
-  return { uid, created, ready: created + 60_000, state: "READY", target: "production", url: `${uid}.vercel.app`, meta: sha === undefined ? {} : { githubCommitSha: sha }, ...extra };
+  return {
+    uid,
+    created,
+    ready: created + 60_000,
+    state: "READY",
+    readySubstate: "PROMOTED",
+    target: "production",
+    url: `${uid}.vercel.app`,
+    meta: sha === undefined ? {} : { githubCommitSha: sha },
+    ...extra,
+  };
 }
 
 describe("productionState", () => {
@@ -35,7 +48,7 @@ describe("productionState", () => {
   const newer = deployment("dpl_new", 2_000, SHA_B);
 
   it("judges the newest ready production deployment against the one before it", () => {
-    expect(productionState([older, newer], "dpl_new")).toEqual({
+    expect(productionState([older, newer], "dpl_new", undefined)).toEqual({
       kind: "ok",
       serving: { id: "dpl_new", url: "dpl_new.vercel.app", sha: SHA_B, liveAt: 62_000 },
       previous: { id: "dpl_old", url: "dpl_old.vercel.app", sha: SHA_A, liveAt: 61_000 },
@@ -48,39 +61,92 @@ describe("productionState", () => {
       deployment("dpl_error", 4_000, SHA_B, { state: "ERROR" }),
       deployment("dpl_building", 5_000, SHA_B, { state: "BUILDING" }),
     ];
-    expect(productionState([...others, older, newer], "dpl_new").kind).toBe("ok");
+    expect(productionState([...others, older, newer], "dpl_new", undefined).kind).toBe("ok");
   });
 
   it("holds while production serves anything but the newest deployment (a rollback or a manual promote)", () => {
-    expect(productionState([older, newer], "dpl_old")).toEqual({ kind: "held", reason: expect.stringContaining("rollback") as string });
+    expect(productionState([older, newer], "dpl_old", undefined)).toEqual({ kind: "held", reason: expect.stringContaining("rollback") as string });
+  });
+
+  it("holds while production serves a deployment a promote or rollback put live, until the next deploy", () => {
+    const promote = { type: "promote", toDeploymentId: "dpl_new", requestedAt: 90_000 };
+    expect(productionState([older, newer], "dpl_new", promote)).toEqual({ kind: "held", reason: expect.stringContaining("through a promote") as string });
+  });
+
+  it("compares with the deployment that served production before, skipping ones that never did", () => {
+    const staged = deployment("dpl_staged", 1_500, SHA_B, { readySubstate: "STAGED" });
+    expect(productionState([older, staged, newer], "dpl_new", undefined)).toMatchObject({ kind: "ok", previous: { id: "dpl_old" } });
+    expect(productionState([staged, newer], "dpl_new", undefined)).toMatchObject({ kind: "ok", previous: undefined });
+  });
+
+  it("dates a promoted previous deployment from its promote, not its build", () => {
+    const promote = { type: "promote", toDeploymentId: "dpl_old", requestedAt: 500_000 };
+    expect(productionState([older, newer], "dpl_new", promote)).toMatchObject({ kind: "ok", previous: { id: "dpl_old", liveAt: 500_000 } });
   });
 
   it("holds when there's nothing to judge", () => {
-    expect(productionState([], "dpl_new").kind).toBe("held");
-    expect(productionState([deployment("dpl_cli", 1_000, undefined)], "dpl_cli")).toEqual({ kind: "held", reason: expect.stringContaining("no GitHub commit") as string });
+    expect(productionState([], "dpl_new", undefined).kind).toBe("held");
+    expect(productionState([deployment("dpl_cli", 1_000, undefined)], "dpl_cli", undefined)).toEqual({
+      kind: "held",
+      reason: expect.stringContaining("no GitHub commit") as string,
+    });
   });
 
   it("has no previous release for the first deployment", () => {
-    expect(productionState([newer], "dpl_new")).toMatchObject({ kind: "ok", previous: undefined });
+    expect(productionState([newer], "dpl_new", undefined)).toMatchObject({ kind: "ok", previous: undefined });
   });
 
-  it("reads Vercel's list and drops the fields it doesn't use", () => {
+  it("reads Vercel's list and project, and drops the fields it doesn't use", () => {
     const listed = vercelDeploymentListSchema.parse({
-      deployments: [{ uid: "dpl_1", name: "petri", url: "petri-1.vercel.app", created: 1, ready: 2, state: "READY", target: "production", meta: { githubCommitSha: SHA_A, githubCommitRef: "main" }, creator: { uid: "u" } }],
+      deployments: [
+        {
+          uid: "dpl_1",
+          name: "petri",
+          url: "petri-1.vercel.app",
+          created: 1,
+          ready: 2,
+          state: "READY",
+          readySubstate: "PROMOTED",
+          isRollbackCandidate: true,
+          target: "production",
+          meta: { githubCommitSha: SHA_A, githubCommitRef: "main" },
+          creator: { uid: "u" },
+        },
+      ],
       pagination: { count: 1 },
     });
-    expect(listed.deployments[0]).toEqual({ uid: "dpl_1", url: "petri-1.vercel.app", created: 1, ready: 2, state: "READY", target: "production", meta: { githubCommitSha: SHA_A } });
+    expect(listed.deployments[0]).toEqual({
+      uid: "dpl_1",
+      url: "petri-1.vercel.app",
+      created: 1,
+      ready: 2,
+      state: "READY",
+      readySubstate: "PROMOTED",
+      target: "production",
+      meta: { githubCommitSha: SHA_A },
+    });
+    const request = { fromDeploymentId: "dpl_0", jobStatus: "succeeded", requestedAt: 3, toDeploymentId: "dpl_1", type: "rollback" };
+    expect(vercelProjectSchema.parse({ id: "prj_1", name: "petri", lastAliasRequest: request })).toEqual({
+      lastAliasRequest: { requestedAt: 3, toDeploymentId: "dpl_1", type: "rollback" },
+    });
+    expect(vercelProjectSchema.parse({ id: "prj_1" }).lastAliasRequest).toBeUndefined();
   });
 });
 
 describe("checkWindows", () => {
+  const liveAt = NOW.getTime() - 20 * 60_000;
+
   it("covers the current release since it went live, at most a window back, and the previous release's last window", () => {
-    const liveAt = NOW.getTime() - 20 * 60_000;
-    const windows = checkWindows(liveAt, NOW, 60);
+    const windows = checkWindows(liveAt, liveAt - 5 * 3_600_000, NOW, 60);
     expect(windows.current).toEqual({ start: new Date(liveAt), end: NOW });
     expect(minutesIn(windows.current)).toBe(20);
     expect(windows.baseline).toEqual({ start: new Date(liveAt - 60 * 60_000), end: new Date(liveAt) });
-    expect(minutesIn(checkWindows(NOW.getTime() - 5 * 3_600_000, NOW, 60).current)).toBe(60);
+    expect(minutesIn(checkWindows(NOW.getTime() - 5 * 3_600_000, undefined, NOW, 60).current)).toBe(60);
+  });
+
+  it("cuts the baseline to the time the previous release was live, and has none without one", () => {
+    expect(minutesIn(checkWindows(liveAt, liveAt - 10 * 60_000, NOW, 60).baseline)).toBe(10);
+    expect(minutesIn(checkWindows(liveAt, undefined, NOW, 60).baseline)).toBe(0);
   });
 });
 
@@ -93,7 +159,7 @@ describe("Sentry rows", () => {
 });
 
 describe("spikeVerdict", () => {
-  const quiet = { currentErrors: 0, currentMinutes: 60, baselineErrors: 0, newUnhandled: [] };
+  const quiet = { currentErrors: 0, currentMinutes: 60, baselineErrors: 0, baselineMinutes: 60, newUnhandled: [] };
 
   it("isn't a spike when errors stay under minEvents or near the previous release's rate", () => {
     expect(spikeVerdict({ ...quiet, currentErrors: 4 }, SENTRY).spike).toBe(false);
@@ -107,9 +173,15 @@ describe("spikeVerdict", () => {
     expect(verdict.reasons[0]).toMatch(/^30 errors in 60 min, at least 3× the 10\.0/);
   });
 
-  it("scales the previous release's errors to the time the current one has been live", () => {
+  it("compares rates: both releases' errors per minute live", () => {
     expect(spikeVerdict({ ...quiet, currentErrors: 8, currentMinutes: 10, baselineErrors: 60 }, SENTRY)).toMatchObject({ spike: false, expected: 10 });
     expect(spikeVerdict({ ...quiet, currentErrors: 30, currentMinutes: 10, baselineErrors: 60 }, SENTRY).spike).toBe(true);
+    expect(spikeVerdict({ ...quiet, currentErrors: 60, baselineErrors: 20, baselineMinutes: 20 }, SENTRY)).toMatchObject({ spike: false, expected: 60 });
+  });
+
+  it("uses only new unhandled errors when the previous release was live too briefly to give a rate", () => {
+    expect(spikeVerdict({ ...quiet, currentErrors: 60, baselineMinutes: 10 }, SENTRY)).toEqual({ spike: false, expected: undefined, reasons: [] });
+    expect(spikeVerdict({ ...quiet, currentErrors: 60, baselineMinutes: 0, newUnhandled: [{ issue: "PETRI-9", events: 6 }] }, SENTRY).spike).toBe(true);
   });
 
   it("is a spike on a new unhandled error with at least minEvents events", () => {
@@ -126,8 +198,10 @@ describe("culpritCommit", () => {
     expect(culpritCommit([{ sha: SHA_B, pr: pr(9, false) }, { sha: SHA_A, pr: undefined }])).toBeUndefined();
   });
 
-  it("names the branch after the PR and the commit", () => {
+  it("names the branches after the PR and the commit, and marks the incident by its deployment", () => {
     expect(revertBranch(63, SHA_A)).toBe("guardian/revert-63-aaaaaaa");
+    expect(pauseBranch(63, SHA_A)).toBe("guardian/pause-63-aaaaaaa");
+    expect(incidentMarker("dpl_new")).toBe("<!-- guardian-incident: dpl_new -->");
   });
 });
 
@@ -158,7 +232,7 @@ describe("loweredTrust", () => {
   });
 });
 
-describe("the revert PR's own edits pass the guardrails for agent PRs", () => {
+describe("the guardian's PRs pass the guardrails for agent PRs", () => {
   const guardrails = loadGuardrailsConfig(root);
   const config = readFileSync(join(root, CONFIG_PATH), "utf8").replace(/("trustLevel"\s*:\s*)\d+/, "$13");
 
@@ -177,6 +251,7 @@ describe("the revert PR's own edits pass the guardrails for agent PRs", () => {
       headSha: SHA_B,
     };
     expect(agentReasons(pullRequest, guardrails)).toEqual(["branch guardian/revert-1-aaaaaaa"]);
+    expect(agentReasons({ ...pullRequest, labels: [], headRef: pauseBranch(1, SHA_A) }, guardrails)).toEqual(["branch guardian/pause-1-aaaaaaa"]);
   });
 
   it("allows a new pause, an extended pause and a lowered trustLevel", () => {

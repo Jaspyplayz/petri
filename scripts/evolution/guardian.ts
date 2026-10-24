@@ -4,19 +4,23 @@ import type { EvolutionConfig } from "./config";
 // The guardian (evolution-guardian.yml) watches production. This file holds its pure parts: what Vercel and Sentry
 // answered, the spike rule, and the files and text it writes. scripts/evolution-guardian.ts does the I/O.
 
-export const GUARDIAN_BRANCH_PREFIX = "guardian/revert-";
+export const GUARDIAN_BRANCH_PREFIX = "guardian/";
 export const GUARDIAN_ISSUE_LABEL = "evolution:guardian";
 export const PAUSE_HOURS = 24;
+// A previous release live for less than this had too few errors to compare a rate with.
+export const MIN_BASELINE_MINUTES = 15;
 
 const commitSha = z.string().regex(/^[0-9a-f]{40}$/);
 
-// A deployment as GET /v6/deployments lists it, reduced to the fields the guardian reads.
+// A deployment as GET /v7/deployments lists it, reduced to the fields the guardian reads. readySubstate is PROMOTED
+// once a deployment has served production, and STAGED while it never has.
 export const vercelDeploymentSchema = z.object({
   uid: z.string().min(1),
   url: z.string().nullish(),
   created: z.number(),
   ready: z.number().nullish(),
   state: z.string(),
+  readySubstate: z.string().nullish(),
   target: z.string().nullish(),
   meta: z.object({ githubCommitSha: commitSha.optional() }).nullish(),
 });
@@ -25,6 +29,12 @@ export type VercelDeployment = z.infer<typeof vercelDeploymentSchema>;
 
 // GET /v4/aliases/{alias}: which deployment the production URL serves right now.
 export const vercelAliasSchema = z.object({ deploymentId: z.string().min(1) });
+
+// GET /v9/projects/{id}: the project's last promote or rollback, if it ever had one.
+export const vercelProjectSchema = z.object({
+  lastAliasRequest: z.object({ type: z.string(), toDeploymentId: z.string(), requestedAt: z.number() }).nullish(),
+});
+export type AliasRequest = NonNullable<z.infer<typeof vercelProjectSchema>["lastAliasRequest"]>;
 
 // GET /api/0/organizations/{org}/events/ (Sentry's errors dataset): one row per group.
 export const sentryTableSchema = z.object({ data: z.array(z.record(z.string(), z.unknown())) });
@@ -35,36 +45,51 @@ export type Production =
   | { readonly kind: "ok"; readonly serving: Deployed; readonly previous: Deployed | undefined }
   | { readonly kind: "held"; readonly reason: string };
 
-function deployed(deployment: VercelDeployment): Deployed | undefined {
+// A deployment went live when it was ready, unless a promote or rollback put it live later.
+function deployed(deployment: VercelDeployment, aliasRequest: AliasRequest | undefined): Deployed | undefined {
   const sha = deployment.meta?.githubCommitSha;
   if (sha === undefined) return undefined;
-  return { id: deployment.uid, url: deployment.url ?? undefined, sha, liveAt: deployment.ready ?? deployment.created };
+  const aliasedAt = aliasRequest?.toDeploymentId === deployment.uid ? aliasRequest.requestedAt : undefined;
+  return { id: deployment.uid, url: deployment.url ?? undefined, sha, liveAt: aliasedAt ?? deployment.ready ?? deployment.created };
 }
 
-// The guardian judges production only while it serves the newest ready production deployment. Anything else means a
-// rollback or a manual promote is in effect, and a human (or the revert the guardian opened) has to settle it first.
-export function productionState(deployments: readonly VercelDeployment[], servingId: string): Production {
+// The guardian judges production only while it serves the newest ready production deployment, and only when that
+// deployment went live by being deployed. Anything else means a rollback or a promote chose what production serves,
+// and a human watches it until the next deploy. The previous release is the newest older deployment that served
+// production; deployments built while a rollback held the domain never did, so they're skipped.
+export function productionState(deployments: readonly VercelDeployment[], servingId: string, aliasRequest: AliasRequest | undefined): Production {
   const ready = deployments
     .filter((deployment) => deployment.state === "READY" && deployment.target === "production")
     .sort((a, b) => b.created - a.created);
-  const [latest, before] = ready;
+  const [latest, ...older] = ready;
   if (latest === undefined) return { kind: "held", reason: "Vercel lists no ready production deployment" };
   if (latest.uid !== servingId) {
     return { kind: "held", reason: `production serves ${servingId}, not the newest deployment ${latest.uid} (a rollback or a manual promote is in effect)` };
   }
-  const serving = deployed(latest);
+  if (aliasRequest?.toDeploymentId === servingId) {
+    return { kind: "held", reason: `production serves ${servingId} through a ${aliasRequest.type}, not a deploy, so it waits for the next deploy` };
+  }
+  const serving = deployed(latest, undefined);
   if (serving === undefined) return { kind: "held", reason: `production deployment ${latest.uid} has no GitHub commit, so there's no release to check` };
-  return { kind: "ok", serving, previous: before === undefined ? undefined : deployed(before) };
+  const before = older.find((deployment) => deployment.readySubstate === "PROMOTED");
+  return { kind: "ok", serving, previous: before === undefined ? undefined : deployed(before, aliasRequest) };
 }
 
 export type Window = { readonly start: Date; readonly end: Date };
 
-// The current release since it went live (at most windowMinutes back), and the previous release's last windowMinutes.
-export function checkWindows(liveAt: number, now: Date, windowMinutes: number): { readonly current: Window; readonly baseline: Window } {
+// The current release since it went live (at most windowMinutes back), and the previous release over the same span
+// before that, cut to the time it was live.
+export function checkWindows(
+  servingLiveAt: number,
+  previousLiveAt: number | undefined,
+  now: Date,
+  windowMinutes: number,
+): { readonly current: Window; readonly baseline: Window } {
   const span = windowMinutes * 60_000;
+  const baselineStart = previousLiveAt === undefined ? servingLiveAt : Math.max(previousLiveAt, servingLiveAt - span);
   return {
-    current: { start: new Date(Math.max(liveAt, now.getTime() - span)), end: now },
-    baseline: { start: new Date(liveAt - span), end: new Date(liveAt) },
+    current: { start: new Date(Math.max(servingLiveAt, now.getTime() - span)), end: now },
+    baseline: { start: new Date(baselineStart), end: new Date(servingLiveAt) },
   };
 }
 
@@ -91,17 +116,19 @@ export type SentryNumbers = {
   readonly currentErrors: number;
   readonly currentMinutes: number;
   readonly baselineErrors: number;
+  readonly baselineMinutes: number;
   readonly newUnhandled: readonly IssueCount[];
 };
 
-export type Verdict = { readonly spike: boolean; readonly expected: number; readonly reasons: readonly string[] };
+export type Verdict = { readonly spike: boolean; readonly expected: number | undefined; readonly reasons: readonly string[] };
 
-// A spike: at least minEvents errors and spikeMultiplier times what the previous release had in the same length of
-// time (as if it had at least 1), or a new unhandled error with at least minEvents events.
+// A spike: at least minEvents errors and spikeMultiplier times the previous release's rate over the same length of
+// time (as if it had at least 1), or a new unhandled error with at least minEvents events. The rate needs the previous
+// release to have been live MIN_BASELINE_MINUTES; with less (or none), only new unhandled errors count.
 export function spikeVerdict(numbers: SentryNumbers, sentry: EvolutionConfig["sentry"]): Verdict {
-  const expected = numbers.baselineErrors * (numbers.currentMinutes / sentry.windowMinutes);
+  const expected = numbers.baselineMinutes >= MIN_BASELINE_MINUTES ? numbers.baselineErrors * (numbers.currentMinutes / numbers.baselineMinutes) : undefined;
   const reasons: string[] = [];
-  if (numbers.currentErrors >= sentry.minEvents && numbers.currentErrors >= sentry.spikeMultiplier * Math.max(expected, 1)) {
+  if (expected !== undefined && numbers.currentErrors >= sentry.minEvents && numbers.currentErrors >= sentry.spikeMultiplier * Math.max(expected, 1)) {
     reasons.push(
       `${String(numbers.currentErrors)} errors in ${numbers.currentMinutes.toFixed(0)} min, at least ${String(sentry.spikeMultiplier)}× the ${expected.toFixed(1)} the previous release had in the same time`,
     );
@@ -125,7 +152,16 @@ export function culpritCommit(commits: readonly MainCommit[]): (MainCommit & { r
 }
 
 export function revertBranch(prNumber: number, sha: string): string {
-  return `${GUARDIAN_BRANCH_PREFIX}${String(prNumber)}-${sha.slice(0, 7)}`;
+  return `${GUARDIAN_BRANCH_PREFIX}revert-${String(prNumber)}-${sha.slice(0, 7)}`;
+}
+
+export function pauseBranch(prNumber: number, sha: string): string {
+  return `${GUARDIAN_BRANCH_PREFIX}pause-${String(prNumber)}-${sha.slice(0, 7)}`;
+}
+
+// Written into the guardian's issue and PRs, so a later run finds that it already acted on this deployment.
+export function incidentMarker(servingId: string): string {
+  return `<!-- guardian-incident: ${servingId} -->`;
 }
 
 function untilOf(text: string): string | null | undefined {

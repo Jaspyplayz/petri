@@ -2,10 +2,13 @@ import { z } from "zod";
 import {
   countOf,
   issueCounts,
+  MIN_BASELINE_MINUTES,
   minutesIn,
   sentryTableSchema,
   vercelAliasSchema,
   vercelDeploymentListSchema,
+  vercelProjectSchema,
+  type AliasRequest,
   type SentryNumbers,
   type VercelDeployment,
   type Window,
@@ -42,8 +45,13 @@ function vercelInit(access: VercelAccess, method = "GET"): RequestInit {
 }
 
 export async function productionDeployments(access: VercelAccess, fetchImpl: Fetch = fetch): Promise<VercelDeployment[]> {
-  const url = vercelUrl("/v6/deployments", access, { projectId: access.projectId, target: "production", limit: "20" });
+  const url = vercelUrl("/v7/deployments", access, { projectId: access.projectId, target: "production", limit: "20" });
   return (await request(fetchImpl, url, vercelInit(access), vercelDeploymentListSchema, "listing Vercel's production deployments")).deployments;
+}
+
+export async function lastAliasRequest(access: VercelAccess, fetchImpl: Fetch = fetch): Promise<AliasRequest | undefined> {
+  const url = vercelUrl(`/v9/projects/${encodeURIComponent(access.projectId)}`, access, {});
+  return (await request(fetchImpl, url, vercelInit(access), vercelProjectSchema, "reading the Vercel project")).lastAliasRequest ?? undefined;
 }
 
 export async function servingDeploymentId(access: VercelAccess, host: string, fetchImpl: Fetch = fetch): Promise<string> {
@@ -83,12 +91,15 @@ export type ReleaseWindows = {
   readonly baseline: Window;
 };
 
-// Errors in the serving release, the previous release's errors in the baseline window, and the serving release's
-// unhandled errors that no other release had in the last 30 days.
+// Errors in the serving release, the previous release's errors in the baseline window (when it's long enough to
+// count), and the serving release's unhandled errors that no other release had in the last 30 days.
 export async function sentryNumbers(access: SentryAccess, releases: ReleaseWindows, fetchImpl: Fetch = fetch): Promise<SentryNumbers> {
   const currentErrors = countOf(await sentryTable(access, fetchImpl, ["count()"], `release:${releases.serving}`, releases.current));
+  const baselineMinutes = releases.previous === undefined ? 0 : minutesIn(releases.baseline);
   const baselineErrors =
-    releases.previous === undefined ? 0 : countOf(await sentryTable(access, fetchImpl, ["count()"], `release:${releases.previous}`, releases.baseline));
+    releases.previous === undefined || baselineMinutes < MIN_BASELINE_MINUTES
+      ? 0
+      : countOf(await sentryTable(access, fetchImpl, ["count()"], `release:${releases.previous}`, releases.baseline));
   const unhandled = issueCounts(
     await sentryTable(access, fetchImpl, ["issue", "count()"], `release:${releases.serving} error.unhandled:true`, releases.current, {
       sort: "-count()",
@@ -104,5 +115,11 @@ export async function sentryNumbers(access: SentryAccess, releases: ReleaseWindo
     const seen = new Set(known.map(({ issue }) => issue));
     newUnhandled = unhandled.filter(({ issue }) => !seen.has(issue));
   }
-  return { currentErrors, currentMinutes: minutesIn(releases.current), baselineErrors, newUnhandled };
+  return {
+    currentErrors,
+    currentMinutes: minutesIn(releases.current),
+    baselineErrors,
+    baselineMinutes,
+    newUnhandled,
+  };
 }

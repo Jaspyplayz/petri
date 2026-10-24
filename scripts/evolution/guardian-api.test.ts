@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { productionDeployments, rollBack, sentryNumbers, servingDeploymentId, type Fetch } from "./guardian-api";
+import { lastAliasRequest, productionDeployments, rollBack, sentryNumbers, servingDeploymentId, type Fetch } from "./guardian-api";
 
 const VERCEL = { token: "vercel-secret", projectId: "prj_1", teamId: "team_1" };
 const SENTRY = { token: "sentry-secret", org: "jaspys-team", project: "petri" };
@@ -26,9 +26,21 @@ describe("Vercel", () => {
     const { fetch, calls } = fakeFetch([[200, { deployments: [{ uid: "dpl_1", created: 1, state: "READY", target: "production" }] }]]);
     expect(await productionDeployments(VERCEL, fetch)).toEqual([{ uid: "dpl_1", created: 1, state: "READY", target: "production" }]);
     const [call] = calls;
-    expect(call?.url.pathname).toBe("/v6/deployments");
+    expect(call?.url.pathname).toBe("/v7/deployments");
     expect(Object.fromEntries(call?.url.searchParams ?? [])).toEqual({ projectId: "prj_1", target: "production", limit: "20", teamId: "team_1" });
     expect(call?.init?.headers).toEqual({ Authorization: "Bearer vercel-secret" });
+  });
+
+  it("reads the project's last promote or rollback, and none when it never had one", async () => {
+    const request = { type: "rollback", toDeploymentId: "dpl_1", fromDeploymentId: "dpl_2", requestedAt: 5, jobStatus: "succeeded" };
+    const { fetch, calls } = fakeFetch([
+      [200, { id: "prj_1", lastAliasRequest: request }],
+      [200, { id: "prj_1", lastAliasRequest: null }],
+    ]);
+    expect(await lastAliasRequest(VERCEL, fetch)).toEqual({ type: "rollback", toDeploymentId: "dpl_1", requestedAt: 5 });
+    expect(await lastAliasRequest(VERCEL, fetch)).toBeUndefined();
+    expect(calls[0]?.url.pathname).toBe("/v9/projects/prj_1");
+    expect(calls[0]?.url.searchParams.get("teamId")).toBe("team_1");
   });
 
   it("reads which deployment the production alias serves", async () => {
@@ -69,6 +81,7 @@ describe("sentryNumbers", () => {
       currentErrors: 31,
       currentMinutes: 20,
       baselineErrors: 4,
+      baselineMinutes: 60,
       newUnhandled: [{ issue: "PETRI-7", events: 20 }],
     });
     const queries = calls.map((call) => call.url.searchParams.get("query"));
@@ -90,7 +103,21 @@ describe("sentryNumbers", () => {
       [200, { data: [{ "count()": 2 }] }],
       [200, { data: [] }],
     ]);
-    expect(await sentryNumbers(SENTRY, { serving: SERVING, previous: undefined, current, baseline }, fetch)).toMatchObject({ baselineErrors: 0, newUnhandled: [] });
+    expect(await sentryNumbers(SENTRY, { serving: SERVING, previous: undefined, current, baseline }, fetch)).toMatchObject({
+      baselineErrors: 0,
+      baselineMinutes: 0,
+      newUnhandled: [],
+    });
     expect(calls).toHaveLength(2);
+  });
+
+  it("doesn't count a baseline too short to give a rate", async () => {
+    const { fetch, calls } = fakeFetch([
+      [200, { data: [{ "count()": 2 }] }],
+      [200, { data: [] }],
+    ]);
+    const brief = { start: new Date("2026-10-24T11:30:00Z"), end: baseline.end };
+    expect(await sentryNumbers(SENTRY, { serving: SERVING, previous: PREVIOUS, current, baseline: brief }, fetch)).toMatchObject({ baselineErrors: 0, baselineMinutes: 10 });
+    expect(calls.map((call) => call.url.searchParams.get("query"))).not.toContain(`project:petri environment:production release:${PREVIOUS}`);
   });
 });
