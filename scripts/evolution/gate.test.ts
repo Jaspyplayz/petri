@@ -53,10 +53,16 @@ describe("gate", () => {
     expect(gate(input()).open).toBe(true);
   });
 
-  it("is closed while paused, for every workflow", () => {
+  it("is closed while paused, for every workflow but the postmortem", () => {
     for (const workflow of ["triage", "build", "verify", "automerge"] as const) {
       expect(gate(input({ workflow, paused: '{"until":null}' })).open).toBe(false);
     }
+  });
+
+  it("opens the postmortem whenever EVOLUTION_ENABLED is true, paused, over budget or not", () => {
+    const over = { ...quiet, turns: config.weeklyBudget.turns + 1 };
+    expect(gate(input({ workflow: "postmortem", paused: '{"until":null}', weekUsage: over })).open).toBe(true);
+    expect(gate(input({ workflow: "postmortem", enabled: undefined })).open).toBe(false);
   });
 
   it("closes build at maxOpenEvolutionPRs and automerge at maxMergesPerDay", () => {

@@ -16,14 +16,17 @@ permissions:
 jobs:
   claude-review:
     # Human PRs only (docs/decisions.md P8): evolution PRs already get evolution-verify, so a review there would spend
-    # the Claude plan twice. Agent PRs are recognised as .github/guardrails.json defines them (label, branch prefix,
-    # bot author); the bot token acts as the owner, so the label and branch are what catch the loop's PRs.
+    # the Claude plan twice, and a postmortem PR carries text an agent wrote to a review that holds a token. Agent PRs
+    # are recognised as .github/guardrails.json defines them (label, branch prefix, bot author); the bot token acts as
+    # the owner, so the label and branch are what catch the loop's PRs.
     if: >-
       github.event.pull_request.draft == false
       && !contains(github.event.pull_request.labels.*.name, 'evolution')
+      && !contains(github.event.pull_request.labels.*.name, 'postmortem')
       && !startsWith(github.head_ref, 'evo/')
       && !startsWith(github.head_ref, 'claude/')
       && !startsWith(github.head_ref, 'guardian/')
+      && !startsWith(github.head_ref, 'postmortem/')
       && github.event.pull_request.user.type != 'Bot'
 
     runs-on: ubuntu-latest

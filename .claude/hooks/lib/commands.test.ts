@@ -67,6 +67,7 @@ describe("commandProblem blocks", () => {
     ["cat ~/.git-credentials", "env and credential files"],
     ["EVOLUTION_HUMAN=1 claude", "EVOLUTION_HUMAN"],
     ["echo '{\"env\":{\"EVOLUTION_HUMAN\":\"1\"}}' > .claude/settings.local.json", "EVOLUTION_HUMAN"],
+    ["EVOLUTION_POSTMORTEM=1 claude", "EVOLUTION_POSTMORTEM"],
     ["echo x > eslint.config.mjs", "eslint.config.mjs is a protected path"],
     ["sed -i 's/error/off/' eslint.config.mjs", "eslint.config.mjs is a protected path"],
     ["perl -pi -e 's/80/0/' vitest.config.ts", "vitest.config.ts is a protected path"],

@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { lastAliasRequest, productionDeployments, promoteDeployment, rollBack, sentryNumbers, servingDeploymentId, type Fetch } from "./guardian-api";
+import {
+  deploymentSha,
+  lastAliasRequest,
+  productionDeployments,
+  promoteDeployment,
+  rollBack,
+  sentryErrorGroups,
+  sentryNumbers,
+  servingDeploymentId,
+  type Fetch,
+} from "./guardian-api";
 
 const VERCEL = { token: "vercel-secret", projectId: "prj_1", teamId: "team_1" };
 const SENTRY = { token: "sentry-secret", org: "jaspys-team", project: "petri" };
@@ -74,6 +84,29 @@ describe("Vercel", () => {
     expect(String(error)).toMatch(/rolling production back failed: HTTP 403/);
     expect(String(error)).not.toContain("vercel-secret");
     await expect(servingDeploymentId(VERCEL, "petri-pi.vercel.app", fakeFetch([[200, { alias: "x" }]]).fetch)).rejects.toThrow(/shape the guardian doesn't know/);
+  });
+
+  it("reads the commit a deployment was built from, and fails when it has none", async () => {
+    const { fetch, calls } = fakeFetch([
+      [200, { id: "dpl_1", meta: { githubCommitSha: SERVING } }],
+      [200, { id: "dpl_2", meta: {} }],
+    ]);
+    expect(await deploymentSha(VERCEL, "dpl_1", fetch)).toBe(SERVING);
+    expect(calls[0]?.url.pathname).toBe("/v13/deployments/dpl_1");
+    await expect(deploymentSha(VERCEL, "dpl_2", fetch)).rejects.toThrow("the deployment dpl_2 has no GitHub commit");
+  });
+});
+
+describe("sentryErrorGroups", () => {
+  it("asks for the release's ten most frequent error groups", async () => {
+    const rows = [{ issue: "PETRI-1", title: "TypeError: x is undefined", culprit: "app/page", "count()": 12 }];
+    const { fetch, calls } = fakeFetch([[200, { data: rows }]]);
+    const window = { start: new Date("2026-10-10T12:00:00Z"), end: new Date("2026-10-24T12:00:00Z") };
+    expect(await sentryErrorGroups(SENTRY, SERVING, window, fetch)).toEqual(rows);
+    const params = calls[0]?.url.searchParams;
+    expect(params?.getAll("field")).toEqual(["issue", "title", "culprit", "count()"]);
+    expect(params?.get("query")).toBe(`project:petri environment:production release:${SERVING}`);
+    expect(params?.get("sort")).toBe("-count()");
   });
 });
 

@@ -1,7 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { GUARDRAILS_CONFIG_PATH, loadGuardrailsConfig } from "../../../scripts/check-pr/config.ts";
 import { globToRegExp, toRepoPath } from "../../../scripts/check-pr/glob.ts";
+import { postmortemPathProblem } from "../../../scripts/check-pr/postmortem-paths.ts";
 
 export type PathGuard = {
   readonly projectRoot: string;
@@ -89,4 +91,42 @@ export function protectedRepoPath(path: string, cwd: string, guard: PathGuard): 
   const absolute = resolve(cwd, toNativePath(path, guard.caseInsensitive));
   const real = realPath(absolute);
   return protectedWithin(absolute, guard) ?? protectedWithin(real, guard) ?? agentConfig(absolute) ?? agentConfig(real);
+}
+
+function headGit(args: readonly string[], root: string): { readonly status: number | null; readonly stdout: string } {
+  const result = spawnSync("git", args, { cwd: root, encoding: "utf8", windowsHide: true });
+  if (result.error !== undefined) throw result.error;
+  return result;
+}
+
+function inHead(repoPath: string, root: string): boolean {
+  return headGit(["cat-file", "-e", `HEAD:${repoPath}`], root).status === 0;
+}
+
+function headSiblings(repoPath: string, root: string): string[] {
+  const slash = repoPath.lastIndexOf("/");
+  const folder = slash === -1 ? [] : ["--", `${repoPath.slice(0, slash)}/`];
+  return headGit(["ls-tree", "-z", "--name-only", "HEAD", ...folder], root).stdout.split("\0").filter((entry) => entry !== "");
+}
+
+// Why the postmortem agent (EVOLUTION_POSTMORTEM=1) can't write this path, or undefined if it can: a protected path
+// and its real target must both be in the project and not a Claude Code settings file, and postmortemPathProblem must
+// allow the change to each (writing a file HEAD has changes it; any other file is an addition).
+export function postmortemProblem(path: string, cwd: string, guard: PathGuard): string | undefined {
+  const absolute = resolve(cwd, toNativePath(path, guard.caseInsensitive));
+  const protectedPath = protectedRepoPath(path, cwd, guard) !== undefined;
+  const config = loadGuardrailsConfig(guard.projectRoot);
+  for (const target of [absolute, realPath(absolute)]) {
+    const inside = relative(guard.projectRoot, target);
+    if (inside === "" || inside.startsWith("..") || isAbsolute(inside) || agentConfig(target) !== undefined) {
+      if (protectedPath) return "a postmortem writes protected files only inside the project, and never a Claude Code settings file";
+      continue;
+    }
+    const repoPath = toRepoPath(inside);
+    const change = inHead(repoPath, guard.projectRoot) ? "modify" : "add";
+    const existing = change === "add" ? headSiblings(repoPath, guard.projectRoot) : [];
+    const problem = postmortemPathProblem(repoPath, change, config, { ignoreCase: guard.caseInsensitive, protectedPath, existing });
+    if (problem !== undefined) return problem;
+  }
+  return undefined;
 }

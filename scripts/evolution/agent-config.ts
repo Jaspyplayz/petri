@@ -2,12 +2,18 @@ import { randomUUID } from "node:crypto";
 import type { EvolutionConfig } from "./config";
 
 // Each agent has its own prompt (.evolution/prompts/<agent>.md). The verifier is two runs, one that plans and one
-// that judges, sharing the verify model and turn limit.
-export const agents = ["triage", "build", "verify-plan", "verify-judge"] as const;
+// that judges, sharing the verify model and turn limit. The postmortem uses the build model and turn limit.
+export const agents = ["triage", "build", "verify-plan", "verify-judge", "postmortem"] as const;
 
 export type Agent = (typeof agents)[number];
 
-const configKey: Record<Agent, keyof EvolutionConfig["models"]> = { triage: "triage", build: "build", "verify-plan": "verify", "verify-judge": "verify" };
+const configKey: Record<Agent, keyof EvolutionConfig["models"]> = {
+  triage: "triage",
+  build: "build",
+  "verify-plan": "verify",
+  "verify-judge": "verify",
+  postmortem: "build",
+};
 
 export type AgentConfig = { readonly model: string; readonly maxTurns: number; readonly prompt: string; readonly jsonSchema: string | undefined };
 

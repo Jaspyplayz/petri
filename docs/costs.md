@@ -49,10 +49,11 @@ Evals run locally or on demand (`evals.yml`, nightly only while `EVALS_NIGHTLY` 
 - `turns` (3000)
 - `agentMinutes` (900)
 
-Both are rolling totals over the last 7 days for the triage, build and verify agents.
+Both are rolling totals over the last 7 days for the triage, build, verify and postmortem agents.
 
 - **The gate enforces it.** Before triage or build starts an agent, its gate reads the last 7 days of `agent_runs`. At or over either limit, the gate closes with the reason, and the run ends green without starting an agent. The loop picks up again once older runs leave the window, or when a human raises the budget. If `agent_runs` can't be read, the gate step fails rather than run without a budget.
 - **Verify isn't gated by the budget.** It only reviews PRs that a build already opened, and every PR needs its `evolution-verify` status.
+- **Neither is the postmortem.** It runs only after a guardian revert merges (or a maintainer dispatches it), on the build model and turn limit, and its turns still count toward the budget.
 - **The starting numbers are a guess.** About 15 full build cycles at their turn limits (80 for the builder plus 40 each for the planner and the judge) and four triages a day fit under 3,000 turns. 900 minutes is 15 hours of agent time. Tune both after a few weekly reports.
 
 ### The weekly report

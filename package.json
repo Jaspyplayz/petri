@@ -34,6 +34,7 @@
     "evolution:record-run": "tsx --env-file-if-exists=.env.local scripts/evolution-record-run.ts",
     "evolution:weekly": "tsx --env-file-if-exists=.env.local scripts/evolution-weekly.ts",
     "evolution:guardian": "tsx scripts/evolution-guardian.ts",
+    "evolution:postmortem": "tsx scripts/evolution-postmortem.ts",
     "app:flags": "tsx --env-file-if-exists=.env.local scripts/app-flags.ts",
     "boundaries": "node scripts/check-boundaries.ts",
     "features": "tsx scripts/check-features.ts",

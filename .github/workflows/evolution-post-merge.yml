@@ -3,7 +3,8 @@ name: evolution-post-merge
 # After a push to main: if the commit is a merged evolution PR, wait for Vercel's production deployment, put the change
 # on the Timeline (changelog row, feedback shipped, a comment on the issue), then verify production with the flows that
 # don't write (verify:all --read-only) and record the run in agent_runs. A merged guardian revert gets its "Reverted"
-# row and the agent_runs record, nothing else: production serves the rollback until the guardian promotes the revert.
+# row, the agent_runs record and the postmortem (evolution-postmortem), nothing else: production serves the rollback
+# until the guardian promotes the revert.
 # Any other push stops after the first step. The row goes in before verification because the change shipped either way,
 # and timeline.browse needs an entry. No gate: it only records what a merge already shipped. Rolling back and
 # reverting are the guardian's job, not this workflow's.
@@ -93,3 +94,13 @@ jobs:
           ready=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label evolution:ready --limit 1 --json number --jq length)
           if [ "$ready" = "0" ]; then echo "No evolution:ready issue is waiting."; exit 0; fi
           gh workflow run evolution-build.yml --repo "$GITHUB_REPOSITORY"
+
+      # isGuardianRevert accepted the merged PR before record named the change it reverted. The postmortem doesn't
+      # need the Timeline row, so a failed row doesn't stop it; its own gate applies.
+      - name: Start the postmortem of the reverted change
+        if: always() && steps.record.outputs.kind == 'revert' && steps.record.outputs.reverted != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVERTED: ${{ steps.record.outputs.reverted }}
+          REVERT: ${{ steps.record.outputs.pr }}
+        run: gh workflow run evolution-postmortem.yml --repo "$GITHUB_REPOSITORY" --ref main -f pr="$REVERTED" -f revert="$REVERT"

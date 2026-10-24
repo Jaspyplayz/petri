@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { agentConfig, agents, githubOutputs, type Agent } from "./evolution/agent-config";
 import { builderJsonSchema } from "./evolution/build";
 import { readEvolutionConfig } from "./evolution/config";
+import { postmortemJsonSchema } from "./evolution/postmortem";
 import { triageJsonSchema } from "./evolution/triage-output";
 import { planJsonSchema, verdictJsonSchema } from "./evolution/verdict";
 
@@ -20,6 +21,7 @@ function main(): void {
     build: builderJsonSchema(),
     "verify-plan": planJsonSchema(),
     "verify-judge": verdictJsonSchema(),
+    postmortem: postmortemJsonSchema(),
   };
   const config = agentConfig(agent, readEvolutionConfig(root), prompt, schemas[agent]);
   const output = process.env.GITHUB_OUTPUT;

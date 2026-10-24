@@ -112,7 +112,7 @@ async function record(): Promise<void> {
 async function recordRevert(pr: MergedGhPr, sha: string): Promise<void> {
   const reverted = parseRevertBranch(pr.headRefName);
   if (reverted === undefined) throw new Error(`${pr.headRefName} isn't a guardian revert branch`);
-  output({ kind: "revert", pr: String(pr.number) });
+  output({ kind: "revert", pr: String(pr.number), reverted: String(reverted.pr) });
   if (pr.mergedAt === null) throw new Error(`#${String(pr.number)} has no merge time`);
   const supabase = loopSupabase();
   const original = await supabase.from("changelog").select("id,title,feedback_ids,commit_sha").eq("kind", "change").eq("pr_number", reverted.pr).maybeSingle();

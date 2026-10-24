@@ -12,7 +12,7 @@ export function globToRegExp(glob: string, options: GlobOptions = {}): RegExp {
     const char = glob.charAt(index);
     if (char === "*" && glob.charAt(index + 1) === "*") {
       const followedBySlash = glob.charAt(index + 2) === "/";
-      pattern += followedBySlash ? "(?:.*/)?" : ".*";
+      pattern += followedBySlash ? "(?:[\\s\\S]*/)?" : "[\\s\\S]*";
       index += followedBySlash ? 2 : 1;
     } else if (char === "*") {
       pattern += "[^/]*";

@@ -80,7 +80,7 @@ describe("renderWeeklySummary", () => {
     const text = renderWeeklySummary([run("triage", 10, 2), run("build", 60, 30, "fail")], budget, now);
     expect(text).toContain("## Agent runs, 2026-11-01 12:00 to 2026-11-08 12:00 UTC");
     expect(text).toContain("| build | 1 | 1 | 60 | 30.0 | 0.50 |");
-    expect(text).toContain("| **Budgeted (triage, build, verify)** | 2 | 1 | 70 | 32.0 | 1.00 |");
+    expect(text).toContain("| **Budgeted (triage, build, verify, postmortem)** | 2 | 1 | 70 | 32.0 | 1.00 |");
     expect(text).toContain("turns 70 of 100 (70%), agent minutes 32 of 60 (53%)");
     expect(text).toContain("Under budget.");
   });

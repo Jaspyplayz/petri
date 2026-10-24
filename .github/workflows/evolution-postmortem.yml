@@ -1,0 +1,360 @@
+name: evolution-postmortem
+
+# Writes the postmortem of an evolution change that went wrong (Phase 8.5d) with the postmortem skill: the entry in
+# docs/agent-mistakes.md, the fix as high up the ladder as it gets, and an eval case. Post-merge dispatches it when a
+# guardian revert merges; a maintainer can dispatch it for any evolution PR. The agent's code never runs where the
+# secrets are:
+#   gather   trusted code: the gate (only EVOLUTION_ENABLED; it runs while the guardian's pause holds), then the
+#            evidence: the PR, its diff and issue, the revert, the incident issue, the release's errors in Sentry
+#   agent    no secrets: the postmortem agent edits a checkout; only its patch, JSON report and usage numbers leave
+#   usage    secrets, but never runs the agent's code: records the agent's turns and runtime in agent_runs
+#   check    no secrets: checks the report and the patch, applies it, checks the patch adds the entry and the eval
+#            case the report names, and runs pnpm check
+#   publish  secrets, but never runs the PR's code: pushes postmortem/<pr>-<sha7> and opens the PR with
+#            EVOLUTION_BOT_TOKEN, labelled postmortem, and needs-human when it adds or changes protected files
+#   failed   says on the incident issue, or the change, that no PR came
+# A human merges every postmortem PR: automerge only takes evolution PRs, and guardrails wants protected-ok for the
+# protected files a postmortem may add or change (postmortem in .github/guardrails.json; it never deletes one).
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: The evolution PR that went wrong
+        required: true
+      revert:
+        description: The guardian's revert of it, if there is one (post-merge fills this in)
+        required: false
+        default: ""
+      note:
+        description: What went wrong, in a line (optional)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evolution-postmortem-${{ inputs.pr }}
+  cancel-in-progress: false
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  gather:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      number: ${{ steps.gather.outputs.number }}
+      found: ${{ steps.gather.outputs.found }}
+      branch: ${{ steps.gather.outputs.branch }}
+      base: ${{ steps.gather.outputs.base }}
+      evidence: ${{ steps.gather.outputs.evidence }}
+      incident: ${{ steps.gather.outputs.incident }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+
+      - name: Gate (EVOLUTION_ENABLED; the pause doesn't stop a postmortem)
+        id: gate
+        env:
+          EVOLUTION_ENABLED: ${{ vars.EVOLUTION_ENABLED }}
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm -s evolution:gate postmortem
+
+      - name: Gather the evidence (GitHub, Vercel, Sentry)
+        if: steps.gate.outputs.open == 'true'
+        id: gather
+        env:
+          PR: ${{ inputs.pr }}
+          REVERT: ${{ inputs.revert }}
+          NOTE: ${{ inputs.note }}
+          GH_TOKEN: ${{ github.token }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: pnpm -s evolution:postmortem gather
+
+      - if: steps.gather.outputs.found == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: postmortem-evidence
+          path: artifacts/postmortem/
+          retention-days: 30
+
+  agent:
+    needs: gather
+    if: needs.gather.outputs.found == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # No id-token: the action gets the read-only GITHUB_TOKEN instead of minting a Claude App token that code the
+    # agent runs could also mint.
+    permissions:
+      contents: read
+    outputs:
+      report: ${{ steps.postmortem.outputs.structured_output }}
+      usage: ${{ steps.usage.outputs.json }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gather.outputs.base }}
+          fetch-depth: 0 # git show <the change's merge commit>
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - uses: ./.github/actions/app-stack
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: postmortem-evidence
+          path: artifacts/postmortem
+      - name: Agent settings from .evolution/
+        id: agent
+        run: pnpm -s evolution:agent-config postmortem
+
+      - name: Agent sandbox (the secret scrub needs bubblewrap, or the CLI won't install)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          bwrap --version
+
+      # EVOLUTION_POSTMORTEM lets the file hook pass the protected files a postmortem may add or change; the check
+      # job's patch check holds the same rules, and guardrails wants a human's protected-ok for them.
+      - name: Postmortem agent (edits the checkout; can't commit, push or reach the web)
+        id: postmortem
+        uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
+          EVOLUTION_POSTMORTEM: "1"
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.agent.outputs.prompt }}
+          claude_args: >-
+            --model ${{ steps.agent.outputs.model }}
+            --max-turns ${{ steps.agent.outputs.max_turns }}
+            --allowedTools "Read,Glob,Grep,Edit,MultiEdit,Write,TodoWrite,Task,Bash(pnpm check),Bash(pnpm verify:flow:*),Bash(pnpm verify:script:*),Bash(pnpm verify:all),Bash(pnpm featuremap),Bash(pnpm test:*),Bash(pnpm typecheck),Bash(pnpm lint),Bash(git status),Bash(git diff:*),Bash(git show:*),Bash(git log:*)"
+            --disallowedTools "WebFetch,WebSearch"
+            --json-schema '${{ steps.agent.outputs.json_schema }}'
+
+      # Only jq, never the checkout's code. The agent could have changed this runner, so the usage job treats the
+      # numbers as a report and bounds them; --max-turns and the timeout cap the run whatever it reports.
+      - name: Agent usage (jq reads the action's log)
+        if: always()
+        id: usage
+        env:
+          LOG: ${{ steps.postmortem.outputs.execution_file }}
+        run: |
+          if [ -n "$LOG" ] && [ -f "$LOG" ]; then
+            echo "json=$(jq -c '[.[] | select(.type == "result")] | last | {turns: .num_turns, durationMs: .duration_ms, costUsd: .total_cost_usd, isError: .is_error, subtype: .subtype}' "$LOG")" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: The agent's patch
+        run: |
+          git add -A
+          git diff --cached --binary --no-renames > "$RUNNER_TEMP/postmortem.patch"
+          git diff --cached --stat
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: postmortem-patch
+          path: ${{ runner.temp }}/postmortem.patch
+          retention-days: 30
+
+  usage:
+    needs: [gather, agent]
+    if: always() && needs.gather.outputs.found == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # main's code only: this job never sees the agent's checkout or patch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gather.outputs.base }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - name: Record the run in agent_runs
+        env:
+          RESULT: ${{ needs.agent.result }}
+          USAGE: ${{ needs.agent.outputs.usage }}
+          PR: ${{ inputs.pr }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm -s evolution:record-run postmortem
+
+  check:
+    needs: [gather, agent]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      added: ${{ steps.patch.outputs.added }}
+      modified: ${{ steps.patch.outputs.modified }}
+      digest: ${{ steps.patch.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gather.outputs.base }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: postmortem-patch
+          path: ${{ runner.temp }}
+      - name: Check the agent's report
+        id: report
+        env:
+          REPORT: ${{ needs.agent.outputs.report }}
+        run: |
+          printf '%s' "$REPORT" > "$RUNNER_TEMP/report.json"
+          pnpm -s evolution:postmortem check-report "$RUNNER_TEMP/report.json"
+      - name: Stop if the agent was blocked
+        if: steps.report.outputs.outcome == 'blocked'
+        env:
+          REASON: ${{ steps.report.outputs.reason }}
+        run: |
+          echo "::error::The postmortem agent stopped: $REASON"
+          exit 1
+      - name: Check the patch before applying it (protected paths, skill frontmatter, binaries, size)
+        id: patch
+        run: pnpm -s evolution:check-patch "$RUNNER_TEMP/postmortem.patch" --postmortem
+      # check-applied is main's script: the patch can't change scripts/evolution/.
+      - name: Apply the patch, which must add the entry and only the eval case the report names
+        run: |
+          git apply --index "$RUNNER_TEMP/postmortem.patch"
+          pnpm -s evolution:postmortem check-applied "$RUNNER_TEMP/report.json"
+      - name: pnpm check
+        run: pnpm check
+
+  publish:
+    needs: [gather, agent, check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gather.outputs.base }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: postmortem-patch
+          path: ${{ runner.temp }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: postmortem-evidence
+          path: artifacts/postmortem
+      # The agent job held the artifact token, so the patch must be the one the check job checked and ran pnpm check on,
+      # and open-pr checks evidence.json against gather's digest the same way.
+      - name: Check the patch again, from this clean checkout
+        env:
+          DIGEST: ${{ needs.check.outputs.digest }}
+        run: |
+          if ! printf '%s  %s\n' "$DIGEST" "$RUNNER_TEMP/postmortem.patch" | sha256sum --check --status; then
+            echo "::error::The patch isn't the one the check job checked."
+            exit 1
+          fi
+          pnpm -s evolution:check-patch "$RUNNER_TEMP/postmortem.patch" --postmortem
+
+      # On main as it is now, like the build's publish: the bot token can't push a branch whose workflows differ from
+      # main's (it never gets the workflow scope). No git hooks run: the patch may change eslint.config.mjs, which a
+      # lint hook would run next to the bot token. gather found no open PR from this branch, so one that exists is
+      # left from an earlier run that didn't open its PR, and the push replaces it.
+      - name: Push the branch (in a separate worktree, so nothing here runs the PR's code)
+        env:
+          BOT_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BRANCH: ${{ needs.gather.outputs.branch }}
+          NUMBER: ${{ needs.gather.outputs.number }}
+        run: |
+          git fetch --no-tags --depth=1 origin "+refs/heads/main:refs/remotes/origin/main"
+          git worktree add --detach "$RUNNER_TEMP/branch" origin/main
+          cd "$RUNNER_TEMP/branch"
+          if ! git apply --index "$RUNNER_TEMP/postmortem.patch"; then
+            echo "::error::The checked patch no longer applies to main. Dispatch the postmortem again."
+            exit 1
+          fi
+          git -c core.hooksPath=/dev/null -c user.name="petri-evolution" -c user.email="petri-evolution@users.noreply.github.com" commit -q -m "postmortem: #$NUMBER"
+          git -c core.hooksPath=/dev/null push --force "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+
+      - name: Make sure the labels exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm -s evolution:postmortem labels
+
+      - name: Open the PR from the template
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BRANCH: ${{ needs.gather.outputs.branch }}
+          PROTECTED_ADDED: ${{ needs.check.outputs.added }}
+          PROTECTED_MODIFIED: ${{ needs.check.outputs.modified }}
+          EVIDENCE_SHA: ${{ needs.gather.outputs.evidence }}
+          REPORT: ${{ needs.agent.outputs.report }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s' "$REPORT" > artifacts/postmortem/report.json
+          pnpm -s evolution:postmortem open-pr
+
+      - name: Link it from the change and the incident
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL: ${{ steps.pr.outputs.url }}
+          NUMBER: ${{ needs.gather.outputs.number }}
+          INCIDENT: ${{ needs.gather.outputs.incident }}
+        run: |
+          gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "The postmortem of this change: $URL"
+          if [ -n "$INCIDENT" ]; then
+            gh issue comment "$INCIDENT" --repo "$GITHUB_REPOSITORY" --body "The postmortem: $URL. It needs a human to review and merge it."
+          fi
+
+  # gather writes number (and incident once it finds it) before anything can fail, so a failure in gather itself gets
+  # a comment too. A closed gate isn't a failure and says nothing.
+  failed:
+    needs: [gather, agent, check, publish]
+    if: failure() && needs.gather.outputs.number != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Say so on the incident issue, or on the change
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ needs.gather.outputs.number }}
+          INCIDENT: ${{ needs.gather.outputs.incident }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="The postmortem didn't open a PR. The run has the evidence, the agent's report, its patch and the check output: $RUN_URL. Run /postmortem #$NUMBER locally instead."
+          if [ -n "$INCIDENT" ]; then
+            gh issue comment "$INCIDENT" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body"
+          fi
