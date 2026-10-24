@@ -57,7 +57,9 @@
     ],
     "authors": [
       "claude[bot]",
-      "github-actions[bot]"
+      "github-actions[bot]",
+      "petri-evolution",
+      "petri-guardian"
     ]
   },
   "postmortem": {
