@@ -66,8 +66,7 @@ petri/
 │   └── pull_request_template.md
 ├── evals/
 │   ├── <skill>/cases/NN-name/{task.md,setup.sh,rubric.md}
-│   ├── runner.ts                    # copies repo to neutrally named temp dirs, runs `claude -p`, judges
-│   └── results.jsonl
+│   └── results.jsonl                # one line per case run; runner is scripts/evals.ts (protected path)
 ├── artifacts/verify/<ts>/<flow>/    # gitignored: report.json, report.md, step-NN.png
 ├── docs/                            # architecture, decisions, MANUAL_STEPS, agent-mistakes, costs, runbook, porting
 ├── FEATURE_MAP.md                   # generated; CI fails if stale
@@ -201,7 +200,7 @@ Every agent workflow starts with a gate step that exits early when `vars.EVOLUTI
 | `evolution-pr-closed.yml` | `pull_request_target: closed` (unmerged evolution PRs) + `workflow_dispatch` | 6 | Puts the feedback that's still `building` on that PR back to `triaged`, clears its `pr_url`, comments on the issue, deletes the PR's `evo/` branch if it hasn't moved, then dispatches the build for the next `evolution:ready` issue. Runs main's code only. |
 | `evolution-guardian.yml` | cron every 15m + 10/30/60m after deploy | 8 | On a Sentry spike: Vercel instant rollback → one auto-merged revert PR (it reverts the commit, adds `.evolution/PAUSED` with `{"until": now+24h}`, and lowers the trust level by one) → a "Reverted" Timeline entry → postmortem → a notify issue. |
 | `evolution-postmortem.yml` | `workflow_run` failure / revert / scope-creep verdict + `workflow_dispatch` | 7 | Appends to `docs/agent-mistakes.md` and climbs the fix ladder (design → hard rule → skill → CLAUDE.md). Adds an eval case. |
-| `evals.yml` | PRs touching `.claude/skills/**` (capped) + nightly | 7 | Runs `pnpm evals` for the changed skills and appends to `evals/results.jsonl`. |
+| `evals.yml` | PRs touching `.claude/skills/**` (capped) + nightly while `EVALS_NIGHTLY` is `true` | 7 | Runs `pnpm evals` for the changed skills and reports in the job summary and an artifact. `evals/results.jsonl` is committed only from local runs. |
 | `evolution-weekly.yml` | weekly cron | 5/8 | `trust-report.ts` suggests (never applies) a promotion in an issue, posts the `agent_runs` cost/turns summary, and pauses the loop if over budget. |
 
 **Branch protection on `main`:** require `ci-ok` and `evolution-verify`, require the branch to be up to date, no force pushes, 0 approvals. Repo auto-merge is enabled.
