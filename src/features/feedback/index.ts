@@ -1,3 +1,3 @@
 export { feedbackManifest } from "./feature.manifest";
 export { FeedbackScreen } from "./components/feedback-screen";
-export { handleCreateFeedback, handleVote } from "./server/handlers";
+export { handleCreateFeedback, handleReport, handleVote } from "./server/handlers";
