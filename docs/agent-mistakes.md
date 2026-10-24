@@ -158,3 +158,11 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** Three runner gaps. Nothing checked that verify's port was free. Nothing stopped the verify server a case had started, so it would hold the port for the next case. And on Windows the agent had a PowerShell tool that the allow-list doesn't cover; the CI builder has only Bash.
 - **Category:** test harness, plus a leftover process (mine)
 - **Fix rung:** (a) design, in `scripts/evals.ts`: before each case the runner fails if the verify port answers (shown failing against PID 4512 before it was stopped). After each case it runs `pnpm verify:down` in the copy. `SUBJECT_DISALLOWED_TOOLS` removes PowerShell. The whole set was then run again (`2026-10-24T01-19-39-566Z`), and 8/8 passed.
+
+## 2026-10-24 · Restacking a PR wiped the maintainer's uncommitted trust-level edit
+
+- **What happened:** While landing #72–#75, I restacked #73 with `git merge origin/main` and then `git checkout HEAD -- .`, the recipe for keeping the branch's tree after a squash. The working tree also held the maintainer's uncommitted `"trustLevel": 1` in `.evolution/config.json`, and the checkout put it back to 0.
+- **Evidence:** Before the restack, `git status` showed ` M .evolution/config.json`. Afterwards the status was empty, and `.evolution/config.json:2` read `"trustLevel": 0`. Nothing was committed with it: the merge commit's tree equals the branch's.
+- **Root cause:** The restack recipe resets every tracked file and assumes a clean working tree. I had been leaving the maintainer's edit unstaged on purpose and carrying it between branches, and I didn't connect the two.
+- **Category:** destructive git command on a dirty working tree
+- **Fix rung:** (a) design: the restack script now refuses to run when the working tree has uncommitted changes to tracked files. The stacked-PR memory says the same. The edit itself is the maintainer's to redo, because only a human raises the level.
