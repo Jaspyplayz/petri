@@ -174,3 +174,27 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** I read a green check as "ran and passed" without opening its log. claude-code-action reports a skip as success, and it always skips on a PR that edits its own workflow, which is exactly the PR that changes how it runs.
 - **Category:** false evidence (a skipped check cited as a pass), plus a setting never exercised in its real environment
 - **Fix rung:** (a) design: every agent job installs bubblewrap before the agent, and `workflow-limits.ts` fails a job that doesn't. The CLI with the scrub and bubblewrap was run on a throwaway branch (`probe/agent-sandbox`) through `pnpm check`, `verify:all` and `verify:compare` before this fix. The lesson for evidence: open the log of any check cited as proof, and a PR that edits an agent workflow proves that workflow with a separate run, not its own checks.
+
+## 2026-10-24 · The guardian's promote leaned on a Vercel field no one had seen after a real rollback
+
+- **What happened:** In the Phase 8 spike test, the guardian rolled production back and its revert (#91) merged. The next run with `act` didn't promote. My first fix (#93's first commit) then left eight problems, which two independent reviews found. One was a spike after the promote that would have rolled production back onto the incident's deployment.
+- **Evidence:** The summary of run 40126930025 reads "last promote or rollback: none". `GET /v9/projects/{id}` had no `lastAliasRequest` after the rollback, and none after the guardian's promote either (run 40132630340). #93's body lists the review findings.
+- **Root cause:** 8.5b built `rolledBackFrom` and the "held through a promote" rule on `lastAliasRequest`, from Vercel's docs. The dry runs only ever saw a project with no promote or rollback, so nothing checked that Vercel fills the field in. My first fix then patched the one decision that had failed, without walking through the states it creates: after the promote, and at the next incident.
+- **Category:** an unverified assumption about an external API, then a fix that wasn't checked against the states it creates
+- **Fix rung:** (a) design (#93):
+  - the rollback is read from the deployment list;
+  - a reported request counts only if it succeeded after the newest served deployment went live;
+  - after an incident's promote, production is held until the next deploy, through the incident marker;
+  - a promote that didn't take turns every check red.
+
+  The tests cover the real shape from #92. The spike test found the bug, which is why any path that changes production runs for real before its phase closes.
+
+## 2026-10-24 · The postmortem workflow first ran end to end in the spike test, and failed twice
+
+- **What happened:** When the guardian's revert merged, post-merge dispatched `evolution-postmortem`, and its agent job stopped at once with `Workflow initiated by non-human actor: github-actions (type: Bot)`. A hand dispatch got past that, and its agent wrote a patch. Then the check job's `pnpm check` failed with `browserType.launch: Executable doesn't exist`.
+- **Evidence:** Runs 40126860735 and 40127698596. Each one posted "The postmortem didn't open a PR" on #92.
+- **Root cause:** #84 said "Not run end to end yet", and I didn't read the two things a run would have hit:
+  - claude-code-action refuses any bot that `allowed_bots` doesn't name, and a dispatch made with the job token comes from `github-actions`;
+  - `pnpm check` runs the `scripts/verify` tests, which launch Chromium. The check job installed none, though `ci.yml`'s unit job and `app-stack` both do.
+- **Category:** a workflow never run with its real trigger
+- **Fix rung:** (a) design. #94 adds `allowed_bots: github-actions` to the build and postmortem agent steps, and #95 installs Chromium in the check job. The rerun of the #89 postmortem after both merged (run 40132653779) passed its check job and opened #96, but it tests #95 only. I dispatched it as a person, so the `github-actions` path that #94 fixes stays untested until the next guardian revert merges and post-merge dispatches the postmortem. Not done yet: a `workflow-limits.ts` rule that fails any job that runs `pnpm check` without installing Chromium would make the second failure impossible.
