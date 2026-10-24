@@ -5,13 +5,17 @@ import { useState, useTransition } from "react";
 import { track } from "@/shared/lib/track";
 import { feedbackErrorMessage, parseFeedbackApiError } from "../lib/feedback-input";
 
-type VoteState = { readonly kind: "idle" } | { readonly kind: "voted" } | { readonly kind: "error"; readonly text: string };
+type VoteState =
+  | { readonly kind: "idle" }
+  | { readonly kind: "voted" }
+  | { readonly kind: "alreadyVoted" }
+  | { readonly kind: "error"; readonly text: string };
 
 export function VoteButton({ feedbackId, count }: { readonly feedbackId: string; readonly count: number }) {
   const router = useRouter();
   const [state, setState] = useState<VoteState>({ kind: "idle" });
   const [pending, startTransition] = useTransition();
-  const voted = state.kind === "voted";
+  const voted = state.kind === "voted" || state.kind === "alreadyVoted";
 
   const handleVote = () => {
     if (voted || pending) return;
@@ -21,12 +25,14 @@ export function VoteButton({ feedbackId, count }: { readonly feedbackId: string;
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
-      if (response.ok) {
+      if (response.status === 201) {
         setState({ kind: "voted" });
-        if (response.status === 201) {
-          track("feedback", "vote");
-          router.refresh();
-        }
+        track("feedback", "vote");
+        router.refresh();
+        return;
+      }
+      if (response.ok) {
+        setState({ kind: "alreadyVoted" });
         return;
       }
       const error = parseFeedbackApiError(await response.json().catch(() => null));
@@ -50,6 +56,11 @@ export function VoteButton({ feedbackId, count }: { readonly feedbackId: string;
       <span data-testid="feedback-vote-count" className="text-sm font-bold">
         {count}
       </span>
+      {state.kind === "alreadyVoted" ? (
+        <span data-testid="feedback-vote-note" role="status" className="text-center text-[11px] leading-tight text-ink-soft">
+          Already counted
+        </span>
+      ) : null}
       {state.kind === "error" ? (
         <span data-testid="feedback-vote-error" role="alert" className="text-center text-[11px] leading-tight text-warning">
           {state.text}

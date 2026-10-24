@@ -117,14 +117,14 @@ isOneToOne: false
                   ]
                 },"votes": {
                   Row: {
-                    "created_at": string,"feedback_id": string,"id": string,"voter_hash": string
+                    "created_at": string,"feedback_id": string,"id": string,"ip_hash": string | null,"voter_hash": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"feedback_id": string,"id"?: string,"voter_hash": string
+                    "created_at"?: string,"feedback_id": string,"id"?: string,"ip_hash"?: string | null,"voter_hash": string
                   }
                   Update: {
-                    "created_at"?: string,"feedback_id"?: string,"id"?: string,"voter_hash"?: string
+                    "created_at"?: string,"feedback_id"?: string,"id"?: string,"ip_hash"?: string | null,"voter_hash"?: string
                   }
                   Relationships: [
                     {
@@ -141,7 +141,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "consume_rate_limit":
+            "cast_vote":
+{ Args: { "p_feedback_id": string,"p_ip_cap": number,"p_ip_hash": string,"p_voter_hash": string }; Returns: string
+                           },
+"consume_rate_limit":
 { Args: { "p_action": string,"p_ip_hash": string,"p_limit": number,"p_window": string }; Returns: boolean
                            }
           }
