@@ -1,11 +1,11 @@
 // pnpm evals [skill ...] [--max N] [--subject-model M] [--judge-model M] [--keep]
 //
 // For each case in evals/<skill>/cases/: copy the repo at HEAD (no history, no evals/) into a temp folder with a
-// neutral name, run the case's setup.sh there, run `claude -p` on task.md with the project's skills and settings, then
-// ask a judge in a fresh context to score the transcript, the diff and the verify screenshots against rubric.md.
-// One line per case goes to evals/results.jsonl; the full run is kept under artifacts/evals/<run id>/.
+// neutral name, run the case's setup.sh there in a container, run `claude -p` on task.md with the project's skills and
+// settings, then ask a judge in a fresh context to score the transcript, the diff and the verify screenshots against
+// rubric.md. One line per case goes to evals/results.jsonl; the full run is kept under artifacts/evals/<run id>/.
 import { spawnSync, type SpawnSyncOptions } from "node:child_process";
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -23,14 +23,16 @@ import {
 } from "./evals/agents";
 import { caseProblems, selectCases, type EvalCase } from "./evals/cases";
 import type { EvalResult } from "./evals/results";
+import { hostUser, resetGitConfig, setupDockerArgs } from "./evals/sandbox";
 import { bashCommands, condenseTranscript, ranVerify } from "./evals/transcript";
 import { readEvolutionConfig } from "./evolution/config";
+import { stopServer } from "./verify/server";
 
 const root = join(import.meta.dirname, "..");
 const evalsDir = join(root, "evals");
+const SETUP_TIMEOUT_MS = 10 * 60_000;
 const SUBJECT_TIMEOUT_MS = 45 * 60_000;
 const JUDGE_TIMEOUT_MS = 15 * 60_000;
-const BASH = process.platform === "win32" ? join(process.env.ProgramFiles ?? "C:\\Program Files", "Git", "bin", "bash.exe") : "bash";
 
 function run(command: string, args: readonly string[], options: SpawnSyncOptions & { cwd: string }): string {
   const result = spawnSync(command, args, { encoding: "utf8", maxBuffer: 512 * 1024 * 1024, env: withoutSecrets(process.env) as NodeJS.ProcessEnv, ...options });
@@ -60,7 +62,7 @@ function discoverCases(): EvalCase[] {
 
 // A copy of HEAD's files without evals/ (the rubrics) and without history or branch names, committed as one plain
 // commit that origin/main also points at, so verify:compare origin/main works. Then the case's setup.sh, committed.
-function prepareCopy(evalCase: EvalCase): string {
+function prepareCopy(evalCase: EvalCase): { repo: string; gitConfig: string } {
   const work = mkdtempSync(join(tmpdir(), "petri-work-"));
   const repo = join(work, "petri");
   mkdirSync(repo);
@@ -73,14 +75,16 @@ function prepareCopy(evalCase: EvalCase): string {
   rmSync(join(repo, ".git", "FETCH_HEAD"), { force: true });
   git("commit", "-q", "-m", "Initial commit");
   git("update-ref", "refs/remotes/origin/main", "HEAD");
+  const gitConfig = readFileSync(join(repo, ".git", "config"), "utf8");
   run("pnpm", ["install", "--frozen-lockfile", "--prefer-offline"], { cwd: repo, shell: process.platform === "win32" });
   run("pnpm", ["-s", "env:local"], { cwd: repo, shell: process.platform === "win32" });
-  run(BASH, [join(evalCase.dir, "setup.sh")], { cwd: repo });
+  run("docker", setupDockerArgs(evalCase.dir, repo, hostUser()), { cwd: repo, timeout: SETUP_TIMEOUT_MS });
+  resetGitConfig(repo, gitConfig);
   if (git("status", "--porcelain").trim()) {
     git("add", "-A");
     git("commit", "-q", "-m", "Work in progress");
   }
-  return repo;
+  return { repo, gitConfig };
 }
 
 function claude(args: readonly string[], cwd: string, timeout: number): string {
@@ -94,13 +98,13 @@ function lastJson(text: string): { total_cost_usd?: number; structured_output?: 
   return line ? (JSON.parse(line) as { total_cost_usd?: number; structured_output?: unknown }) : {};
 }
 
-function runCase(evalCase: EvalCase, options: { runId: string; commit: string; subjectModel: string; judgeModel: string; keep: boolean }): EvalResult {
+async function runCase(evalCase: EvalCase, options: { runId: string; commit: string; subjectModel: string; judgeModel: string; keep: boolean }): Promise<EvalResult> {
   const started = Date.now();
   const out = join(root, "artifacts", "evals", options.runId, `${evalCase.skill}__${evalCase.id}`);
   mkdirSync(out, { recursive: true });
   const task = readFileSync(join(evalCase.dir, "task.md"), "utf8");
   const rubric = readFileSync(join(evalCase.dir, "rubric.md"), "utf8");
-  const repo = prepareCopy(evalCase);
+  const { repo, gitConfig } = prepareCopy(evalCase);
   process.stdout.write(`evals: ${evalCase.skill}/${evalCase.id} in ${repo}\n`);
 
   let transcript = "";
@@ -114,8 +118,10 @@ function runCase(evalCase: EvalCase, options: { runId: string; commit: string; s
   } catch (error) {
     transcript += `\n${JSON.stringify({ type: "runner_error", message: redactCredentials(String(error), process.env) })}`;
   }
-  // A verify server the agent started outlives the copy and would hold the port for the next case.
-  spawnSync("pnpm", ["-s", "verify:down"], { cwd: repo, env: withoutSecrets(process.env) as NodeJS.ProcessEnv, shell: process.platform === "win32", timeout: 60_000 });
+  // A verify server the agent started outlives the copy and would hold the port for the next case. The runner stops it
+  // with its own code: the copy's verify:down is code the agent could have changed.
+  await stopServer(repo);
+  resetGitConfig(repo, gitConfig);
   const lines = transcript.split("\n");
   const commands = bashCommands(lines);
   run("git", ["add", "-A"], { cwd: repo });
@@ -123,7 +129,9 @@ function runCase(evalCase: EvalCase, options: { runId: string; commit: string; s
   writeFileSync(join(out, "transcript.md"), condenseTranscript(lines));
   writeFileSync(join(out, "commands.txt"), `${commands.join("\n")}\n`);
   writeFileSync(join(out, "diff.patch"), run("git", ["diff", "--cached", "HEAD"], { cwd: repo }));
-  if (existsSync(join(repo, "artifacts", "verify"))) cpSync(join(repo, "artifacts", "verify"), join(out, "verify"), { recursive: true });
+  if (existsSync(join(repo, "artifacts", "verify"))) {
+    cpSync(join(repo, "artifacts", "verify"), join(out, "verify"), { recursive: true, filter: (source) => !lstatSync(source).isSymbolicLink() });
+  }
   if (!options.keep) rmSync(join(repo, ".."), { recursive: true, force: true });
 
   const judged = lastJson(
@@ -194,7 +202,7 @@ async function main(): Promise<void> {
   for (const evalCase of cases) {
     const portProblem = await verifyPortProblem();
     if (portProblem) throw new Error(`evals: ${portProblem}`);
-    const result = runCase(evalCase, options);
+    const result = await runCase(evalCase, options);
     appendFileSync(join(evalsDir, "results.jsonl"), `${JSON.stringify(result)}\n`);
     if (!result.passed) failed += 1;
     process.stdout.write(`${result.passed ? "PASS" : "FAIL"} ${result.skill}/${result.case} ${String(result.score)}/10 (verify ${result.ranVerify ? "run" : "not run"}, $${String(result.costUsd)}): ${result.summary}\n`);

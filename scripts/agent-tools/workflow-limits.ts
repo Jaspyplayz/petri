@@ -2,7 +2,8 @@
 // timeout on every job, and on every claude-code-action step a pinned commit, a --max-turns and the secret scrub
 // (CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, which keeps tokens out of the agent's subprocesses), after a run step in the same
 // job that installs bubblewrap and allows user namespaces (the scrub needs both, or the CLI won't even install). A run
-// step never names a secret inline or prints the environment. A schedule runs at most every 15 minutes. The test runs these on every file
+// step that gets the Claude token, such as the evals runner's, comes after that step too. A run step never names a
+// secret inline or prints the environment. A schedule runs at most every 15 minutes. The test runs these on every file
 // in .github/workflows, so a new or edited workflow can't drop them.
 import { load } from "js-yaml";
 
@@ -16,6 +17,7 @@ const PRINTS_ENV = [
   /\bbash\s+-[a-z]*x\b/,
 ];
 const INSTALLS_SANDBOX = [/apt-get install[^\n]*\bbubblewrap\b/, /apparmor_restrict_unprivileged_userns=0/];
+const CLAUDE_CREDENTIALS = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"];
 
 type Json = Record<string, unknown>;
 
@@ -69,6 +71,9 @@ export function workflowLimitProblems(file: string, text: string): string[] {
         if (SECRET_IN_RUN.test(script)) problems.push(`${file}: job ${name}, "${label}" puts a secret in the script; pass it through env:`);
         if (PRINTS_ENV.some((pattern) => pattern.test(script))) problems.push(`${file}: job ${name}, "${label}" prints the environment`);
         if (INSTALLS_SANDBOX.every((pattern) => pattern.test(script))) sandboxed = true;
+        if (!sandboxed && CLAUDE_CREDENTIALS.some((key) => key in (record(step.env) ?? {}))) {
+          problems.push(`${file}: job ${name}, "${label}" gets the Claude token before a step that installs bubblewrap and allows user namespaces`);
+        }
       }
       const uses = typeof step.uses === "string" ? step.uses : "";
       if (!uses.startsWith("anthropics/claude-code-action")) continue;

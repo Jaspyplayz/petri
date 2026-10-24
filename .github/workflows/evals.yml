@@ -102,6 +102,16 @@ jobs:
         run: pnpm db:start -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       - name: Write .env.local from supabase status
         run: pnpm env:local
+      # The runner starts the agent under test with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, which needs bubblewrap. Its tools
+      # then run without the token and see only their own processes. setup.sh runs in a container (scripts/evals.ts).
+      - name: Agent sandbox (the secret scrub needs bubblewrap)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          bwrap --version
 
       - name: Pick the skills
         id: pick

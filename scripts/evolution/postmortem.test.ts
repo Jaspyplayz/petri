@@ -182,8 +182,8 @@ describe("the postmortem PR", () => {
     }
     expect(body).toContain("The guardian reverted #63 (feat(blob): show the name) in #64 after errors spiked in production (https://github.com/x/y/issues/66).");
     expect(body).toContain("the only eval files it adds");
-    expect(body).toContain("Read the case's `setup.sh` before you merge or run `/run-evals build-evolution-issue`");
-    expect(body).toContain("the evals workflow runs it in CI next to the Claude token, neither in a sandbox");
+    expect(body).toContain("Read the whole case before you merge or run `/run-evals build-evolution-issue`");
+    expect(body).toContain("its `setup.sh` runs in a container with no network, but then the agent under test follows `task.md`");
     expect(body).toContain("**Root cause** (reproduced)");
     expect(body).toContain("- Protected files it adds: `lint-rules/no-server-env.mjs`.");
     expect(body).toContain("- Protected files it changes: `lint-rules/index.mjs`. Read these diffs line by line.");
