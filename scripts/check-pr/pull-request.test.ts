@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadGuardrailsConfig } from "./config";
 import { repoRoot } from "./context";
@@ -97,6 +99,17 @@ describe("botCommitReasons", () => {
   it("flags the configured agent identities even without a [bot] suffix", () => {
     const withAgent = { ...config, agentPullRequests: { ...config.agentPullRequests, authors: ["Petri-Agent"] } };
     expect(botCommitReasons([{ ...human, committerName: "petri-agent" }], withAgent)).toEqual(["bot commit by petri-agent"]);
+  });
+
+  it("flags every identity the loop's workflows commit as", () => {
+    const workflows = join(repoRoot, ".github", "workflows");
+    const names = readdirSync(workflows).flatMap((file) =>
+      [...readFileSync(join(workflows, file), "utf8").matchAll(/user\.name="([^"]+)"/g)].map((match) => match[1] ?? ""),
+    );
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of new Set(names)) {
+      expect(botCommitReasons([{ ...human, authorName: name }], config), name).toEqual([`bot commit by ${name}`]);
+    }
   });
 });
 
