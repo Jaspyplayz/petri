@@ -24,8 +24,9 @@ const incident: Incident = {
   previous: { id: "dpl_old", url: "petri-old.vercel.app", sha: "a".repeat(40), liveAt: Date.parse("2026-10-23T09:00:00Z") },
   currentWindow: { start: "2026-10-24T11:40:00.000Z", end: "2026-10-24T12:00:00.000Z" },
   numbers: { currentErrors: 31, currentMinutes: 20, baselineErrors: 3, baselineMinutes: 60, newUnhandled: [{ issue: "PETRI-7", events: 20 }] },
-  verdict: { spike: true, expected: 1, reasons: ["31 errors in 20 min", "new unhandled error PETRI-7 with 20 events"] },
+  verdict: { spike: true, expected: 1, noRate: undefined, reasons: ["31 errors in 20 min", "new unhandled error PETRI-7 with 20 events"] },
   culprit: { sha: "b".repeat(40), pr: { number: 63, title: "feat(blob): blink every few seconds", url: "https://github.com/x/y/pull/63" } },
+  problems: [],
   runUrl: "https://github.com/x/y/actions/runs/1",
 };
 
@@ -46,7 +47,7 @@ describe("incidentSummary", () => {
   });
 
   it("says what a spike would be when there isn't one", () => {
-    const calm = { ...incident, numbers: { ...incident.numbers, newUnhandled: [] }, verdict: { spike: false, expected: 1, reasons: [] }, culprit: undefined };
+    const calm = { ...incident, numbers: { ...incident.numbers, newUnhandled: [] }, verdict: { spike: false, expected: 1, noRate: undefined, reasons: [] }, culprit: undefined };
     const summary = incidentSummary(calm, SENTRY);
     expect(summary).toContain("no spike (a spike is at least 5 errors and 3× the previous release's rate");
     expect(summary).toContain("**New unhandled errors:** none");
@@ -54,9 +55,17 @@ describe("incidentSummary", () => {
   });
 
   it("says when only new unhandled errors count", () => {
-    const brief = { ...incident, numbers: { ...incident.numbers, baselineMinutes: 10 }, verdict: { ...incident.verdict, expected: undefined } };
-    expect(incidentSummary(brief, SENTRY)).toContain("was live only 10 min before this one, too short to compare a rate with, so only new unhandled errors count");
+    const brief = { ...incident, verdict: { ...incident.verdict, expected: undefined, noRate: "the previous release was live only 10 min before this one" } };
+    expect(incidentSummary(brief, SENTRY)).toContain(
+      "no rate comparison with the previous release (`aaaaaaa`): the previous release was live only 10 min before this one, so only new unhandled errors count",
+    );
     expect(incidentSummary({ ...brief, previous: undefined }, SENTRY)).toContain("no previous production deployment to compare with");
+  });
+
+  it("says when the change is unknown because a lookup failed", () => {
+    const summary = incidentSummary({ ...incident, culprit: undefined, problems: ["finding the evolution change that went live: HTTP 502"] }, SENTRY);
+    expect(summary).toContain("**Evolution change in this deployment:** unknown (a GitHub lookup failed, below)");
+    expect(summary).toContain("- **Lookup failed:** finding the evolution change that went live: HTTP 502");
   });
 });
 
@@ -81,8 +90,11 @@ describe("the guardian's PRs", () => {
   it("titles the revert the way git and trust-report name one, and the pause PR so it doesn't count as a revert", () => {
     expect(revertTitle("feat(blob): blink")).toBe('Revert "feat(blob): blink"');
     expect(isRevert({ number: 1, title: revertTitle("feat(blob): blink"), mergedAt: "", labels: [] })).toBe(true);
-    expect(pauseTitle(63)).toBe("chore(evolution): pause the loop and lower trust after #63");
-    expect(isRevert({ number: 2, title: pauseTitle(63), mergedAt: "", labels: [] })).toBe(false);
+    const both = { pauseUntil: "2026-10-25T12:00:00.000Z", trust: { from: 1, to: 0 } };
+    expect(pauseTitle(63, both)).toBe("chore(evolution): pause the loop and lower trust after #63");
+    expect(pauseTitle(63, { ...both, trust: undefined })).toBe("chore(evolution): pause the loop after #63");
+    expect(pauseTitle(63, { ...both, pauseUntil: undefined })).toBe("chore(evolution): lower trust after #63");
+    expect(isRevert({ number: 2, title: pauseTitle(63, both), mergedAt: "", labels: [] })).toBe(false);
   });
 });
 
@@ -121,6 +133,12 @@ describe("notifyIssue", () => {
     expect(body).not.toContain("The pause ends on its own");
   });
 
+  it("says a rollback Vercel accepted but didn't finish isn't confirmed, and still asks for the promote", () => {
+    const { body } = notifyIssue(incident, "SUMMARY", { ...done, rollback: "pending" });
+    expect(body).toContain("**The rollback isn't confirmed.** Vercel accepted the rollback to petri-old.vercel.app (`aaaaaaa`)");
+    expect(body).toContain("promote its deployment");
+  });
+
   it("says when there was nothing to pause or lower", () => {
     const { body } = notifyIssue(incident, "SUMMARY", { ...done, pause: "unchanged", changes: { pauseUntil: undefined, trust: undefined } });
     expect(body).toContain("No pause PR: the loop is already paused for longer and trustLevel is already 0.");
@@ -134,8 +152,8 @@ describe("notifyIssue", () => {
   });
 
   it("tells the open issue when a retried rollback worked", () => {
-    expect(retriedRollbackComment(incident)).toBe(
-      "The guardian retried the rollback (https://github.com/x/y/actions/runs/1): production serves petri-old.vercel.app (`aaaaaaa`) again.",
-    );
+    const comment = retriedRollbackComment(incident);
+    expect(comment).toContain("The guardian retried the rollback (https://github.com/x/y/actions/runs/1): production serves petri-old.vercel.app (`aaaaaaa`) again.");
+    expect(comment).toContain("promote its deployment");
   });
 });

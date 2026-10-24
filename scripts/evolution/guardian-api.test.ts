@@ -37,7 +37,7 @@ describe("Vercel", () => {
       [200, { id: "prj_1", lastAliasRequest: request }],
       [200, { id: "prj_1", lastAliasRequest: null }],
     ]);
-    expect(await lastAliasRequest(VERCEL, fetch)).toEqual({ type: "rollback", toDeploymentId: "dpl_1", requestedAt: 5 });
+    expect(await lastAliasRequest(VERCEL, fetch)).toEqual({ type: "rollback", toDeploymentId: "dpl_1", requestedAt: 5, jobStatus: "succeeded" });
     expect(await lastAliasRequest(VERCEL, fetch)).toBeUndefined();
     expect(calls[0]?.url.pathname).toBe("/v9/projects/prj_1");
     expect(calls[0]?.url.searchParams.get("teamId")).toBe("team_1");

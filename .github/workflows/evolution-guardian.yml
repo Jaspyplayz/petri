@@ -25,12 +25,13 @@ jobs:
   guardian:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The bot token pushes the guardian's branches and opens their PRs, so CI runs on them. The issue uses this job's
-    # token, so it comes from github-actions and notifies the maintainer (nobody is notified of their own actions).
+    # The bot token pushes the guardian's branches and opens their PRs, so CI runs on them. The issue and comments use
+    # this job's token, so they come from github-actions and notify the maintainer (nobody is notified of their own
+    # actions). pull-requests: write is for a retried rollback's comment on an earlier run's PR.
     permissions:
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     env:
       ACT: ${{ github.event_name == 'schedule' || inputs.act == true }}
     steps:
@@ -82,7 +83,7 @@ jobs:
             echo "Nothing to change: the loop is already paused for longer and trustLevel is 0."
             exit 0
           fi
-          git -c user.name="petri-guardian" -c user.email="petri-guardian@users.noreply.github.com" commit -q -m "chore(evolution): pause the loop and lower trust after #$PR"
+          git -c user.name="petri-guardian" -c user.email="petri-guardian@users.noreply.github.com" commit -q -m "chore(evolution): guardian pause after #$PR"
           git push "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 

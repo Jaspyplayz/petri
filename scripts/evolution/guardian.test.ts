@@ -69,8 +69,17 @@ describe("productionState", () => {
   });
 
   it("holds while production serves a deployment a promote or rollback put live, until the next deploy", () => {
-    const promote = { type: "promote", toDeploymentId: "dpl_new", requestedAt: 90_000 };
+    const promote = { type: "promote", toDeploymentId: "dpl_new", requestedAt: 90_000, jobStatus: "succeeded" };
     expect(productionState([older, newer], "dpl_new", promote)).toEqual({ kind: "held", reason: expect.stringContaining("through a promote") as string });
+    expect(productionState([older, newer], "dpl_new", { ...promote, jobStatus: "in-progress" }).kind).toBe("held");
+    expect(productionState([older, newer], "dpl_new", { ...promote, jobStatus: "failed" }).kind).toBe("ok");
+  });
+
+  it("doesn't let a failed, unfinished or later rollback move the previous release's start (the run after a failed rollback)", () => {
+    const rollback = { type: "rollback", toDeploymentId: "dpl_old", requestedAt: 900_000 };
+    for (const jobStatus of ["failed", "in-progress", "succeeded"]) {
+      expect(productionState([older, newer], "dpl_new", { ...rollback, jobStatus })).toMatchObject({ kind: "ok", previous: { id: "dpl_old", liveAt: 61_000 } });
+    }
   });
 
   it("compares with the deployment that served production before, skipping ones that never did", () => {
@@ -80,8 +89,8 @@ describe("productionState", () => {
   });
 
   it("dates a promoted previous deployment from its promote, not its build", () => {
-    const promote = { type: "promote", toDeploymentId: "dpl_old", requestedAt: 500_000 };
-    expect(productionState([older, newer], "dpl_new", promote)).toMatchObject({ kind: "ok", previous: { id: "dpl_old", liveAt: 500_000 } });
+    const promote = { type: "promote", toDeploymentId: "dpl_old", requestedAt: 61_500, jobStatus: "succeeded" };
+    expect(productionState([older, newer], "dpl_new", promote)).toMatchObject({ kind: "ok", previous: { id: "dpl_old", liveAt: 61_500 } });
   });
 
   it("holds when there's nothing to judge", () => {
@@ -127,7 +136,7 @@ describe("productionState", () => {
     });
     const request = { fromDeploymentId: "dpl_0", jobStatus: "succeeded", requestedAt: 3, toDeploymentId: "dpl_1", type: "rollback" };
     expect(vercelProjectSchema.parse({ id: "prj_1", name: "petri", lastAliasRequest: request })).toEqual({
-      lastAliasRequest: { requestedAt: 3, toDeploymentId: "dpl_1", type: "rollback" },
+      lastAliasRequest: { jobStatus: "succeeded", requestedAt: 3, toDeploymentId: "dpl_1", type: "rollback" },
     });
     expect(vercelProjectSchema.parse({ id: "prj_1" }).lastAliasRequest).toBeUndefined();
   });
@@ -162,30 +171,44 @@ describe("spikeVerdict", () => {
   const quiet = { currentErrors: 0, currentMinutes: 60, baselineErrors: 0, baselineMinutes: 60, newUnhandled: [] };
 
   it("isn't a spike when errors stay under minEvents or near the previous release's rate", () => {
-    expect(spikeVerdict({ ...quiet, currentErrors: 4 }, SENTRY).spike).toBe(false);
-    expect(spikeVerdict({ ...quiet, currentErrors: 20, baselineErrors: 10 }, SENTRY).spike).toBe(false);
+    expect(spikeVerdict({ ...quiet, currentErrors: 4 }, SENTRY, 60).spike).toBe(false);
+    expect(spikeVerdict({ ...quiet, currentErrors: 20, baselineErrors: 10 }, SENTRY, 60).spike).toBe(false);
   });
 
   it("is a spike at minEvents and spikeMultiplier times the previous release (or 1, if it had none)", () => {
-    expect(spikeVerdict({ ...quiet, currentErrors: 5 }, SENTRY)).toMatchObject({ spike: true, expected: 0 });
-    const verdict = spikeVerdict({ ...quiet, currentErrors: 30, baselineErrors: 10 }, SENTRY);
+    expect(spikeVerdict({ ...quiet, currentErrors: 5 }, SENTRY, 60)).toMatchObject({ spike: true, expected: 0 });
+    const verdict = spikeVerdict({ ...quiet, currentErrors: 30, baselineErrors: 10 }, SENTRY, 60);
     expect(verdict).toMatchObject({ spike: true, expected: 10 });
     expect(verdict.reasons[0]).toMatch(/^30 errors in 60 min, at least 3× the 10\.0/);
   });
 
   it("compares rates: both releases' errors per minute live", () => {
-    expect(spikeVerdict({ ...quiet, currentErrors: 8, currentMinutes: 10, baselineErrors: 60 }, SENTRY)).toMatchObject({ spike: false, expected: 10 });
-    expect(spikeVerdict({ ...quiet, currentErrors: 30, currentMinutes: 10, baselineErrors: 60 }, SENTRY).spike).toBe(true);
-    expect(spikeVerdict({ ...quiet, currentErrors: 60, baselineErrors: 20, baselineMinutes: 20 }, SENTRY)).toMatchObject({ spike: false, expected: 60 });
+    expect(spikeVerdict({ ...quiet, currentErrors: 8, currentMinutes: 10, baselineErrors: 60 }, SENTRY, 60)).toMatchObject({ spike: false, expected: 10 });
+    expect(spikeVerdict({ ...quiet, currentErrors: 30, currentMinutes: 10, baselineErrors: 60 }, SENTRY, 60).spike).toBe(true);
+    expect(spikeVerdict({ ...quiet, currentErrors: 60, baselineErrors: 20, baselineMinutes: 20 }, SENTRY, 60)).toMatchObject({ spike: false, expected: 60 });
   });
 
   it("uses only new unhandled errors when the previous release was live too briefly to give a rate", () => {
-    expect(spikeVerdict({ ...quiet, currentErrors: 60, baselineMinutes: 10 }, SENTRY)).toEqual({ spike: false, expected: undefined, reasons: [] });
-    expect(spikeVerdict({ ...quiet, currentErrors: 60, baselineMinutes: 0, newUnhandled: [{ issue: "PETRI-9", events: 6 }] }, SENTRY).spike).toBe(true);
+    expect(spikeVerdict({ ...quiet, currentErrors: 60, baselineMinutes: 10 }, SENTRY, 60)).toEqual({
+      spike: false,
+      expected: undefined,
+      noRate: "the previous release was live only 10 min before this one",
+      reasons: [],
+    });
+    expect(spikeVerdict({ ...quiet, currentErrors: 60, baselineMinutes: 0, newUnhandled: [{ issue: "PETRI-9", events: 6 }] }, SENTRY, 60).spike).toBe(true);
+  });
+
+  it("compares rates only in the first two windows after a deploy, not against a baseline from another time of day", () => {
+    expect(spikeVerdict({ ...quiet, currentErrors: 6, baselineErrors: 2 }, SENTRY, 120).spike).toBe(true);
+    expect(spikeVerdict({ ...quiet, currentErrors: 6, baselineErrors: 2 }, SENTRY, 3 * 24 * 60)).toMatchObject({
+      spike: false,
+      expected: undefined,
+      noRate: "this release has been live 4320 min, and rates are compared only in its first 120",
+    });
   });
 
   it("is a spike on a new unhandled error with at least minEvents events", () => {
-    const verdict = spikeVerdict({ ...quiet, currentErrors: 5, baselineErrors: 100, newUnhandled: [{ issue: "PETRI-9", events: 5 }, { issue: "PETRI-8", events: 2 }] }, SENTRY);
+    const verdict = spikeVerdict({ ...quiet, currentErrors: 5, baselineErrors: 100, newUnhandled: [{ issue: "PETRI-9", events: 5 }, { issue: "PETRI-8", events: 2 }] }, SENTRY, 60);
     expect(verdict.reasons).toEqual(["new unhandled error PETRI-9 with 5 events"]);
   });
 });

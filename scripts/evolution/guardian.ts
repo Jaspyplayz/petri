@@ -9,6 +9,9 @@ export const GUARDIAN_ISSUE_LABEL = "evolution:guardian";
 export const PAUSE_HOURS = 24;
 // A previous release live for less than this had too few errors to compare a rate with.
 export const MIN_BASELINE_MINUTES = 15;
+// Rates are compared only this many windows after a release went live. Later, the time of day differs too much from
+// the baseline's, and only new unhandled errors count.
+export const RATE_WINDOWS = 2;
 
 const commitSha = z.string().regex(/^[0-9a-f]{40}$/);
 
@@ -30,9 +33,10 @@ export type VercelDeployment = z.infer<typeof vercelDeploymentSchema>;
 // GET /v4/aliases/{alias}: which deployment the production URL serves right now.
 export const vercelAliasSchema = z.object({ deploymentId: z.string().min(1) });
 
-// GET /v9/projects/{id}: the project's last promote or rollback, if it ever had one.
+// GET /v9/projects/{id}: the project's last promote or rollback, if it ever had one. jobStatus is succeeded, pending,
+// in-progress, failed or skipped.
 export const vercelProjectSchema = z.object({
-  lastAliasRequest: z.object({ type: z.string(), toDeploymentId: z.string(), requestedAt: z.number() }).nullish(),
+  lastAliasRequest: z.object({ type: z.string(), toDeploymentId: z.string(), requestedAt: z.number(), jobStatus: z.string() }).nullish(),
 });
 export type AliasRequest = NonNullable<z.infer<typeof vercelProjectSchema>["lastAliasRequest"]>;
 
@@ -56,7 +60,8 @@ function deployed(deployment: VercelDeployment, aliasRequest: AliasRequest | und
 // The guardian judges production only while it serves the newest ready production deployment, and only when that
 // deployment went live by being deployed. Anything else means a rollback or a promote chose what production serves,
 // and a human watches it until the next deploy. The previous release is the newest older deployment that served
-// production; deployments built while a rollback held the domain never did, so they're skipped.
+// production; deployments built while a rollback held the domain never did, so they're skipped. A promote or rollback
+// that failed or was skipped changed nothing, and one requested after this release went live can't date the one before.
 export function productionState(deployments: readonly VercelDeployment[], servingId: string, aliasRequest: AliasRequest | undefined): Production {
   const ready = deployments
     .filter((deployment) => deployment.state === "READY" && deployment.target === "production")
@@ -66,13 +71,15 @@ export function productionState(deployments: readonly VercelDeployment[], servin
   if (latest.uid !== servingId) {
     return { kind: "held", reason: `production serves ${servingId}, not the newest deployment ${latest.uid} (a rollback or a manual promote is in effect)` };
   }
-  if (aliasRequest?.toDeploymentId === servingId) {
-    return { kind: "held", reason: `production serves ${servingId} through a ${aliasRequest.type}, not a deploy, so it waits for the next deploy` };
+  const request = aliasRequest === undefined || aliasRequest.jobStatus === "failed" || aliasRequest.jobStatus === "skipped" ? undefined : aliasRequest;
+  if (request?.toDeploymentId === servingId) {
+    return { kind: "held", reason: `production serves ${servingId} through a ${request.type}, not a deploy, so it waits for the next deploy` };
   }
   const serving = deployed(latest, undefined);
   if (serving === undefined) return { kind: "held", reason: `production deployment ${latest.uid} has no GitHub commit, so there's no release to check` };
   const before = older.find((deployment) => deployment.readySubstate === "PROMOTED");
-  return { kind: "ok", serving, previous: before === undefined ? undefined : deployed(before, aliasRequest) };
+  const dating = request !== undefined && request.jobStatus === "succeeded" && request.requestedAt <= serving.liveAt ? request : undefined;
+  return { kind: "ok", serving, previous: before === undefined ? undefined : deployed(before, dating) };
 }
 
 export type Window = { readonly start: Date; readonly end: Date };
@@ -120,13 +127,27 @@ export type SentryNumbers = {
   readonly newUnhandled: readonly IssueCount[];
 };
 
-export type Verdict = { readonly spike: boolean; readonly expected: number | undefined; readonly reasons: readonly string[] };
+// expected is the previous release's errors scaled to the current window; noRate says why there's no rate to compare.
+export type Verdict = {
+  readonly spike: boolean;
+  readonly expected: number | undefined;
+  readonly noRate: string | undefined;
+  readonly reasons: readonly string[];
+};
 
 // A spike: at least minEvents errors and spikeMultiplier times the previous release's rate over the same length of
 // time (as if it had at least 1), or a new unhandled error with at least minEvents events. The rate needs the previous
-// release to have been live MIN_BASELINE_MINUTES; with less (or none), only new unhandled errors count.
-export function spikeVerdict(numbers: SentryNumbers, sentry: EvolutionConfig["sentry"]): Verdict {
-  const expected = numbers.baselineMinutes >= MIN_BASELINE_MINUTES ? numbers.baselineErrors * (numbers.currentMinutes / numbers.baselineMinutes) : undefined;
+// release to have been live MIN_BASELINE_MINUTES, and this one live at most RATE_WINDOWS windows; otherwise only new
+// unhandled errors count.
+export function spikeVerdict(numbers: SentryNumbers, sentry: EvolutionConfig["sentry"], liveMinutes: number): Verdict {
+  const rateMinutes = RATE_WINDOWS * sentry.windowMinutes;
+  const noRate =
+    numbers.baselineMinutes < MIN_BASELINE_MINUTES
+      ? `the previous release was live only ${numbers.baselineMinutes.toFixed(0)} min before this one`
+      : liveMinutes > rateMinutes
+        ? `this release has been live ${liveMinutes.toFixed(0)} min, and rates are compared only in its first ${String(rateMinutes)}`
+        : undefined;
+  const expected = noRate === undefined ? numbers.baselineErrors * (numbers.currentMinutes / numbers.baselineMinutes) : undefined;
   const reasons: string[] = [];
   if (expected !== undefined && numbers.currentErrors >= sentry.minEvents && numbers.currentErrors >= sentry.spikeMultiplier * Math.max(expected, 1)) {
     reasons.push(
@@ -136,7 +157,7 @@ export function spikeVerdict(numbers: SentryNumbers, sentry: EvolutionConfig["se
   for (const { issue, events } of numbers.newUnhandled) {
     if (events >= sentry.minEvents) reasons.push(`new unhandled error ${issue} with ${String(events)} events`);
   }
-  return { spike: reasons.length > 0, expected, reasons };
+  return { spike: reasons.length > 0, expected, noRate, reasons };
 }
 
 export type MainCommit = {

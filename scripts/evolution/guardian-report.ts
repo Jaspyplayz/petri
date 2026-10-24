@@ -10,6 +10,8 @@ export type Incident = {
   readonly numbers: SentryNumbers;
   readonly verdict: Verdict;
   readonly culprit: { readonly sha: string; readonly pr: { readonly number: number; readonly title: string; readonly url: string } } | undefined;
+  // GitHub lookups that failed. They don't stop the rollback; the culprit is unknown when its lookup failed.
+  readonly problems: readonly string[];
   readonly runUrl: string;
 };
 
@@ -19,7 +21,8 @@ export type Changes = { readonly pauseUntil: string | undefined; readonly trust:
 export type Opened = { readonly url: string } | { readonly problem: string };
 
 export type Outcome = {
-  readonly rollback: "done" | "failed" | "skipped";
+  // pending: Vercel accepted the rollback, but production hadn't switched when the guardian stopped waiting.
+  readonly rollback: "done" | "pending" | "failed" | "skipped";
   // Both are undefined when no evolution change went live; the pause is "unchanged" when there was nothing to change.
   readonly revert: Opened | undefined;
   readonly pause: Opened | "unchanged" | undefined;
@@ -36,8 +39,14 @@ export function incidentSummary(incident: Incident, sentry: EvolutionConfig["sen
     previous === undefined
       ? "there's no previous production deployment to compare with, so only new unhandled errors count"
       : verdict.expected === undefined
-        ? `the previous release (${short(previous.sha)}) was live only ${numbers.baselineMinutes.toFixed(0)} min before this one, too short to compare a rate with, so only new unhandled errors count`
+        ? `no rate comparison with the previous release (${short(previous.sha)}): ${verdict.noRate ?? "no baseline"}, so only new unhandled errors count`
         : `the previous release (${short(previous.sha)}) had ${String(numbers.baselineErrors)} in its last ${numbers.baselineMinutes.toFixed(0)} min live, so about ${verdict.expected.toFixed(1)} were expected`;
+  const change =
+    culprit !== undefined
+      ? `#${String(culprit.pr.number)} ${culprit.pr.title} (${short(culprit.sha)})`
+      : incident.problems.length > 0
+        ? "unknown (a GitHub lookup failed, below)"
+        : "none (no evolution merge went live with it)";
   const unhandled = numbers.newUnhandled.map(({ issue, events }) => `${issue} (${String(events)} events)`).join(", ");
   const rules = `at least ${String(sentry.minEvents)} errors and ${String(sentry.spikeMultiplier)}× the previous release's rate, or a new unhandled error with at least ${String(sentry.minEvents)} events`;
   return [
@@ -45,7 +54,8 @@ export function incidentSummary(incident: Incident, sentry: EvolutionConfig["sen
     `- **Errors** (Sentry, environment production): ${String(numbers.currentErrors)} in the last ${numbers.currentMinutes.toFixed(0)} min; ${baseline}`,
     `- **New unhandled errors:** ${unhandled === "" ? "none" : unhandled}`,
     `- **Verdict:** ${verdict.spike ? `spike: ${verdict.reasons.join("; ")}` : `no spike (a spike is ${rules})`}`,
-    `- **Evolution change in this deployment:** ${culprit === undefined ? "none (no evolution merge went live with it)" : `#${String(culprit.pr.number)} ${culprit.pr.title} (${short(culprit.sha)})`}`,
+    `- **Evolution change in this deployment:** ${change}`,
+    ...incident.problems.map((problem) => `- **Lookup failed:** ${problem}`),
     `- **Run:** ${incident.runUrl}`,
   ].join("\n");
 }
@@ -97,8 +107,9 @@ export function revertPrBody(incident: Incident, summary: string): string {
   ].join("\n");
 }
 
-export function pauseTitle(prNumber: number): string {
-  return `chore(evolution): pause the loop and lower trust after #${String(prNumber)}`;
+export function pauseTitle(prNumber: number, changes: Changes): string {
+  const what = [changes.pauseUntil === undefined ? undefined : "pause the loop", changes.trust === undefined ? undefined : "lower trust"].filter((part) => part !== undefined);
+  return `chore(evolution): ${what.join(" and ")} after #${String(prNumber)}`;
 }
 
 function pauseText(changes: Changes): string {
@@ -148,8 +159,10 @@ export function notifyIssue(incident: Incident, summary: string, outcome: Outcom
     culprit === undefined
       ? `Guardian: error spike in production (${incident.serving.sha.slice(0, 7)})`
       : `Guardian: production rolled back after #${String(culprit.pr.number)}`;
+  const target = incident.previous === undefined ? "the previous deployment" : `${incident.previous.url ?? incident.previous.id} (${short(incident.previous.sha)})`;
   const rollback = {
-    done: `Rolled production back to ${incident.previous === undefined ? "the previous deployment" : `${incident.previous.url ?? incident.previous.id} (${short(incident.previous.sha)})`}.`,
+    done: `Rolled production back to ${target}.`,
+    pending: `**The rollback isn't confirmed.** Vercel accepted the rollback to ${target}, but production hadn't switched to it after 3 minutes. Check Vercel → the project → Deployments, and roll back by hand if it never switches.`,
     failed: "**The rollback failed.** Production still serves the deployment with the spike; roll it back by hand (Vercel → the project → Instant Rollback). The guardian retries on its next run.",
     skipped: "Didn't roll back: there's no previous production deployment to go back to.",
   }[outcome.rollback];
@@ -171,7 +184,7 @@ export function notifyIssue(incident: Incident, summary: string, outcome: Outcom
     );
   }
   const todo: string[] = [];
-  if (outcome.rollback === "done") {
+  if (outcome.rollback === "done" || outcome.rollback === "pending") {
     todo.push(
       "- After a rollback, Vercel stops putting new deployments live until one is promoted. Once the revert has merged and deployed, promote its deployment: Vercel → Deployments → the revert's deployment → Promote (or `vercel promote <url>`). Until then production stays on the rolled-back deployment, which is safe.",
     );
@@ -193,5 +206,5 @@ export function notifyIssue(incident: Incident, summary: string, outcome: Outcom
 // A later run found the same incident still live and retried the rollback, which worked this time.
 export function retriedRollbackComment(incident: Incident): string {
   const target = incident.previous === undefined ? "the previous deployment" : `${incident.previous.url ?? incident.previous.id} (${short(incident.previous.sha)})`;
-  return `The guardian retried the rollback (${incident.runUrl}): production serves ${target} again.`;
+  return `The guardian retried the rollback (${incident.runUrl}): production serves ${target} again. Once the revert has merged and deployed, promote its deployment (Vercel → Deployments → Promote), because Vercel doesn't put new deployments live after a rollback.`;
 }

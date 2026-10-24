@@ -144,6 +144,15 @@ function handledBy(servingId: string): Handled | undefined {
   return pr === undefined ? undefined : { url: pr.url, kind: "pr" };
 }
 
+function attempt<T>(what: string, problems: string[], run: () => T): T | undefined {
+  try {
+    return run();
+  } catch (error) {
+    problems.push(`${what}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500));
+    return undefined;
+  }
+}
+
 // What Vercel answered, so a dry run shows the fields the guardian relies on.
 function vercelLine(deployments: readonly VercelDeployment[], aliasRequest: AliasRequest | undefined): string {
   const ready = deployments.filter((deployment) => deployment.state === "READY" && deployment.target === "production");
@@ -170,10 +179,14 @@ async function check(): Promise<void> {
   const now = new Date();
   const windows = checkWindows(serving.liveAt, previous?.liveAt, now, config.sentry.windowMinutes);
   const numbers = await sentryNumbers(sentryAccess(), { serving: serving.sha, previous: previous?.sha, ...windows });
-  const verdict = spikeVerdict(numbers, config.sentry);
-  const found = culpritCommit(liveCommits(serving.sha, previous?.sha));
-  const handled = verdict.spike ? handledBy(serving.id) : undefined;
+  const verdict = spikeVerdict(numbers, config.sentry, (now.getTime() - serving.liveAt) / 60_000);
+  // The GitHub lookups can't stop a rollback: a failed one leaves no culprit (so no PRs) and is reported.
+  const problems: string[] = [];
+  const found = attempt("finding the evolution change that went live", problems, () => culpritCommit(liveCommits(serving.sha, previous?.sha)));
+  const lookedUp = verdict.spike ? attempt("looking for an earlier run's issue or PR", problems, () => ({ handled: handledBy(serving.id) })) : { handled: undefined };
+  const handled = lookedUp?.handled;
   if (handled !== undefined) save("handled.json", handled);
+  if (lookedUp === undefined) save("prs-skipped.json", true);
   const runUrl = `${process.env.GITHUB_SERVER_URL ?? "https://github.com"}/${process.env.GITHUB_REPOSITORY ?? "local"}/actions/runs/${process.env.GITHUB_RUN_ID ?? "0"}`;
   const result: Incident = {
     checkedAt: now.toISOString(),
@@ -183,12 +196,13 @@ async function check(): Promise<void> {
     numbers,
     verdict,
     culprit: found === undefined ? undefined : { sha: found.sha, pr: { number: found.pr.number, title: found.pr.title, url: found.pr.url } },
+    problems,
     runUrl,
   };
   save("incident.json", result);
   output({
     spike: String(verdict.spike),
-    handled: handled?.url ?? "",
+    handled: lookedUp === undefined ? "unknown" : (handled?.url ?? ""),
     previous: previous?.id ?? "",
     culprit: found?.sha ?? "",
     pr: found === undefined ? "" : String(found.pr.number),
@@ -201,7 +215,9 @@ async function check(): Promise<void> {
     ? ""
     : handled !== undefined
       ? `\n\nAn earlier run already acted on this deployment (${handled.url}), so ${act ? "only the rollback is retried" : "acting would only retry the rollback"}.`
-      : act
+      : lookedUp === undefined
+        ? `\n\nIt couldn't tell whether an earlier run already acted, so ${act ? "it only rolls back and opens an issue" : "acting would only roll back and open an issue"}.`
+        : act
         ? "\n\nActing on it: rollback, pause PR, revert PR, notify."
         : `\n\n**Dry run:** acting would roll production back to ${target}${found === undefined ? "" : `, open a PR that pauses the loop and lowers trust, revert #${String(found.pr.number)}`} and open an issue.`;
   stepSummary(`## Guardian\n\n${incidentSummary(result, config.sentry)}\n${vercelLine(deployments, aliasRequest)}${plan}`);
@@ -221,7 +237,10 @@ async function rollback(): Promise<void> {
   await rollBack(vercel, previous.id, `guardian: ${verdict.reasons.join("; ")}`.slice(0, 250));
   const deadline = Date.now() + ROLLBACK_WAIT_MS;
   while ((await servingDeploymentId(vercel, host)) !== previous.id) {
-    if (Date.now() > deadline) throw new Error(`Vercel accepted the rollback, but ${host} didn't switch to ${previous.id} within 3 minutes`);
+    if (Date.now() > deadline) {
+      save("rollback.json", { result: "pending" });
+      throw new Error(`Vercel accepted the rollback, but ${host} didn't switch to ${previous.id} within 3 minutes`);
+    }
     await sleep(POLL_MS);
   }
   save("rollback.json", { result: "done" });
@@ -265,7 +284,7 @@ function openPr(kind: string): void {
   } else if (kind === "pause") {
     const changes = load("changes.json") as Changes | undefined;
     if (changes === undefined) throw new Error("run `evolution:guardian pause-files` first");
-    pr = { title: pauseTitle(culprit.pr.number), body: pausePrBody(found, summary, changes), labels: [] };
+    pr = { title: pauseTitle(culprit.pr.number, changes), body: pausePrBody(found, summary, changes), labels: [] };
   } else {
     throw new Error("usage: pnpm evolution:guardian open-pr <pause|revert>");
   }
@@ -284,26 +303,33 @@ function opened(kind: "pause" | "revert"): Opened | undefined {
 
 function notify(): void {
   const found = incident();
-  const rolled = load("rollback.json") as { result: "done" | "skipped" } | undefined;
+  const rolled = load("rollback.json") as { result: "done" | "pending" | "skipped" } | undefined;
   const handled = load("handled.json") as Handled | undefined;
   if (handled !== undefined) {
-    if (rolled?.result === "done" && handled.kind === "issue") gh(root, ["issue", "comment", handled.url, "--body", retriedRollbackComment(found)]);
+    if (rolled?.result === "done") gh(root, [handled.kind, "comment", handled.url, "--body", retriedRollbackComment(found)]);
     process.stdout.write(`guardian: an earlier run already reported this deployment in ${handled.url}\n`);
     return;
   }
   const culprit = found.culprit;
   const changes = load("changes.json") as Changes | undefined;
   const number = culprit === undefined ? "" : `#${String(culprit.pr.number)}`;
+  const skipped =
+    load("prs-skipped.json") === true
+      ? { problem: `a GitHub lookup failed, so the guardian couldn't tell whether an earlier run already opened its PRs and opened none; see ${found.runUrl}.` }
+      : undefined;
   const revert: Outcome["revert"] =
     culprit === undefined
       ? undefined
-      : (opened("revert") ??
+      : (skipped ??
+        opened("revert") ??
         (process.env.REVERT_CONFLICT === "true"
-          ? { problem: `the revert of ${number} doesn't apply cleanly to main (later changes touch the same lines); revert it by hand.` }
+          ? { problem: `the revert of ${number} doesn't apply to main (later changes touch the same lines, or it was already reverted); revert it by hand.` }
           : { problem: `opening the revert of ${number} failed; see ${found.runUrl}.` }));
   const nothingToChange = changes !== undefined && changes.pauseUntil === undefined && changes.trust === undefined;
   const pause: Outcome["pause"] =
-    culprit === undefined ? undefined : (opened("pause") ?? (nothingToChange ? "unchanged" : { problem: `opening the pause PR failed; see ${found.runUrl}.` }));
+    culprit === undefined
+      ? undefined
+      : (skipped ?? opened("pause") ?? (nothingToChange ? "unchanged" : { problem: `opening the pause PR failed; see ${found.runUrl}.` }));
   const outcome: Outcome = { rollback: rolled?.result ?? "failed", revert, pause, changes };
   const { title, body } = notifyIssue(found, incidentSummary(found, readEvolutionConfig(root).sentry), outcome);
   ensureLabel(GUARDIAN_ISSUE_LABEL);

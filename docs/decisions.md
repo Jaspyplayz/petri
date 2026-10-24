@@ -229,3 +229,9 @@ One line per decision, newest at the bottom. Format: `YYYY-MM-DD · phase · dec
   - **Redeploys:** a deployment with no new commit since the previous one blames nothing, so a redeploy or an env change is rolled back but not reverted.
   - **Auto-merge** is pinned to the commit the guardian pushed (`--match-head-commit`).
   - **The cron acts:** `ACT` is true on a `schedule` event, so 9.1 only adds the trigger.
+  - **From a second review:**
+    - A promote or rollback that failed, was skipped or is still running (`jobStatus`) doesn't hold production or move the previous release's start. So the run after a failed rollback still compares rates and retries it.
+    - Rates are compared only in the first `2 × windowMinutes` after a deploy. Later only new unhandled errors count, because a baseline from another time of day isn't comparable.
+    - A rollback Vercel accepted but that didn't finish within 3 minutes is reported as unconfirmed, with the promote step.
+    - A failed GitHub lookup doesn't stop the rollback. Then it opens no PRs, and the issue says why.
+    - Known gap: the pause starts only when the pause PR merges, and it doesn't cancel agent runs already going (`pnpm evolution:pause` does).
