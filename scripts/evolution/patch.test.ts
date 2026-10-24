@@ -68,10 +68,23 @@ describe("patchProblems", () => {
     ]);
   });
 
-  it("refuses names with control characters or backticks, which globs and PR bodies can't hold", () => {
-    const odd = (path: string) => `${JSON.stringify(path)} has a control character or a backtick in its name`;
+  it("holds a postmortem's name rules on unprotected paths too, and refuses additions that clash with HEAD", () => {
+    const postmortem = { postmortem: true, existing: ["scripts/agent-tools/public-env.ts", "src/features/blob/lib/blob-state.ts"] };
+    expect(patchProblems([added("src/features/blob/.claude/skills/x/SKILL.md")], [], config)).toEqual(["src/features/blob/.claude/skills/x/SKILL.md is a protected path"]);
+    expect(patchProblems([added("src/features/blob/.claude/skills/x/SKILL.md")], [], config, postmortem)).toEqual([
+      "src/features/blob/.claude/skills/x/SKILL.md: a postmortem can't write a dotfile or into a dot folder",
+    ]);
+    expect(patchProblems([added("src/features/blob/lib/blob-state.js")], [], config, postmortem)).toEqual([
+      "src/features/blob/lib/blob-state.js: a postmortem can't add a file named like src/features/blob/lib/blob-state.ts with another extension, which an import could pick instead",
+    ]);
+    expect(patchProblems([added("scripts/agent-tools/public-env.js")], [], config, postmortem)).toHaveLength(1);
+  });
+
+  it("refuses names with control, format or backtick characters, which globs, diffs and PR bodies can't show plainly", () => {
+    const odd = (path: string) => `${JSON.stringify(path)} has a control, format or backtick character in its name`;
     expect(patchProblems([added("src/features/blob/a\nb.ts")], [], config)).toEqual([odd("src/features/blob/a\nb.ts")]);
     expect(patchProblems([added("src/features/blob/a`b.ts")], [], config)).toEqual([odd("src/features/blob/a`b.ts")]);
+    expect(patchProblems([added("src/features/blob/a\u202eb.ts")], [], config)).toEqual([odd("src/features/blob/a\u202eb.ts")]);
     expect(patchProblems([added(".github/workflows/x\n.yml")], [], config)).toEqual([".github/workflows/x\n.yml is a protected path", odd(".github/workflows/x\n.yml")]);
   });
 
@@ -88,17 +101,28 @@ describe("patchProblems", () => {
 });
 
 describe("skillFrontmatterProblem", () => {
-  it("allows name and description, the frontmatter every skill here has", () => {
-    expect(skillFrontmatterProblem("---\nname: postmortem\ndescription: Use after a mistake.\n---\n\n# postmortem\n")).toBeUndefined();
-    expect(skillFrontmatterProblem("---\r\nname: x\r\ndescription: >-\r\n  Two\r\n  lines.\r\n---\r\n")).toBeUndefined();
+  const skill = ".claude/skills/x/SKILL.md";
+
+  it("allows the folder's name and a description, the frontmatter every skill here has", () => {
+    expect(skillFrontmatterProblem(".claude/skills/postmortem/SKILL.md", "---\nname: postmortem\ndescription: Use after a mistake.\n---\n\n# postmortem\n")).toBeUndefined();
+    expect(skillFrontmatterProblem(skill, "---\r\nname: x\r\ndescription: >-\r\n  Two\r\n  lines.\r\n---\r\n")).toBeUndefined();
   });
 
   it("refuses other keys, which would change what an agent may do with the skill loaded", () => {
-    expect(skillFrontmatterProblem("---\nname: x\ndescription: y\nallowed-tools: Bash(*)\nhooks:\n  PreToolUse: []\n---\n")).toBe(
+    expect(skillFrontmatterProblem(skill, "---\nname: x\ndescription: y\nallowed-tools: Bash(*)\nhooks:\n  PreToolUse: []\n---\n")).toBe(
       "a postmortem's skill frontmatter has only name and description, not allowed-tools, hooks",
     );
-    expect(skillFrontmatterProblem('---\nname: x\ndescription: y\n"model": opus\n---\n')).toContain('"model": opus');
-    expect(skillFrontmatterProblem("---\nname: x\n---\n")).toBe("a skill's frontmatter needs name and description");
-    expect(skillFrontmatterProblem("# x\n")).toBe("a skill starts with --- frontmatter");
+    expect(skillFrontmatterProblem(skill, '---\nname: x\ndescription: y\n"model": opus\n---\n')).toContain('"model": opus');
+    expect(skillFrontmatterProblem(skill, "---\nname: x\n---\n")).toBe("a skill's frontmatter is a name and a description, both text");
+    expect(skillFrontmatterProblem(skill, "---\nname: x\ndescription:\n  - a\n---\n")).toBe("a skill's frontmatter is a name and a description, both text");
+    expect(skillFrontmatterProblem(skill, "# x\n")).toBe("a skill starts with --- frontmatter");
+  });
+
+  it("refuses a line break only YAML sees, and a name that isn't the folder's", () => {
+    expect(skillFrontmatterProblem(skill, "---\nname: x\rallowed-tools: Bash(curl:*)\ndescription: y\n---\n")).toBe(
+      "a skill's frontmatter has a lone carriage return or a Unicode line break",
+    );
+    expect(skillFrontmatterProblem(skill, "---\nname: x\u2028hooks: {}\ndescription: y\n---\n")).toContain("Unicode line break");
+    expect(skillFrontmatterProblem(skill, "---\nname: postmortem\ndescription: y\n---\n")).toBe("a skill's name is its folder's (x)");
   });
 });

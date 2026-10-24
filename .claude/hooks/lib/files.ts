@@ -76,8 +76,10 @@ export function fileProblem(call: ToolCall, guard: FileGuard): string | undefine
   if (guard.secretPath(path)) return secretMessage;
   if (!writers.has(call.toolName) || guard.evolutionHuman) return undefined;
   const protectedPath = guard.protectedTarget(path);
-  if (protectedPath === undefined) return undefined;
   const postmortem = guard.postmortemProblem?.(path);
+  if (protectedPath === undefined) {
+    return postmortem === undefined ? undefined : `Blocked for a postmortem: ${postmortem} (postmortem in .github/guardrails.json).`;
+  }
   if (guard.postmortemProblem !== undefined && postmortem === undefined) return undefined;
   return [
     `Blocked: ${protectedPath} is a protected path (protectedPaths in .github/guardrails.json, or a Claude Code settings file).`,

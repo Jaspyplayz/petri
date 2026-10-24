@@ -15,6 +15,11 @@ describe("claude-code-review.yml", () => {
   };
   const condition = workflow.jobs["claude-review"]?.if ?? "";
 
+  it("is one chain of conditions that must all hold", () => {
+    expect(condition).not.toContain("||");
+    expect(condition.split("&&").length).toBeGreaterThan(5);
+  });
+
   it("skips every agent branch prefix in .github/guardrails.json", () => {
     for (const prefix of loadGuardrailsConfig(root).agentPullRequests.branchPrefixes) {
       expect(condition).toContain(`!startsWith(github.head_ref, '${prefix}')`);

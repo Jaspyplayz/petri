@@ -53,6 +53,7 @@ jobs:
       found: ${{ steps.gather.outputs.found }}
       branch: ${{ steps.gather.outputs.branch }}
       base: ${{ steps.gather.outputs.base }}
+      evidence: ${{ steps.gather.outputs.evidence }}
       incident: ${{ steps.gather.outputs.incident }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -207,6 +208,7 @@ jobs:
     outputs:
       added: ${{ steps.patch.outputs.added }}
       modified: ${{ steps.patch.outputs.modified }}
+      digest: ${{ steps.patch.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -237,7 +239,7 @@ jobs:
         id: patch
         run: pnpm -s evolution:check-patch "$RUNNER_TEMP/postmortem.patch" --postmortem
       # check-applied is main's script: the patch can't change scripts/evolution/.
-      - name: Apply the patch, which must add the entry and the eval case the report names
+      - name: Apply the patch, which must add the entry and only the eval case the report names
         run: |
           git apply --index "$RUNNER_TEMP/postmortem.patch"
           pnpm -s evolution:postmortem check-applied "$RUNNER_TEMP/report.json"
@@ -268,8 +270,17 @@ jobs:
         with:
           name: postmortem-evidence
           path: artifacts/postmortem
+      # The agent job held the artifact token, so the patch must be the one the check job checked and ran pnpm check on,
+      # and open-pr checks evidence.json against gather's digest the same way.
       - name: Check the patch again, from this clean checkout
-        run: pnpm -s evolution:check-patch "$RUNNER_TEMP/postmortem.patch" --postmortem
+        env:
+          DIGEST: ${{ needs.check.outputs.digest }}
+        run: |
+          if ! printf '%s  %s\n' "$DIGEST" "$RUNNER_TEMP/postmortem.patch" | sha256sum --check --status; then
+            echo "::error::The patch isn't the one the check job checked."
+            exit 1
+          fi
+          pnpm -s evolution:check-patch "$RUNNER_TEMP/postmortem.patch" --postmortem
 
       # On main as it is now, like the build's publish: the bot token can't push a branch whose workflows differ from
       # main's (it never gets the workflow scope). No git hooks run: the patch may change eslint.config.mjs, which a
@@ -303,6 +314,7 @@ jobs:
           BRANCH: ${{ needs.gather.outputs.branch }}
           PROTECTED_ADDED: ${{ needs.check.outputs.added }}
           PROTECTED_MODIFIED: ${{ needs.check.outputs.modified }}
+          EVIDENCE_SHA: ${{ needs.gather.outputs.evidence }}
           REPORT: ${{ needs.agent.outputs.report }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |

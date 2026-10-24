@@ -77,7 +77,7 @@ describe("guard-files hook", () => {
 
   it("lets EVOLUTION_POSTMORTEM=1 change what the postmortem lists allow and nothing else protected", () => {
     const workflow = toolCall("Write", { file_path: join(projectRoot, ".github/workflows/ci.yml"), content: "" });
-    const guard = toolCall("Edit", { file_path: join(projectRoot, "scripts/agent-tools/workflow-limits.ts"), old_string: "a", new_string: "b" });
+    const guard = toolCall("Edit", { file_path: join(projectRoot, "scripts/agent-tools/workflow-limits.test.ts"), old_string: "a", new_string: "b" });
     expect(runHook("guard-files.ts", write, { EVOLUTION_POSTMORTEM: "1" }).status).toBe(0);
     expect(runHook("guard-files.ts", workflow, { EVOLUTION_POSTMORTEM: "1" }).status).toBe(2);
     const blocked = runHook("guard-files.ts", guard, { EVOLUTION_POSTMORTEM: "1" });

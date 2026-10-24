@@ -86,20 +86,40 @@ describe("the postmortem agent's report", () => {
 describe("appliedProblems", () => {
   const change = (status: string, path: string): RawChange => ({ oldMode: status === "A" ? "000000" : "100644", newMode: "100644", status, path });
   const evalCase = ["task.md", "setup.sh", "rubric.md"].map((name) => change("A", `${report.evalCase}/${name}`));
-  const log = (added: number, deleted: number) => [{ path: MISTAKES_LOG, added, deleted }];
+  const appended = { before: "# Mistakes\n\n## Old\n", after: "# Mistakes\n\n## Old\n\n## New\n" };
+  const existingCases = ["01-greeting", "02-needs-a-dependency"];
+  const logged = { ...report, outcome: "logged" as const, evalCase: "" };
 
-  it("passes a patch that adds the entry and the eval case the report names", () => {
-    expect(appliedProblems(report, [change("M", MISTAKES_LOG), ...evalCase], log(30, 0))).toEqual([]);
-    expect(appliedProblems({ ...report, outcome: "logged", evalCase: "" }, [change("M", MISTAKES_LOG)], log(12, 0))).toEqual([]);
+  it("passes a patch that adds the entry at the end and the eval case the report names", () => {
+    expect(appliedProblems(report, { raw: [change("M", MISTAKES_LOG), ...evalCase], log: appended, existingCases })).toEqual([]);
+    expect(appliedProblems(logged, { raw: [change("M", MISTAKES_LOG)], log: appended, existingCases })).toEqual([]);
   });
 
-  it("refuses a patch without the entry, one that rewrites the log, and one without the eval case", () => {
-    expect(appliedProblems({ ...report, evalCase: "" }, [], [])).toEqual([`the patch doesn't add the entry to ${MISTAKES_LOG}`]);
-    expect(appliedProblems({ ...report, evalCase: "" }, [change("M", MISTAKES_LOG)], log(5, 2))).toEqual([
-      `the patch changes or removes lines of ${MISTAKES_LOG}; a postmortem only adds to it`,
+  it("refuses a patch without the entry, or one that changes a line of the log", () => {
+    expect(appliedProblems(logged, { raw: [], log: { before: appended.before, after: appended.before }, existingCases })).toEqual([
+      `the patch doesn't add the entry to ${MISTAKES_LOG}`,
     ]);
-    expect(appliedProblems(report, [change("M", MISTAKES_LOG), change("A", `${report.evalCase}/task.md`), change("M", `${report.evalCase}/rubric.md`)], log(9, 0))).toEqual([
+    expect(appliedProblems(logged, { raw: [], log: { before: appended.before, after: undefined }, existingCases })).toHaveLength(1);
+    expect(appliedProblems(logged, { raw: [], log: { before: appended.before, after: "<!--\n# Mistakes\n\n## Old\n\n## New\n" }, existingCases })).toEqual([
+      `the patch changes lines of ${MISTAKES_LOG}; a postmortem only adds its entry at the end`,
+    ]);
+  });
+
+  it("refuses eval files beyond the named case's three, a case that's missing one, and a case numbered before the others", () => {
+    const partial = [change("A", `${report.evalCase}/task.md`), change("M", `${report.evalCase}/rubric.md`)];
+    expect(appliedProblems(report, { raw: partial, log: appended, existingCases })).toEqual([
       `the patch doesn't add the eval case ${report.evalCase} (missing setup.sh, rubric.md)`,
+    ]);
+    expect(appliedProblems(logged, { raw: [change("A", "evals/verify-app/cases/00-first/setup.sh")], log: appended, existingCases })).toEqual([
+      "the patch changes evals outside the case the report names: evals/verify-app/cases/00-first/setup.sh",
+    ]);
+    expect(appliedProblems(report, { raw: [...evalCase, change("M", "evals/verify-app/cases/01-x/rubric.md")], log: appended, existingCases })).toEqual([
+      "the patch changes evals outside the case the report names: evals/verify-app/cases/01-x/rubric.md",
+    ]);
+    const early = { ...report, evalCase: "evals/build-evolution-issue/cases/00-early" };
+    const earlyFiles = ["task.md", "setup.sh", "rubric.md"].map((name) => change("A", `${early.evalCase}/${name}`));
+    expect(appliedProblems(early, { raw: earlyFiles, log: appended, existingCases })).toEqual([
+      `the eval case ${early.evalCase} needs a number after the skill's existing cases (above 02)`,
     ]);
   });
 });
@@ -161,7 +181,9 @@ describe("the postmortem PR", () => {
       expect(body).toContain(heading);
     }
     expect(body).toContain("The guardian reverted #63 (feat(blob): show the name) in #64 after errors spiked in production (https://github.com/x/y/issues/66).");
-    expect(body).toContain("Before you run `/run-evals build-evolution-issue`, read the case's `setup.sh`: the runner runs it on your machine");
+    expect(body).toContain("the only eval files it adds");
+    expect(body).toContain("Read the case's `setup.sh` before you merge or run `/run-evals build-evolution-issue`");
+    expect(body).toContain("the evals workflow runs it in CI next to the Claude token, neither in a sandbox");
     expect(body).toContain("**Root cause** (reproduced)");
     expect(body).toContain("- Protected files it adds: `lint-rules/no-server-env.mjs`.");
     expect(body).toContain("- Protected files it changes: `lint-rules/index.mjs`. Read these diffs line by line.");
@@ -192,16 +214,30 @@ describe("the postmortem PR", () => {
   });
 
   it("defuses issue references and closing keywords in the body and the title", () => {
-    const sneaky = { ...report, title: "Fixes #9", whatChanged: ["Closes #12", "fixes: owner/repo#3", "Resolves https://github.com/x/y/issues/4"] };
+    const zwsp = String.fromCharCode(0x200b);
+    const sneaky = { ...report, title: "Fixes #9", whatChanged: ["Closes #12", "fixes: owner/repo#3", "Resolves https://github.com/x/y/issues/4", "Fixes GH-5"] };
     const body = postmortemPrBody({ report: sneaky, evidence, protectedPaths: none, runUrl });
-    const closing = /\b(close[sd]?|fix(e[sd])?|resolve[sd]?):?\s+(\S*#\d|\S*\/issues\/)/i;
+    const closing = /\b(close[sd]?|fix(e[sd])?|resolve[sd]?):?\s+(\S*#\d|\S*\/issues\/|GH-\d)/i;
     expect(body).not.toMatch(closing);
-    expect(body).toContain("#​12");
-    expect(body).toContain("C​loses");
+    expect(body).toContain(`#${zwsp}12`);
+    expect(body).toContain(`C${zwsp}loses`);
+    expect(body).toContain(`GH-${zwsp}5`);
     expect(body).toContain("The guardian reverted #63");
     expect(postmortemTitle(sneaky)).not.toMatch(closing);
-    expect(postmortemTitle(sneaky)).toBe("docs(postmortem): F​ixes #​9");
+    expect(postmortemTitle(sneaky)).toBe(`docs(postmortem): F${zwsp}ixes #${zwsp}9`);
+    expect(postmortemTitle({ ...report, title: "See gh-7" })).toBe(`docs(postmortem): See gh-${zwsp}7`);
     expect(postmortemPrBody({ report: { ...report, whatChanged: ["the fix is in lint-rules"] }, evidence, protectedPaths: none, runUrl })).toContain("- the fix is in lint-rules");
+  });
+
+  it("escapes entities, which would bring back a mention or an issue reference", () => {
+    const body = postmortemPrBody({ report: { ...report, whatChanged: ["&num;12, &#x40;someone and A & B"] }, evidence, protectedPaths: none, runUrl });
+    expect(body).toContain("- &amp;num;12, &amp;#x40;someone and A &amp; B");
+  });
+
+  it("refuses evidence whose numbers or incident URL aren't what gather writes", () => {
+    const incident = { number: 66, url: "https://github.com/x/y/issues/66 <!--", body: "" };
+    expect(() => postmortemPrBody({ report, evidence: { ...evidence, incident }, protectedPaths: none, runUrl })).toThrow("isn't a GitHub issue");
+    expect(() => postmortemPrBody({ report, evidence: { ...evidence, pr: { ...evidence.pr, number: 63.5 } }, protectedPaths: none, runUrl })).toThrow("aren't numbers");
   });
 
   it("titles the PR as a conventional docs(postmortem) commit", () => {

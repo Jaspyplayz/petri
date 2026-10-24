@@ -7,7 +7,8 @@
     "**/AGENTS.md",
     "STARTER_PROMPT.md",
     ".claude/**",
-    ".mcp.json",
+    "**/.claude/**",
+    "**/.mcp.json",
     "**/.env*",
     "**/eslint.config.*",
     "lint-rules/**",
@@ -62,14 +63,15 @@
   "postmortem": {
     "addPaths": [
       ".claude/skills/*/SKILL.md",
-      "evals/*/cases/**",
-      "lint-rules/**",
-      "scripts/agent-tools/**",
-      "scripts/check-boundaries/**",
-      "scripts/check-features/**",
-      "scripts/check-featuremap/**",
-      "scripts/featuremap/**",
-      "scripts/new-feature/**"
+      "evals/*/cases/*/{task.md,setup.sh,rubric.md}",
+      "lint-rules/*.mjs",
+      "lint-rules/*.test.ts",
+      "scripts/agent-tools/*.test.ts",
+      "scripts/check-boundaries/**/*.test.ts",
+      "scripts/check-features/**/*.test.ts",
+      "scripts/check-featuremap/**/*.test.ts",
+      "scripts/featuremap/**/*.test.ts",
+      "scripts/new-feature/**/*.test.ts"
     ],
     "modifyPaths": [
       ".claude/skills/*/SKILL.md",

@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { loadGuardrailsConfig } from "./check-pr/config";
-import { parseNumstatZ } from "./check-pr/git";
 import { gh } from "./evolution/github-issue";
 import { GUARDIAN_ISSUE_LABEL, incidentMarker, parseRevertBranch } from "./evolution/guardian";
 import { deploymentSha, sentryErrorGroups } from "./evolution/guardian-api";
@@ -12,6 +12,7 @@ import {
   appliedProblems,
   errorGroups,
   incidentDeploymentId,
+  MISTAKES_LOG,
   POSTMORTEM_BRANCH_PREFIX,
   POSTMORTEM_LABEL,
   postmortemBranch,
@@ -32,14 +33,15 @@ import { NEEDS_HUMAN_LABEL } from "./trust-report/ladder";
 // gather: in a trusted job, collect the evidence for PR's postmortem (the PR, its diff and issue, the guardian's
 //   revert REVERT and incident issue, and the incident release's errors from Vercel and Sentry) into
 //   artifacts/postmortem/. Outputs number and incident as soon as it knows them, so a failure can still be reported,
-//   then found, branch and base. found is false when PR already has an open postmortem PR.
+//   then found, branch, base and evidence (evidence.json's sha256). found is false when PR already has an open
+//   postmortem PR.
 // check-report <report.json>: fail unless the agent's report matches the schema and its outcome. Outputs outcome.
-// check-applied <report.json>: with the patch applied to the index, fail unless it adds the log entry without changing
-//   a line of the log, and adds the eval case the report names.
+// check-applied <report.json>: with the patch applied to the index, fail unless it adds the log entry at the end of
+//   the log, and its only eval files are the new case the report names, numbered after the skill's cases.
 // labels: create the labels open-pr puts on the PR.
-// open-pr: open the PR for the pushed BRANCH from the report and the evidence, listing the protected files it adds
-//   (PROTECTED_ADDED) and changes (PROTECTED_MODIFIED), labelled postmortem, and needs-human when there are any.
-//   GH_TOKEN must be EVOLUTION_BOT_TOKEN so CI runs on the PR. Outputs url.
+// open-pr: open the PR for the pushed BRANCH from the report and the evidence (which must still hash to EVIDENCE_SHA),
+//   listing the protected files it adds (PROTECTED_ADDED) and changes (PROTECTED_MODIFIED), labelled postmortem, and
+//   needs-human when there are any. GH_TOKEN must be EVOLUTION_BOT_TOKEN so CI runs on the PR. Outputs url.
 const root = join(import.meta.dirname, "..");
 const dir = join(root, "artifacts", "postmortem");
 const SENTRY_DAYS = 14;
@@ -177,11 +179,12 @@ async function gather(): Promise<void> {
     problems,
   };
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
+  const evidenceJson = `${JSON.stringify(evidence, null, 2)}\n`;
+  writeFileSync(join(dir, "evidence.json"), evidenceJson);
   writeFileSync(join(dir, "evidence.md"), renderEvidence(evidence, diff));
   const base = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).stdout.trim();
   if (!/^[0-9a-f]{40}$/.test(base)) throw new Error("couldn't read the base commit");
-  output({ found: "true", branch: postmortemBranch(number, base), base });
+  output({ found: "true", branch: postmortemBranch(number, base), base, evidence: sha256(evidenceJson) });
   for (const problem of problems) process.stdout.write(`postmortem: lookup failed: ${problem}\n`);
 }
 
@@ -199,17 +202,33 @@ function checkReport(file: string | undefined): void {
   output({ outcome: report.outcome, reason: defang(report.blockedReason ?? "").replace(/\s+/g, " ") });
 }
 
-function staged(args: readonly string[]): string {
-  const result = spawnSync("git", ["diff", "--cached", "-z", "--no-renames", ...args], { cwd: root, encoding: "utf8", windowsHide: true });
-  if (result.status !== 0) throw new Error(`git diff --cached ${args.join(" ")} failed: ${result.stderr.trim()}`);
-  return result.stdout;
+function git(args: readonly string[]): { readonly ok: boolean; readonly stdout: string } {
+  const result = spawnSync("git", args, { cwd: root, encoding: "utf8", windowsHide: true });
+  if (result.error !== undefined) throw result.error;
+  return { ok: result.status === 0, stdout: result.stdout };
 }
 
 function checkApplied(file: string | undefined): void {
   if (file === undefined) throw new Error("usage: pnpm evolution:postmortem check-applied <report.json>");
-  const problems = appliedProblems(readReport(file), parseRawZ(staged(["--raw"])), parseNumstatZ(staged(["--numstat"])));
+  const report = readReport(file);
+  const raw = git(["diff", "--cached", "--raw", "-z", "--no-renames"]);
+  const before = git(["show", `HEAD:${MISTAKES_LOG}`]);
+  const after = git(["show", `:${MISTAKES_LOG}`]);
+  if (!raw.ok || !before.ok) throw new Error("couldn't read the applied patch or the log from git");
+  const skill = /^evals\/([a-z0-9-]+)\//.exec(report.evalCase)?.[1];
+  const cases = skill === undefined ? undefined : git(["ls-tree", "-z", "--name-only", "HEAD", "--", `evals/${skill}/cases/`]);
+  const existingCases = (cases?.stdout ?? "").split("\0").flatMap((path) => (path === "" ? [] : [path.slice(path.lastIndexOf("/") + 1)]));
+  const problems = appliedProblems(report, {
+    raw: parseRawZ(raw.stdout),
+    log: { before: before.stdout, after: after.ok ? after.stdout : undefined },
+    existingCases,
+  });
   if (problems.length > 0) throw new Error(`the patch doesn't match the report: ${problems.join("; ")}`);
   process.stdout.write("postmortem: the patch adds the entry and the eval case it reports\n");
+}
+
+function sha256(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
 }
 
 function labels(): void {
@@ -226,7 +245,9 @@ function openPr(): void {
   const report = readReport(join(dir, "report.json"));
   const problems = reportProblems(report);
   if (problems.length > 0) throw new Error(`the postmortem report doesn't add up: ${problems.join("; ")}`);
-  const evidence = JSON.parse(readFileSync(join(dir, "evidence.json"), "utf8")) as Evidence;
+  const evidenceJson = readFileSync(join(dir, "evidence.json"), "utf8");
+  if (sha256(evidenceJson) !== env("EVIDENCE_SHA")) throw new Error("evidence.json isn't the file gather wrote");
+  const evidence = JSON.parse(evidenceJson) as Evidence;
   const paths = (name: string) => (process.env[name] ?? "").split(/\s+/).filter((path) => path !== "");
   const protectedPaths = { added: paths("PROTECTED_ADDED"), modified: paths("PROTECTED_MODIFIED") };
   const body = postmortemPrBody({ report, evidence, protectedPaths, runUrl: env("RUN_URL") });

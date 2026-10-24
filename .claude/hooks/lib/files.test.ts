@@ -39,10 +39,22 @@ describe("fileProblem", () => {
       expect(write(path)).toContain("For a postmortem: a postmortem can't write this protected path");
     }
     expect(write(".claude/settings.json")).toContain("never a Claude Code settings file");
-    expect(write("scripts/agent-tools/workflow-limits.ts")).toContain("may add files here but not change existing ones");
+    expect(write("scripts/agent-tools/workflow-limits.test.ts")).toContain("may add files here but not change existing ones");
+    expect(write("scripts/agent-tools/workflow-limits.ts")).toContain("can't write this protected path");
     expect(write("evals/verify-app/cases/09-x/.env.sample")).toContain("dotfile");
     expect(write("src/features/x/CLAUDE.md")).toContain("only the root CLAUDE.md");
     expect(write("src/features/blob/lib/blob-state.ts")).toBeUndefined();
+    expect(fileProblem({ toolName: "Write", toolInput: { file_path: join(tmpdir(), "scratch.txt") } }, postmortem)).toBeUndefined();
+  });
+
+  it("holds the postmortem's name and clash rules on unprotected paths, and blocks nested .claude folders", () => {
+    const postmortem: FileGuard = { ...agent, postmortemProblem: (path) => postmortemProblem(path, projectRoot, pathGuard) };
+    const write = (path: string) => fileProblem({ toolName: "Write", toolInput: { file_path: at(path) } }, postmortem);
+    expect(fileProblem({ toolName: "Write", toolInput: { file_path: at("src/features/blob/.claude/skills/x/SKILL.md") } }, agent)).toContain("is a protected path");
+    expect(write("src/features/blob/.claude/skills/x/SKILL.md")).toContain("dotfile");
+    expect(write("src/features/blob/lib/.helper.ts")).toBe("Blocked for a postmortem: a postmortem can't write a dotfile or into a dot folder (postmortem in .github/guardrails.json).");
+    expect(write("src/features/blob/lib/blob-state.js")).toContain("named like src/features/blob/lib/blob-state.ts with another extension");
+    expect(write("scripts/agent-tools/public-env.js")).toContain("named like scripts/agent-tools/public-env.ts with another extension");
   });
 
   it("allows ordinary edits, reads of protected files and paths outside the repo", () => {

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { NumstatEntry } from "../check-pr/git";
 import { CASE_FILES } from "../evals/cases";
 import type { RawChange } from "./patch";
 import { defang } from "./triage-output";
@@ -13,6 +12,7 @@ export const MAX_DIFF_CHARS = 60_000;
 const INCIDENT_ID = /<!-- guardian-incident: (\S+) -->/;
 const EVAL_CASE = /^evals\/[a-z0-9-]+\/cases\/[A-Za-z0-9._-]+\/?$/;
 const PLAIN_PATH = /^[A-Za-z0-9._/-]+$/;
+const GITHUB_ISSUE_URL = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/;
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 
@@ -57,17 +57,35 @@ export function reportProblems(report: PostmortemReport): string[] {
   return problems;
 }
 
-// What the check job verifies once the patch is applied: it adds the entry to the log without changing or removing a
-// line of it, and adds the eval case the report names.
-export function appliedProblems(report: PostmortemReport, raw: readonly RawChange[], entries: readonly NumstatEntry[]): string[] {
+export type Applied = {
+  readonly raw: readonly RawChange[];
+  readonly log: { readonly before: string; readonly after: string | undefined };
+  readonly existingCases: readonly string[];
+};
+
+function caseNumber(name: string): number {
+  return Number(/^(\d+)-/.exec(name)?.[1] ?? Number.NaN);
+}
+
+// What the check job verifies once the patch is applied: it adds the entry at the end of the log without changing a
+// line before it, and the only eval files it touches are the three of the case the report names, a new case numbered
+// after the skill's existing ones (existingCases), so it doesn't take the first case's place in the nightly evals.
+export function appliedProblems(report: PostmortemReport, applied: Applied): string[] {
+  const { raw, log, existingCases } = applied;
   const problems: string[] = [];
-  const log = entries.find((entry) => entry.path === MISTAKES_LOG);
-  if (log === undefined || !log.added) problems.push(`the patch doesn't add the entry to ${MISTAKES_LOG}`);
-  else if (log.deleted !== 0) problems.push(`the patch changes or removes lines of ${MISTAKES_LOG}; a postmortem only adds to it`);
-  if (report.evalCase !== "") {
-    const folder = report.evalCase.replace(/\/?$/, "/");
+  if (log.after === undefined || log.after === log.before) problems.push(`the patch doesn't add the entry to ${MISTAKES_LOG}`);
+  else if (!log.after.startsWith(log.before)) problems.push(`the patch changes lines of ${MISTAKES_LOG}; a postmortem only adds its entry at the end`);
+  const folder = report.evalCase === "" ? undefined : report.evalCase.replace(/\/?$/, "/");
+  const caseFiles = folder === undefined ? [] : CASE_FILES.map((name) => `${folder}${name}`);
+  const strays = raw.filter((change) => change.path.startsWith("evals/") && !caseFiles.includes(change.path)).map((change) => change.path);
+  if (strays.length > 0) problems.push(`the patch changes evals outside the case the report names: ${strays.join(", ")}`);
+  if (folder !== undefined) {
     const missing = CASE_FILES.filter((name) => !raw.some((change) => change.status === "A" && change.path === `${folder}${name}`));
     if (missing.length > 0) problems.push(`the patch doesn't add the eval case ${report.evalCase} (missing ${missing.join(", ")})`);
+    const highest = Math.max(0, ...existingCases.map(caseNumber).filter((number) => !Number.isNaN(number)));
+    if (!(caseNumber(folder.split("/").at(-2) ?? "") > highest)) {
+      problems.push(`the eval case ${report.evalCase} needs a number after the skill's existing cases (above ${String(highest).padStart(2, "0")})`);
+    }
   }
   return problems;
 }
@@ -178,21 +196,24 @@ export function renderEvidence(evidence: Evidence, diff: string): string {
 
 export const POSTMORTEM_MARKER = "<!-- postmortem-of: ";
 
-const CLOSING_KEYWORD = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?=:?\s+\S*(?:#|\/issues\/|\/pull\/))/gi;
+const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+const CLOSING_KEYWORD = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?=:?\s+\S*(?:#|\/issues\/|\/pull\/|GH-\d))/gi;
 
-// Agent-written text on one line: no mentions, and no issue reference that links, or that closes an issue when the PR
-// or its squash commit merges.
+// Agent-written text on one line: no mentions, and no issue reference (#12, owner/repo#12, GH-12) that links, or that
+// closes an issue when the PR or its squash commit merges.
 function plain(value: string): string {
   return defang(value)
     .replace(/\s+/g, " ")
     .trim()
-    .replace(CLOSING_KEYWORD, (word) => `${word.charAt(0)}​${word.slice(1)}`)
-    .replace(/#(?=\d)/g, "#​");
+    .replace(CLOSING_KEYWORD, (word) => `${word.charAt(0)}${ZERO_WIDTH_SPACE}${word.slice(1)}`)
+    .replace(/#(?=\d)/g, `#${ZERO_WIDTH_SPACE}`)
+    .replace(/\bGH-(?=\d)/gi, (reference) => `${reference}${ZERO_WIDTH_SPACE}`);
 }
 
-// The same in the PR body, where HTML or a comment could also hide what follows.
+// The same in the PR body, where HTML, an entity (&num;12, &#64;someone) or a comment could also bring a reference
+// back or hide what follows.
 function inline(value: string): string {
-  return plain(value).replaceAll("<", "&lt;");
+  return plain(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;");
 }
 
 export function postmortemTitle(report: PostmortemReport): string {
@@ -218,6 +239,8 @@ export function postmortemPrBody(input: {
   const { report, evidence, protectedPaths, runUrl } = input;
   const { added, modified } = protectedPaths;
   const { pr, revert, incident, note } = evidence;
+  if (!Number.isInteger(pr.number) || (revert !== undefined && !Number.isInteger(revert.number))) throw new Error("the evidence's PR numbers aren't numbers");
+  if (incident !== undefined && !GITHUB_ISSUE_URL.test(incident.url)) throw new Error(`the incident's URL ${JSON.stringify(incident.url)} isn't a GitHub issue`);
   const change = `#${String(pr.number)} (${inline(pr.title)})`;
   const why =
     revert === undefined
@@ -236,7 +259,7 @@ export function postmortemPrBody(input: {
     `- **Rung:** ${report.rung}.${report.rungProof === "" ? "" : ` ${inline(report.rungProof)}`}`,
     skill === undefined
       ? "- **Eval case:** none."
-      : `- **Eval case:** \`${report.evalCase}\`. The agent's sandbox can't run evals. Before you run \`/run-evals ${skill}\`, read the case's \`setup.sh\`: the runner runs it on your machine, in a copy of the repo with no secrets in its environment but outside any sandbox.`,
+      : `- **Eval case:** \`${report.evalCase}\`, the only eval files it adds. The agent's sandbox can't run evals. Read the case's \`setup.sh\` before you merge or run \`/run-evals ${skill}\`: \`/run-evals\` runs it on your machine, and once merged the evals workflow runs it in CI next to the Claude token, neither in a sandbox.`,
     ...report.whatChanged.map((line) => `- ${inline(line)}`),
     "",
     `**Root cause** (${report.reproduced ? "reproduced" : "not reproduced"}): ${inline(report.rootCause)}`,

@@ -15,17 +15,18 @@ Read `CLAUDE.md`, then `.claude/skills/postmortem/SKILL.md` and `.claude/skills/
 1. **Find the root cause and reproduce it.** Show it with a run: a unit test, a lint rule or a verify flow or script that fails on the change's code. To run against the change's code, put its lines back with Edit for one run, then restore them. Cite the files and lines you read. If you can't reproduce it, say so: the entry says "not reproduced", and you stop after logging it (`"outcome": "logged"`).
 2. **Log the entry** at the end of `docs/agent-mistakes.md`, in the format the skill gives.
 3. **Climb the ladder** (design → hard rule → skill → CLAUDE.md line) and stop at the first rung that would have stopped this change. Prove it: the rule or check fails on the change's code and passes on `main`.
-4. **Add the eval case** as a new folder `evals/<skill>/cases/NN-<name>/` (`task.md`, `setup.sh`, `rubric.md`) for the skill that should have prevented it. You can't run evals here; the PR asks the maintainer to, after reading your `setup.sh`.
+4. **Add the eval case** as a new folder `evals/<skill>/cases/NN-<name>/` (`task.md`, `setup.sh`, `rubric.md`) for the skill that should have prevented it, numbered after that skill's existing cases. It's the only eval change the patch may make. You can't run evals here; the PR asks the maintainer to, after reading your `setup.sh`.
 5. **`pnpm check`** must pass. Fix everything it reports, without disabling, skipping or loosening anything.
 
 ## What you may change
 
-- `docs/agent-mistakes.md` (add your entry; don't change or remove a line that's there) and anything that isn't a protected path, such as `src/` tests and code.
+- `docs/agent-mistakes.md` (add your entry at the end; don't change a line that's there) and anything that isn't a protected path, such as `src/` tests and code.
 - Protected files, which a maintainer approves with the `protected-ok` label (`postmortem` in `.github/guardrails.json`):
-  - **add** new files under `.claude/skills/*/SKILL.md` (a new skill), `evals/*/cases/**`, `lint-rules/**`, `scripts/agent-tools/**`, `scripts/check-boundaries/**`, `scripts/check-features/**`, `scripts/check-featuremap/**`, `scripts/featuremap/**` and `scripts/new-feature/**`;
-  - **change** only `.claude/skills/*/SKILL.md`, the root `CLAUDE.md`, `eslint.config.mjs` and `lint-rules/index.mjs`. Every other protected file there stays as it is: add a new test or rule next to it instead.
-  - Never delete a protected file, and never write a dotfile, a dot folder or another `CLAUDE.md` or `AGENTS.md`. Use plain names: letters, digits, `.`, `_` and `-`.
-  - A skill's frontmatter keeps only `name` and `description`.
+  - **add** new files matching `.claude/skills/*/SKILL.md` (a new skill), `evals/*/cases/*/{task.md,setup.sh,rubric.md}`, `lint-rules/*.mjs`, `lint-rules/*.test.ts`, `scripts/agent-tools/*.test.ts`, `scripts/check-boundaries/**/*.test.ts`, `scripts/check-features/**/*.test.ts`, `scripts/check-featuremap/**/*.test.ts`, `scripts/featuremap/**/*.test.ts` and `scripts/new-feature/**/*.test.ts`;
+  - **change** only `.claude/skills/*/SKILL.md`, the root `CLAUDE.md`, `eslint.config.mjs` and `lint-rules/index.mjs`. Every other protected file stays as it is: add a new test or rule next to it instead.
+  - Never delete a protected file.
+  - A skill's frontmatter is its folder's `name` and a `description`, nothing else.
+- Anywhere: never write a dotfile, a dot folder or another `CLAUDE.md` or `AGENTS.md`, and never add a file whose name differs from an existing one only in case or in extension (`x.js` next to `x.ts`). Protected files use plain names: letters, digits, `.`, `_` and `-`.
 - Nothing else that's protected: not `.github/`, `.evolution/`, `.claude/hooks/`, agents, commands or settings, the loop's own scripts, `scripts/verify/`, `package.json` or the lockfile, `supabase/`, or env files. The hooks block them, and the patch is rejected if it changes one. A hard rule that would be a new CI job goes in as a new test that `pnpm check` runs, like `scripts/agent-tools/allowed-tools.test.ts`. If the right fix is out of reach, describe it in `forAHuman` and take the best rung you can reach.
 - No new dependencies, no binary files, under about 400 changed lines.
 
