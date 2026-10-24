@@ -94,25 +94,36 @@ export function productionState(deployments: readonly VercelDeployment[], servin
 //
 // Vercel doesn't always report the rollback: after the guardian's real one (#92), the project had no lastAliasRequest.
 // When it reports none, the deployments show it: production serves the deployment that served right before the newest
-// one that ever served, the only target Hobby's rollback allows. A promote or rollback Vercel reports from after that
-// newest one went live wins, so a human's promote of an older deployment is left alone. An older one (an earlier
-// incident's promote, say) can't describe this rollback, so then the deployments decide too.
+// one that ever served, the only target Hobby's rollback allows. A promote or rollback Vercel reports wins when it
+// succeeded since that newest one went live, so a human's promote of an older deployment is left alone. One that's
+// older (an earlier incident's promote, say), or that failed, was skipped or hasn't finished, changed nothing that the
+// deployments don't show, so then they decide.
 export function rolledBackFrom(servingId: string, aliasRequest: AliasRequest | undefined, deployments: readonly VercelDeployment[]): string | undefined {
-  const [newest, next] = deployments
+  const [newest, next] = everServed(deployments);
+  const inferred = newest !== undefined && next?.uid === servingId ? newest.uid : undefined;
+  if (aliasRequest === undefined || aliasRequest.jobStatus !== "succeeded" || !reportedSinceNewest(aliasRequest, deployments)) return inferred;
+  if (aliasRequest.type !== "rollback" || aliasRequest.toDeploymentId !== servingId) return undefined;
+  return aliasRequest.fromDeploymentId ?? inferred;
+}
+
+// Whether Vercel's last promote or rollback came after the newest deployment that ever served went live, or put it
+// live. An older one can't describe production now.
+export function reportedSinceNewest(aliasRequest: AliasRequest, deployments: readonly VercelDeployment[]): boolean {
+  const [newest] = everServed(deployments);
+  return newest === undefined || aliasRequest.toDeploymentId === newest.uid || aliasRequest.requestedAt >= (newest.ready ?? newest.created);
+}
+
+// Ready production deployments that have served production, newest first.
+function everServed(deployments: readonly VercelDeployment[]): VercelDeployment[] {
+  return deployments
     .filter((deployment) => deployment.state === "READY" && deployment.target === "production" && deployment.readySubstate === "PROMOTED")
     .sort((a, b) => b.created - a.created);
-  const current =
-    aliasRequest !== undefined &&
-    (newest === undefined || aliasRequest.toDeploymentId === newest.uid || aliasRequest.requestedAt >= (newest.ready ?? newest.created));
-  if (!current) return newest !== undefined && next?.uid === servingId ? newest.uid : undefined;
-  if (aliasRequest.type !== "rollback" || aliasRequest.jobStatus !== "succeeded" || aliasRequest.toDeploymentId !== servingId) return undefined;
-  return aliasRequest.fromDeploymentId ?? undefined;
 }
 
 // After the guardian's rollback, production goes live again through a promote, the guardian's or a human's, and Vercel
 // doesn't always report it. The deployment that served before is then the incident's, so judging would compare with
 // that release and could roll back to it. As after any promote, production waits for the next deploy. incidents: the
-// bodies of the guardian's incident issues, which carry the marker of the deployment each one rolled back.
+// bodies of the guardian's incident issues and reverts, which carry the marker of the deployment each one rolled back.
 export function heldAfterIncident(production: Production, incidents: readonly string[]): Production {
   if (production.kind === "held" || production.previous === undefined) return production;
   const marker = incidentMarker(production.previous.id);

@@ -18,6 +18,7 @@ import {
   heldAfterIncident,
   incidentMarker,
   incidentRevert,
+  isGuardianRevert,
   loweredTrust,
   nextPause,
   parseStepOutcomes,
@@ -26,6 +27,7 @@ import {
   PROMOTED_LABEL,
   promoteBlock,
   promoteTarget,
+  reportedSinceNewest,
   revertBranch,
   rolledBackFrom,
   spikeVerdict,
@@ -194,10 +196,16 @@ function openIncidentIssue(servingId: string): { readonly url: string; readonly 
   return issue === undefined ? undefined : { url: issue.url, labels: issue.labels.map((label) => label.name) };
 }
 
-// The bodies of the guardian's incident issues, open or closed.
+// The bodies of the guardian's incident issues and reverts, open or closed. Both carry the incident's marker; the
+// revert alone when notify, the run's last step, failed.
 function incidentBodies(): string[] {
   const issues = JSON.parse(gh(root, ["issue", "list", "--state", "all", "--label", GUARDIAN_ISSUE_LABEL, "--limit", "50", "--json", "body"])) as { body: string }[];
-  return issues.map((issue) => issue.body);
+  const fields = "body,headRefName,isCrossRepository,labels";
+  const prs = JSON.parse(gh(root, ["pr", "list", "--state", "all", "--base", "main", "--label", REVERT_LABEL, "--limit", "50", "--json", fields])) as Pick<
+    ListedPr,
+    "body" | "headRefName" | "isCrossRepository" | "labels"
+  >[];
+  return [...issues.map((issue) => issue.body), ...prs.filter((pr) => isGuardianRevert(pr)).map((pr) => pr.body)];
 }
 
 // The guardian's open issue or PR for this deployment, when an earlier run already acted on it. Then only the
@@ -304,9 +312,9 @@ async function check(): Promise<void> {
     const promotion = attempt("looking for the merged revert to promote", problems, () => planPromotion(deployments, servingId, aliasRequest));
     const next = [promotion === undefined ? undefined : `After the rollback: ${promotion.text}.`, ...problems.map((problem) => `**Lookup failed:** ${problem}`)];
     stepSummary(["## Guardian", `Not checking: ${production.reason}.`, ...next.filter((line) => line !== undefined), vercelLine(deployments, aliasRequest)].join("\n\n"));
-    // Production is held and Vercel's last promote or rollback failed, or the guardian's promote never took: a human
-    // has to look, so the run goes red on every check until one does.
-    if (aliasRequest?.jobStatus === "failed") {
+    // Production is held and Vercel's last promote or rollback failed since the newest deployment went live, or the
+    // guardian's promote never took: a human has to look, so the run goes red on every check until one does.
+    if (aliasRequest?.jobStatus === "failed" && reportedSinceNewest(aliasRequest, deployments)) {
       throw new Error(`Vercel's last ${aliasRequest.type} (to ${aliasRequest.toDeploymentId}) failed while production is held: ${production.reason}`);
     }
     if (promotion?.stuck === true) throw new Error(`the rollback still holds production: ${promotion.text}`);
@@ -396,10 +404,8 @@ async function promoteRevert(): Promise<void> {
   if (now !== plan.servingId) throw new Error(`production changed since the check (it serves ${now}, not ${plan.servingId}), so the guardian won't promote`);
   ensureLabel(PROMOTED_LABEL);
   gh(root, ["pr", "edit", plan.revert.url, "--add-label", PROMOTED_LABEL]);
-  let serves: boolean;
   try {
     await promoteDeployment(vercel, plan.target.id);
-    serves = await servesWithin(vercel, host, plan.target.id);
   } catch (error) {
     const problems: string[] = [];
     attempt("reporting it on the incident", problems, () => {
@@ -407,6 +413,11 @@ async function promoteRevert(): Promise<void> {
     });
     throw new Error([`promoting ${plan.target.id} failed: ${errorText(error)}`, ...problems].join("; "));
   }
+  // Vercel accepted the promote, so a failed read while waiting leaves it unconfirmed, not failed.
+  const serves = await servesWithin(vercel, host, plan.target.id).catch((error: unknown) => {
+    process.stdout.write(`guardian: ${errorText(error)}\n`);
+    return false;
+  });
   if (!serves) {
     commentOnIncident(plan, promoteUnconfirmedComment(plan.target, runUrl()));
     throw new Error(`Vercel accepted the promote, but ${host} didn't switch to ${plan.target.id} within 3 minutes`);

@@ -28,6 +28,7 @@ import {
   PROMOTED_LABEL,
   promoteBlock,
   promoteTarget,
+  reportedSinceNewest,
   revertBranch,
   rolledBackFrom,
   spikeVerdict,
@@ -194,6 +195,24 @@ describe("after the guardian's rollback", () => {
     const earlierIncident = { ...humanPromote, fromDeploymentId: "dpl_older", toDeploymentId: "dpl_earlier_rev", requestedAt: 5_000 };
     expect(rolledBackFrom("dpl_old", earlierIncident, held)).toBe("dpl_bad");
     expect(rolledBackFrom("dpl_bad", { ...humanPromote, toDeploymentId: "dpl_bad", requestedAt: 5_000 }, held)).toBeUndefined();
+  });
+
+  it("reads the deployments when the reported promote didn't succeed, or the rollback names no deployment it replaced", () => {
+    const held = [deployment("dpl_rev", 3_000, SHA_R, { readySubstate: "STAGED" }), deployment("dpl_bad", 2_000, SHA_B), deployment("dpl_old", 1_000, SHA_A)];
+    const guardianPromote = { type: "promote", fromDeploymentId: "dpl_old", toDeploymentId: "dpl_rev", requestedAt: 70_000 };
+    for (const jobStatus of ["pending", "in-progress", "skipped", "failed"]) {
+      expect(rolledBackFrom("dpl_old", { ...guardianPromote, jobStatus }, held)).toBe("dpl_bad");
+    }
+    expect(rolledBackFrom("dpl_old", { ...rollback, fromDeploymentId: null, requestedAt: 70_000 }, held)).toBe("dpl_bad");
+  });
+
+  it("knows whether a reported promote or rollback came since the newest deployment that served went live", () => {
+    const deployments = [deployment("dpl_bad", 2_000, SHA_B), deployment("dpl_old", 1_000, SHA_A)];
+    expect(reportedSinceNewest({ ...rollback, requestedAt: 62_000 }, deployments)).toBe(true);
+    expect(reportedSinceNewest({ ...rollback, requestedAt: 61_999 }, deployments)).toBe(false);
+    expect(reportedSinceNewest({ ...rollback, toDeploymentId: "dpl_bad", requestedAt: 10 }, deployments)).toBe(true);
+    expect(reportedSinceNewest({ ...rollback, requestedAt: 10 }, [])).toBe(true);
+    expect(reportedSinceNewest({ ...rollback, requestedAt: 2_500 }, [deployment("dpl_bad", 2_000, SHA_B, { ready: null })])).toBe(true);
   });
 
   it("holds production after the promote that ends a rollback, even when Vercel reports no promote, until the next deploy", () => {
