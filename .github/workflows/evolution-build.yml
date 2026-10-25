@@ -293,13 +293,21 @@ jobs:
       # The patch goes on main as it is now, not on the build's base. If main's workflows changed during the build, a
       # branch from the old base would differ from main in .github/workflows/, and GitHub refuses that push from a token
       # without the workflows permission, which the bot token must never get (run 40031512734). CI and evolution-verify
-      # judge the PR's real head, so the verified patch only has to apply cleanly.
+      # judge the PR's real head, so the verified patch only has to apply cleanly. A run that pushed the branch but didn't
+      # open its PR leaves the branch behind, and a retry's new commit isn't a fast-forward of it, so the push replaces it
+      # (#107). It stops first if an open PR from this repository has the branch as its head.
       - name: Push the branch (in a separate worktree, so nothing here runs the PR's code)
         env:
           BOT_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ needs.pick.outputs.branch }}
           NUMBER: ${{ needs.pick.outputs.number }}
         run: |
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --head "$BRANCH" --json url,isCrossRepository --jq '.[] | select(.isCrossRepository == false) | .url')
+          if [ -n "$open" ]; then
+            echo "::error::$BRANCH is the head of an open PR ($open). Merge or close it before building the issue again."
+            exit 1
+          fi
           git fetch --no-tags --depth=1 origin "+refs/heads/main:refs/remotes/origin/main"
           git worktree add --detach "$RUNNER_TEMP/branch" origin/main
           cd "$RUNNER_TEMP/branch"
@@ -308,7 +316,7 @@ jobs:
             exit 1
           fi
           git -c user.name="petri-evolution" -c user.email="petri-evolution@users.noreply.github.com" commit -q -m "evolution: build #$NUMBER"
-          git push "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+          git push --force "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
 
       - name: Open the PR from the template
         id: pr
