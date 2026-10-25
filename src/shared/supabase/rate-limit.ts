@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { serverEnv } from "@/shared/env";
-import { clientIpFromHeaders, rateLimitBucket } from "@/shared/lib/client-ip";
+import { clientIpFromHeaders, rateLimitBucket, type Ipv6Prefix } from "@/shared/lib/client-ip";
 import { serviceSupabase } from "./service-client";
 
 export type RateLimitAction = "post" | "vote" | "report" | "event";
@@ -11,9 +11,9 @@ export type RateLimitRule = {
   readonly windowSeconds: number;
 };
 
-export function hashClientIp(headers: Headers): string {
+export function hashClientIp(headers: Headers, ipv6Prefix: Ipv6Prefix = 64): string {
   return createHash("sha256")
-    .update(`${serverEnv().RATE_LIMIT_SALT}:${rateLimitBucket(clientIpFromHeaders(headers))}`)
+    .update(`${serverEnv().RATE_LIMIT_SALT}:${rateLimitBucket(clientIpFromHeaders(headers), ipv6Prefix)}`)
     .digest("hex");
 }
 

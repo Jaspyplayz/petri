@@ -19,7 +19,7 @@ Read `FEATURE_MAP.md`. Most changes belong in an existing feature.
 | Needs code from two features | `src/shared/`, and only the shared part. Features still don't import each other. |
 | A new page or panel with its own data and behaviour that no feature owns | A new feature. |
 
-At trust level 2 and above, agents may create features with the generator. Below that, a new feature is a human's call.
+At trust level 2 and above, agents may create features with the generator. A new feature with `server/` code needs level 3. Below level 2, a new feature is a human's call.
 
 ## Create it
 
