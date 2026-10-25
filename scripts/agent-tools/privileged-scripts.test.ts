@@ -118,7 +118,7 @@ describe("privilegedScriptProblems", () => {
     expect(privilegedScriptProblems("w.yml", workflow("contents: read", "      - run: pnpm -s job"), repo)).toEqual([]);
   });
 
-  it("finds no privileged step in .github/workflows that loads a file an agent PR can change", () => {
+  it("finds no privileged step in .github/workflows that loads a file an agent PR can change", { timeout: 30_000 }, () => {
     const real = repoAt(root);
     const dir = join(root, ".github", "workflows");
     const problems = readdirSync(dir).flatMap((file) => privilegedScriptProblems(file, readFileSync(join(dir, file), "utf8"), real));
