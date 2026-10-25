@@ -64,7 +64,7 @@ Both are rolling totals over the last 7 days for the triage, build, verify and p
 - the budgeted total, and the share of each budget used
 - the feedback items that reports hid in the same 7 days, by id, category, report count and time, with no feedback text
 
-It then runs `pnpm trust-report --issue`. It runs on demand for now; its weekly cron is turned on with the other crons in Phase 9.1. Run `pnpm evolution:weekly` locally (with `.env.local`) to print the same table without opening an issue.
+It then runs `pnpm trust-report --issue`. It runs every Monday at 14:00 UTC and on demand. Run `pnpm evolution:weekly` locally (with `.env.local`) to print the same table without opening an issue.
 
 ## Checklist for the maintainer
 

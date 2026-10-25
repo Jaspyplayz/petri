@@ -2,8 +2,10 @@ name: evolution-weekly
 
 # The weekly report: the last 7 days of agent_runs against the weekly budget, then the trust report (which only
 # suggests a promotion). It runs no agent and only reports; the triage and build gates close themselves when the loop
-# is over budget. The weekly cron is added with the other crons in Phase 9.1 (docs/decisions.md).
+# is over budget. It runs every Monday at 14:00 UTC (Phase 9.1) and on dispatch.
 on:
+  schedule:
+    - cron: "0 14 * * 1"
   workflow_dispatch:
 
 permissions:

@@ -99,7 +99,7 @@ After a rollback, Vercel builds new production deployments but doesn't put them 
 
 When the revert merges, post-merge adds a "Reverted" entry to the Timeline and starts the postmortem. The postmortem opens a `postmortem/` PR that always adds an eval case under `evals/`, a protected path. Review it, add the `protected-ok` label after its latest push, and merge it.
 
-Until the crons are on (Phase 9.1), nothing runs the guardian by itself. Dispatch it:
+The guardian runs every 15 minutes with `act` on, and 10, 30 and 60 minutes after each production deploy. To check now, dispatch it:
 
 ```sh
 gh workflow run evolution-guardian.yml             # a dry run that reports what it would do

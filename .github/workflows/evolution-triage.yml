@@ -1,8 +1,10 @@
 name: evolution-triage
 
 # A read-only agent turns the top untriaged feedback into at most maxIssuesPerTriage small issues.
-# The cron schedule is added after the Phase 6 dry run (docs/decisions.md).
+# It runs every 6 hours (Phase 9.1) and on dispatch. The gate decides whether a run does anything.
 on:
+  schedule:
+    - cron: "7 */6 * * *"
   workflow_dispatch:
 
 permissions:
