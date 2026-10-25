@@ -230,3 +230,11 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** The agent took `git status --porcelain` to mean "nothing here to lose", but it can't see ignored files, and it didn't open the folder. Its instructions already say to look at the target before deleting it.
 - **Category:** destructive command without looking at the target (ignored files are invisible to `git status`)
 - **Fix rung:** none reached yet. A design fix would put eval and verify artifacts where removing a worktree can't reach them, or have the runner copy each run's folder out of the working tree. That's a follow-up.
+
+## 2026-10-24 · Undid its own uncommitted edits with `git checkout --` while removing a test seed
+
+- **What happened:** While building the Phase 9.1 PR, the coordinating agent seeded a 5-minute cron into `evolution-guardian.yml`, to show that `workflow-limits.test.ts` rejects it. The test did reject it ("runs every 5 minutes"). To remove the seed, the agent ran `git checkout -- .github/workflows/evolution-guardian.yml`. That restored `main`'s version of the file, which also removed the agent's two uncommitted edits to it from a few minutes before: the 15-minute schedule and its comment.
+- **Evidence:** Right after the checkout, `grep -n 'cron:'` on the file printed nothing. The agent redid both edits, used `grep` to check every schedule in the five workflows, and committed (8ab9aa2). Then it reran actionlint and `pnpm check`, and both passed. Nothing left the machine without the edits.
+- **Root cause:** It undid one change by restoring the whole file from git, without checking what else in the file was uncommitted. It's the same class as the entry above: a destructive command run without looking at everything it removes.
+- **Category:** destructive command without looking at the target (uncommitted work)
+- **Fix rung:** none reached yet. Commit before seeding a control, or undo a seed with the inverse edit.
