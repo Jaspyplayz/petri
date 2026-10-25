@@ -2,8 +2,8 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { featureManifests } from "../src/features/registry";
 import { readEvolutionConfig } from "./evolution/config";
+import { featureRisks } from "./evolution/feature-risks";
 import { loopSupabase } from "./evolution/supabase";
 import type { TriageInput } from "./evolution/triage-input";
 import { planIssues, renderIssueBody, triageOutputSchema } from "./evolution/triage-output";
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const config = readEvolutionConfig(root);
   const plan = planIssues(parsed.data, {
     candidateIds: new Set(input.candidates.map((candidate) => candidate.id)),
-    featureRisk: new Map(featureManifests.map((manifest) => [manifest.id, manifest.riskLevel])),
+    featureRisk: featureRisks(root),
     maxIssues: config.maxIssuesPerTriage,
   });
   for (const problem of plan.problems) process.stdout.write(`! ${problem}\n`);
