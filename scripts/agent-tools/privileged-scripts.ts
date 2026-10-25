@@ -1,6 +1,7 @@
 // A job whose steps get a secret, or whose token can write, runs main's scripts. Every file those scripts load at
 // runtime must be a protected path, or an agent PR that auto-merges puts its code in the next privileged run. A write
-// token counts with or without GH_TOKEN in an env: actions/checkout leaves it in .git/config. Code a step runs can
+// token counts with or without GH_TOKEN in an env. actions/checkout leaves it in .git/config by default, unless
+// persist-credentials: false, and the check counts the job either way, to stay conservative. Code a step runs can
 // change the steps after it ($GITHUB_ENV, $GITHUB_PATH, a process left running), so every run step in such a job
 // counts. The test runs this on every file in .github/workflows (docs/decisions.md P9).
 import { existsSync, readFileSync, statSync } from "node:fs";
