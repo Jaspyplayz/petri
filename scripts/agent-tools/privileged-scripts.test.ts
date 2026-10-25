@@ -63,14 +63,14 @@ describe("privilegedScriptProblems", () => {
     ]);
   });
 
-  it("counts a token in a job that can write, and not one in a read-only job", () => {
-    const step = `      - env:
+  it("counts a job that can write even with no token in its env, since actions/checkout leaves it in .git/config", () => {
+    expect(privilegedScriptProblems("w.yml", workflow("pull-requests: write", "      - run: tsx src/risk.ts"), repo)).toEqual([
+      'w.yml: job j (holds a write token), "tsx src/risk.ts" runs src/risk.ts, which is outside the protected paths',
+    ]);
+    const readOnly = `      - env:
           GH_TOKEN: \${{ github.token }}
         run: tsx src/risk.ts`;
-    expect(privilegedScriptProblems("w.yml", workflow("pull-requests: write", step), repo)).toEqual([
-      'w.yml: job j (holds GH_TOKEN), "tsx src/risk.ts" runs src/risk.ts, which is outside the protected paths',
-    ]);
-    expect(privilegedScriptProblems("w.yml", workflow("pull-requests: read", step), repo)).toEqual([]);
+    expect(privilegedScriptProblems("w.yml", workflow("pull-requests: read", readOnly), repo)).toEqual([]);
   });
 
   it("checks every run step in a job that holds a secret, since a step can change the ones after it", () => {

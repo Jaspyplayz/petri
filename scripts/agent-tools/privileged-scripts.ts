@@ -1,7 +1,8 @@
-// A job whose steps get a secret or a token that can write runs main's scripts. Every file those scripts load at
-// runtime must be a protected path, or an agent PR that auto-merges puts its code in the next privileged run. Code a
-// step runs can change the steps after it ($GITHUB_ENV, $GITHUB_PATH, a process left running), so every run step in
-// such a job counts. The test runs this on every file in .github/workflows (docs/decisions.md P9).
+// A job whose steps get a secret, or whose token can write, runs main's scripts. Every file those scripts load at
+// runtime must be a protected path, or an agent PR that auto-merges puts its code in the next privileged run. A write
+// token counts with or without GH_TOKEN in an env: actions/checkout leaves it in .git/config. Code a step runs can
+// change the steps after it ($GITHUB_ENV, $GITHUB_PATH, a process left running), so every run step in such a job
+// counts. The test runs this on every file in .github/workflows (docs/decisions.md P9).
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { isBuiltin } from "node:module";
 import { join, posix } from "node:path";
@@ -20,7 +21,6 @@ export type Repo = {
 type Json = Record<string, unknown>;
 
 const SECRET = /\$\{\{[^}]*\bsecrets\./;
-const TOKENS = ["GH_TOKEN", "GITHUB_TOKEN"];
 const SCRIPT_FILE = /\.(?:[cm]?ts|tsx|[cm]?js)$/;
 const COMMAND_BREAK = /\n|;|&&|\|\||\||\$\(|`|\(|\)/;
 const PREFIXES = new Set(["if", "then", "else", "elif", "do", "while", "until", "!", "time", "env", "sudo", "nohup", "exec", "command"]);
@@ -68,8 +68,8 @@ function grantsWrite(permissions: unknown): boolean {
 function privileges(doc: Json, job: Json, steps: readonly Json[]): string[] {
   const envs = [doc.env, job.env, ...steps.map((step) => step.env)];
   const secrets = [...envs.flatMap(secretNames), ...steps.flatMap((step) => secretNames(step.with))];
-  const tokens = grantsWrite(job.permissions ?? doc.permissions) ? TOKENS.filter((name) => envs.some((env) => name in (record(env) ?? {}))) : [];
-  return [...new Set([...secrets, ...tokens])];
+  const token = grantsWrite(job.permissions ?? doc.permissions) ? ["a write token"] : [];
+  return [...new Set([...secrets, ...token])];
 }
 
 function commands(script: string): string[][] {
