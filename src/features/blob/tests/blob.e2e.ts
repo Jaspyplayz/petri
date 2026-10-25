@@ -46,6 +46,16 @@ test.describe("blob", () => {
     await expect(page.getByTestId("blob-feeds")).toHaveText("1");
   });
 
+  test("the evolution line counts shipped changes and opens the diary", async ({ page }) => {
+    await page.goto("/");
+    const evolved = page.getByTestId("blob-evolved");
+    await expect(evolved).toHaveText("Evolved 1 time from visitor ideas");
+    await expect(evolved).toHaveAttribute("href", "/timeline");
+    await evolved.click();
+    await expect(page).toHaveURL(/\/timeline$/);
+    await expect(page.getByTestId("timeline-heading")).toHaveText("Blobby's changes");
+  });
+
   test("renaming validates and saves the name", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("blob-name-input").fill("   ");

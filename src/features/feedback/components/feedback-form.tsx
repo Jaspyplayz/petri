@@ -39,7 +39,7 @@ export function FeedbackForm() {
       });
       if (response.status === 201) {
         setBody("");
-        setMessage({ tone: "success", text: "Thanks! Your feedback is on the board." });
+        setMessage({ tone: "success", text: "Thanks! Blobby can see it on the board." });
         track("feedback", "post");
         router.refresh();
         return;
@@ -57,7 +57,7 @@ export function FeedbackForm() {
       className="space-y-3 rounded-3xl border border-ink/10 bg-agar-deep/60 p-5"
     >
       <h2 id="feedback-form-heading" className="text-lg font-semibold">
-        Share an idea or a bug
+        Teach Blobby…
       </h2>
       <label htmlFor="feedback-body" className="sr-only">
         Your feedback
@@ -72,7 +72,7 @@ export function FeedbackForm() {
         }}
         maxLength={FEEDBACK_MAX_LENGTH}
         rows={3}
-        placeholder="The blob should…"
+        placeholder="Teach Blobby to…"
         aria-describedby="feedback-char-count"
         className="w-full resize-none rounded-2xl border border-ink/20 bg-agar p-3 text-sm"
       />
@@ -105,7 +105,7 @@ export function FeedbackForm() {
             {left} characters left
           </span>
           <Button type="submit" disabled={empty || pending} data-testid="feedback-submit">
-            {pending ? "Posting…" : "Post"}
+            {pending ? "Sharing…" : "Suggest a lesson"}
           </Button>
         </div>
       </div>

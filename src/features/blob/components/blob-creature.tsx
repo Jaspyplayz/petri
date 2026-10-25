@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, type AnimationEvent, type SubmitEvent } from "react";
+import Link from "next/link";
+import { useMemo, useState, type AnimationEvent, type ReactNode, type SubmitEvent } from "react";
 import { track } from "@/shared/lib/track";
 import { useLocalStorage } from "@/shared/lib/use-local-storage";
 import { Button } from "@/shared/ui/button";
@@ -24,7 +25,18 @@ import styles from "./blob.module.css";
 
 type Mood = "calm" | "poked" | "fed";
 
-export function BlobCreature() {
+const evolvedLinkClass =
+  "text-center text-2xl font-bold tracking-tight text-culture-deep underline decoration-culture/40 underline-offset-4";
+
+export function EvolvedLink({ label }: { readonly label: string }) {
+  return (
+    <Link href="/timeline" data-testid="blob-evolved" className={evolvedLinkClass}>
+      {label}
+    </Link>
+  );
+}
+
+export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
   const [stored, setStored] = useLocalStorage(BLOB_STORAGE_KEY);
   const state = useMemo(() => parseBlobState(stored), [stored]);
   const [wobbles, setWobbles] = useState(0);
@@ -93,7 +105,7 @@ export function BlobCreature() {
         aria-label={`Poke ${state.name}`}
         className="rounded-full p-2"
       >
-        <svg viewBox="0 0 200 200" width="240" height="240" aria-hidden="true">
+        <svg viewBox="0 0 200 200" width="260" height="260" aria-hidden="true">
           <ellipse cx="100" cy="182" rx={46 * state.size} ry="8" className="fill-ink/10" />
           <g className={styles.creature} style={{ transform: `scale(${String(state.size * 0.8)})` }}>
             <g
@@ -129,6 +141,8 @@ export function BlobCreature() {
           </g>
         </svg>
       </button>
+
+      <div className="flex justify-center">{evolved}</div>
 
       <dl className="flex gap-6 text-sm text-ink-soft">
         <div className="flex gap-1">

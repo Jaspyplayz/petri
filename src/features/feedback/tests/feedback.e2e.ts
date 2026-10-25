@@ -18,4 +18,13 @@ test.describe("feedback board", () => {
     await page.goto("/feedback");
     await expect(page.getByTestId("feedback-item-status").first()).toBeVisible();
   });
+
+  test("a shipped idea shows that Blobby learned it, and a rejected idea says why", async ({ page }) => {
+    await page.goto("/feedback");
+    await expect(page.getByTestId("feedback-heading")).toHaveText("Teach Blobby");
+    await expect(page.getByTestId("feedback-learned").first()).toHaveText("Blobby learned this");
+    await expect(page.getByTestId("feedback-rejection").first()).toHaveText(
+      "Blobby left this one alone. It was unclear, not safe, or too big for one lesson.",
+    );
+  });
 });

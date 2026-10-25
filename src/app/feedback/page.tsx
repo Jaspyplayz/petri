@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { PageView } from "@/features/analytics";
 import { FeedbackScreen } from "@/features/feedback";
 
-export const metadata: Metadata = { title: "Feedback" };
+export const metadata: Metadata = { title: "Teach Blobby" };
 
 export default function FeedbackPage({ searchParams }: PageProps<"/feedback">) {
   return (

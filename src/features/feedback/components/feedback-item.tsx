@@ -1,7 +1,24 @@
 import type { ReactNode } from "react";
 import { feedbackAgeLabel } from "../lib/feedback-age";
-import { feedbackCategoryLabel, feedbackStatusClasses, feedbackStatusLabel } from "../lib/feedback-status";
+import {
+  feedbackCategoryLabel,
+  feedbackLearnedLine,
+  feedbackRejectionReason,
+  feedbackStatusClasses,
+  feedbackStatusLabel,
+} from "../lib/feedback-status";
 import type { FeedbackItem as Item } from "../server/list-feedback";
+
+function LearnedBlob() {
+  return (
+    <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" className="shrink-0">
+      <circle cx="16" cy="16" r="14" className="fill-culture" />
+      <circle cx="11" cy="14" r="1.8" className="fill-blob-face" />
+      <circle cx="21" cy="14" r="1.8" className="fill-blob-face" />
+      <path d="M11 20q5 4 10 0" className="fill-none stroke-blob-face" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export function FeedbackItem({
   item,
@@ -14,6 +31,8 @@ export function FeedbackItem({
   readonly reportControl: ReactNode;
   readonly now: number;
 }) {
+  const learned = feedbackLearnedLine(item.status);
+  const rejection = feedbackRejectionReason(item.status);
   return (
     <li
       data-testid="feedback-item"
@@ -25,6 +44,17 @@ export function FeedbackItem({
         <p data-testid="feedback-item-body" className="break-words">
           {item.body}
         </p>
+        {learned ? (
+          <p data-testid="feedback-learned" className="flex items-center gap-2 text-sm font-medium text-culture-deep">
+            <LearnedBlob />
+            {learned}
+          </p>
+        ) : null}
+        {rejection ? (
+          <p data-testid="feedback-rejection" className="text-sm text-ink-soft">
+            {rejection}
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="rounded-full border border-ink/15 px-2 py-0.5 text-ink-soft">
             {feedbackCategoryLabel(item.category)}

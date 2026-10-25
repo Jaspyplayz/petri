@@ -3,9 +3,9 @@ import { defineFeature } from "@/shared/lib/feature-manifest";
 export const blobManifest = defineFeature({
   id: "blob",
   title: "Blob",
-  summary: "A squishy SVG creature you can poke, feed and name. State lives in the visitor's browser only.",
+  summary: "A squishy SVG creature you can poke, feed and name. Play stays in the visitor's browser. Under the face, a link counts how many Timeline changes are still in effect.",
   routes: ["/"],
-  uiLocation: "The home page, centred under the top navigation: the blob's name, the creature, its stats, Poke and Feed buttons, a row of colour swatches, and a rename form.",
+  uiLocation: "The home page, centred under the top navigation: the blob's name, the creature, an 'Evolved N times from visitor ideas' link to the Timeline, its stats, Poke and Feed buttons, a row of colour swatches, and a rename form.",
   howToReach: ["Open / (from another page, click 'Blob' in the top navigation)"],
   keyboardShortcuts: [],
   selectors: {
@@ -17,6 +17,7 @@ export const blobManifest = defineFeature({
     size: "blob-size",
     pokes: "blob-pokes",
     feeds: "blob-feeds",
+    evolved: "blob-evolved",
     pokeButton: "blob-poke-button",
     feedButton: "blob-feed-button",
     colorPicker: "blob-color-picker",
@@ -80,6 +81,16 @@ export const blobManifest = defineFeature({
         { action: "click", target: "feedButton" },
         { action: "expectText", target: "size", text: "105%" },
         { action: "screenshot", name: "after-reload" },
+      ],
+    },
+    evolved: {
+      description: "The line under the face counts shipped Timeline changes and opens the diary.",
+      steps: [
+        { action: "goto", path: "/" },
+        { action: "expectVisible", target: "creature" },
+        { action: "expectText", target: "evolved", text: "Evolved" },
+        { action: "expectText", target: "evolved", text: "from visitor ideas" },
+        { action: "screenshot", name: "evolved" },
       ],
     },
     rename: {
