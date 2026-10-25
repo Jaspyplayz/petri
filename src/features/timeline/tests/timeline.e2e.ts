@@ -21,6 +21,18 @@ test.describe("timeline", () => {
     await expect(revert.getByTestId("timeline-revert-note")).toHaveText("This undid a change that hurt Blobby.");
   });
 
+  test("every change has a picture instead of an empty frame", async ({ page }) => {
+    await page.goto("/timeline");
+    await expect(page.getByText("No before picture yet")).toHaveCount(0);
+    await expect(page.getByText("No after picture yet")).toHaveCount(0);
+    const arts = page.getByTestId("timeline-art");
+    const count = await arts.count();
+    expect(count).toBeGreaterThan(0);
+    for (let index = 0; index < count; index += 1) {
+      await expect(arts.nth(index).locator("svg, img").first()).toBeVisible();
+    }
+  });
+
   test("is reachable from the navigation", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("nav-timeline").click();

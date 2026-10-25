@@ -27,7 +27,7 @@ export function feedbackStatusClasses(status: FeedbackStatus): string {
     case "building":
       return "bg-spore text-ink";
     case "shipped":
-      return "bg-culture-deep text-agar";
+      return "bg-feed text-feed-ink";
     case "rejected":
       return "bg-ink/10 text-ink line-through";
   }

@@ -5,7 +5,7 @@ export const blobManifest = defineFeature({
   title: "Blob",
   summary: "A squishy SVG creature you can poke, feed and name. Play stays in the visitor's browser. Under the face, a link counts how many Timeline changes are still in effect.",
   routes: ["/"],
-  uiLocation: "The home page, centred under the top navigation: the blob's name, the creature, an 'Evolved N times from visitor ideas' link to the Timeline, its stats, Poke and Feed buttons, a row of colour swatches, and a rename form.",
+  uiLocation: "The home page is two columns on a wide screen and stacked on a narrow one. The left column has the creature, a rainbow 'Evolved N times from visitor ideas' link to the Timeline, playful Size / Pokes / Snacks stats, a pink Poke button, a green Feed button, colour swatches, and a rename field. The right column is the timeline diary card, with a tan Teach Blobby bar and a Suggest a lesson link underneath.",
   howToReach: ["Open / (from another page, click 'Blob' in the top navigation)"],
   keyboardShortcuts: [],
   selectors: {
@@ -25,6 +25,7 @@ export const blobManifest = defineFeature({
     nameInput: "blob-name-input",
     nameSave: "blob-name-save",
     nameError: "blob-name-error",
+    teach: "blob-teach",
   },
   flows: {
     poke: {
@@ -84,12 +85,14 @@ export const blobManifest = defineFeature({
       ],
     },
     evolved: {
-      description: "The line under the face counts shipped Timeline changes and opens the diary.",
+      description: "The line under the face counts shipped Timeline changes and opens the diary. A Teach Blobby bar offers a lesson.",
       steps: [
         { action: "goto", path: "/" },
         { action: "expectVisible", target: "creature" },
         { action: "expectText", target: "evolved", text: "Evolved" },
         { action: "expectText", target: "evolved", text: "from visitor ideas" },
+        { action: "expectVisible", target: "teach" },
+        { action: "expectText", target: "teach", text: "Suggest a lesson" },
         { action: "screenshot", name: "evolved" },
       ],
     },

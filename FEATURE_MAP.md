@@ -9,9 +9,9 @@ Read this before any task. It maps what's on screen to a feature folder, its `da
 | Feature | Routes | Where it is on screen | How to reach it | Selectors (`data-testid`) | Flows | Risk |
 |---|---|---|---|---|---|---|
 | [Analytics (`analytics`)](#analytics-analytics) | none | Invisible. Each page renders a PageView tracker, and features call shared/lib/track on interactions. Events are POSTed to /api/events. | Open any page; a 'view' event is sent once per page show | none | none | medium |
-| [Blob (`blob`)](#blob-blob) | `/` | The home page, centred under the top navigation: the blob's name, the creature, an 'Evolved N times from visitor ideas' link to the Timeline, its stats, Poke and Feed buttons, a row of colour swatches, and a rename form. | Open / (from another page, click 'Blob' in the top navigation) | `blob-panel`, `blob-name`, `blob-creature`, `blob-body`, `blob-eyelid`, `blob-size`, `blob-pokes`, `blob-feeds`, `blob-evolved`, `blob-poke-button`, `blob-feed-button`, `blob-color-picker`, `blob-color-swatch-pink`, `blob-name-input`, `blob-name-save`, `blob-name-error` | `blob.poke`, `blob.feed`, `blob.blink`, `blob.recolor`, `blob.evolved`, `blob.rename` | low |
-| [Feedback board (`feedback`)](#feedback-board-feedback) | `/feedback` | The /feedback page: a 'Teach Blobby' heading and a note that the most-voted ideas are taught by agents and may show up on the Timeline, then a post form (textarea, Idea/Bug radios, character counter, Suggest a lesson button; a paused-lessons note instead while the feedback_open flag is off or the app is read-only), then the board headed 'What to teach Blobby' with Top / Newest sort tabs on the right and one card per item (votes on the left, text, a mini blob with 'Blobby learned this' when shipped, a gentle reason when rejected, category, status badge, relative age such as 3 days ago, issue/PR links, and a small 'Report' link at the right end of that row, which asks 'Confirm report' before it counts). | Open / → Click 'Feedback' in the top navigation (the middle one of the three links on the right) | `feedback-panel`, `feedback-heading`, `feedback-list`, `feedback-empty`, `feedback-item`, `feedback-item-body`, `feedback-item-age`, `feedback-item-status`, `feedback-learned`, `feedback-rejection`, `feedback-item-issue-link`, `feedback-item-pr-link`, `feedback-vote-button`, `feedback-vote-count`, `feedback-vote-error`, `feedback-vote-note`, `feedback-report-button`, `feedback-report-cancel`, `feedback-report-note`, `feedback-report-error`, `feedback-form`, `feedback-body-input`, `feedback-category-idea`, `feedback-category-bug`, `feedback-char-count`, `feedback-submit`, `feedback-form-message`, `feedback-closed-note`, `feedback-sort-top`, `feedback-sort-new` | `feedback.browse`, `feedback.post`, `feedback.age`, `feedback.vote`, `feedback.report` | medium |
-| [Timeline (`timeline`)](#timeline-timeline) | `/timeline` | The /timeline page: a heading 'Blobby's changes', an 'Evolved N times from visitor ideas' counter, then a vertical list of diary cards (plain-English title, before/after pictures, the visitor quote, then a collapsed 'More about this change' with the longer note, PR, commit and trust level). Reverts have a red 'Reverted' badge and the line 'This undid a change that hurt Blobby.' | Open / → Click 'Timeline' in the top navigation (the last of the three links on the right) | `timeline-panel`, `timeline-heading`, `timeline-counter`, `timeline-list`, `timeline-empty`, `timeline-entry`, `timeline-entry-title`, `timeline-revert-badge`, `timeline-revert-note`, `timeline-art`, `timeline-pr-link` | `timeline.browse` | medium |
+| [Blob (`blob`)](#blob-blob) | `/` | The home page is two columns on a wide screen and stacked on a narrow one. The left column has the creature, a rainbow 'Evolved N times from visitor ideas' link to the Timeline, playful Size / Pokes / Snacks stats, a pink Poke button, a green Feed button, colour swatches, and a rename field. The right column is the timeline diary card, with a tan Teach Blobby bar and a Suggest a lesson link underneath. | Open / (from another page, click 'Blob' in the top navigation) | `blob-panel`, `blob-name`, `blob-creature`, `blob-body`, `blob-eyelid`, `blob-size`, `blob-pokes`, `blob-feeds`, `blob-evolved`, `blob-poke-button`, `blob-feed-button`, `blob-color-picker`, `blob-color-swatch-pink`, `blob-name-input`, `blob-name-save`, `blob-name-error`, `blob-teach` | `blob.poke`, `blob.feed`, `blob.blink`, `blob.recolor`, `blob.evolved`, `blob.rename` | low |
+| [Feedback board (`feedback`)](#feedback-board-feedback) | `/feedback` | The /feedback page, in a centred column: a small blotchy blob beside the 'Teach Blobby' heading and a note that the most-voted ideas are taught by agents and may show up on the Timeline, then a soft card with the post form (textarea, Idea/Bug radios, character counter, purple Suggest a lesson button; a paused-lessons note instead while the feedback_open flag is off or the app is read-only), then the board headed 'What to teach Blobby' with Top / Newest sort tabs on the right and one soft card per item (votes on the left, text, a mini blob with 'Blobby learned this' when shipped, a gentle reason when rejected, category, pastel status badge, relative age such as 3 days ago, issue/PR links, and a small 'Report' link at the right end of that row, which asks 'Confirm report' before it counts). | Open / → Click 'Feedback' in the top navigation (the middle one of the three links on the right) | `feedback-panel`, `feedback-heading`, `feedback-list`, `feedback-empty`, `feedback-item`, `feedback-item-body`, `feedback-item-age`, `feedback-item-status`, `feedback-learned`, `feedback-rejection`, `feedback-item-issue-link`, `feedback-item-pr-link`, `feedback-vote-button`, `feedback-vote-count`, `feedback-vote-error`, `feedback-vote-note`, `feedback-report-button`, `feedback-report-cancel`, `feedback-report-note`, `feedback-report-error`, `feedback-form`, `feedback-body-input`, `feedback-category-idea`, `feedback-category-bug`, `feedback-char-count`, `feedback-submit`, `feedback-form-message`, `feedback-closed-note`, `feedback-sort-top`, `feedback-sort-new` | `feedback.browse`, `feedback.post`, `feedback.age`, `feedback.vote`, `feedback.report` | medium |
+| [Timeline (`timeline`)](#timeline-timeline) | `/timeline` | On the home page, the right-hand card (under the creature on a narrow screen) is titled 'Blobby's changes' and shows the newest rows with before/after art. The /timeline page repeats that diary in full: the same heading, an 'Evolved N times from visitor ideas' counter, then one card per change (title, before/after pictures, the visitor quote, then a collapsed 'More about this change'). When a change has no screenshot, the picture is a drawn Blobby. Reverts have a red 'Reverted' badge and the line 'This undid a change that hurt Blobby.' | Open / → Click 'Timeline' in the top navigation (the last of the three links on the right) | `timeline-panel`, `timeline-heading`, `timeline-counter`, `timeline-list`, `timeline-empty`, `timeline-entry`, `timeline-entry-title`, `timeline-revert-badge`, `timeline-revert-note`, `timeline-art`, `timeline-pr-link`, `timeline-home`, `timeline-home-heading` | `timeline.browse`, `timeline.home` | medium |
 
 ## Page layout
 
@@ -60,7 +60,7 @@ A squishy SVG creature you can poke, feed and name. Play stays in the visitor's 
 
 - **Folder:** `src/features/blob/`
 - **Routes:** `/`
-- **Where it is on screen:** The home page, centred under the top navigation: the blob's name, the creature, an 'Evolved N times from visitor ideas' link to the Timeline, its stats, Poke and Feed buttons, a row of colour swatches, and a rename form.
+- **Where it is on screen:** The home page is two columns on a wide screen and stacked on a narrow one. The left column has the creature, a rainbow 'Evolved N times from visitor ideas' link to the Timeline, playful Size / Pokes / Snacks stats, a pink Poke button, a green Feed button, colour swatches, and a rename field. The right column is the timeline diary card, with a tan Teach Blobby bar and a Suggest a lesson link underneath.
 - **Keyboard shortcuts:** none
 - **Data tables:** none
 - **Risk level:** low
@@ -87,6 +87,7 @@ How to reach it:
 | nameInput | `blob-name-input` |
 | nameSave | `blob-name-save` |
 | nameError | `blob-name-error` |
+| teach | `blob-teach` |
 
 ### `blob.poke`
 
@@ -146,13 +147,15 @@ Picking a colour swatch changes the blob's body colour, it survives a reload, an
 
 ### `blob.evolved`
 
-The line under the face counts shipped Timeline changes and opens the diary. Run it with `pnpm verify:flow blob.evolved`.
+The line under the face counts shipped Timeline changes and opens the diary. A Teach Blobby bar offers a lesson. Run it with `pnpm verify:flow blob.evolved`.
 
 1. goto `/`
 2. expectVisible `creature`
 3. expectText `evolved` contains "Evolved"
 4. expectText `evolved` contains "from visitor ideas"
-5. screenshot "evolved"
+5. expectVisible `teach`
+6. expectText `teach` contains "Suggest a lesson"
+7. screenshot "evolved"
 
 ### `blob.rename`
 
@@ -170,7 +173,7 @@ Anonymous visitors teach Blobby an idea or a bug (max 280 characters), upvote ot
 
 - **Folder:** `src/features/feedback/`
 - **Routes:** `/feedback`
-- **Where it is on screen:** The /feedback page: a 'Teach Blobby' heading and a note that the most-voted ideas are taught by agents and may show up on the Timeline, then a post form (textarea, Idea/Bug radios, character counter, Suggest a lesson button; a paused-lessons note instead while the feedback_open flag is off or the app is read-only), then the board headed 'What to teach Blobby' with Top / Newest sort tabs on the right and one card per item (votes on the left, text, a mini blob with 'Blobby learned this' when shipped, a gentle reason when rejected, category, status badge, relative age such as 3 days ago, issue/PR links, and a small 'Report' link at the right end of that row, which asks 'Confirm report' before it counts).
+- **Where it is on screen:** The /feedback page, in a centred column: a small blotchy blob beside the 'Teach Blobby' heading and a note that the most-voted ideas are taught by agents and may show up on the Timeline, then a soft card with the post form (textarea, Idea/Bug radios, character counter, purple Suggest a lesson button; a paused-lessons note instead while the feedback_open flag is off or the app is read-only), then the board headed 'What to teach Blobby' with Top / Newest sort tabs on the right and one soft card per item (votes on the left, text, a mini blob with 'Blobby learned this' when shipped, a gentle reason when rejected, category, pastel status badge, relative age such as 3 days ago, issue/PR links, and a small 'Report' link at the right end of that row, which asks 'Confirm report' before it counts).
 - **Keyboard shortcuts:** none
 - **Data tables:** `feedback`, `votes`, `feedback_reports`, `rate_limit_hits`
 - **Risk level:** medium
@@ -282,11 +285,11 @@ Reporting the flow's own new post asks for a confirmation, then thanks the repor
 
 ## Timeline (`timeline`)
 
-Blobby's diary: every shipped change and revert, newest first. The title, before/after pictures and the visitor's words come first. The pull request, commit and trust level sit under More about this change.
+Blobby's diary: every shipped change and revert, newest first, with a before/after picture for each. The home page shows the newest three beside the creature. The pull request, commit and trust level sit under More about this change.
 
 - **Folder:** `src/features/timeline/`
 - **Routes:** `/timeline`
-- **Where it is on screen:** The /timeline page: a heading 'Blobby's changes', an 'Evolved N times from visitor ideas' counter, then a vertical list of diary cards (plain-English title, before/after pictures, the visitor quote, then a collapsed 'More about this change' with the longer note, PR, commit and trust level). Reverts have a red 'Reverted' badge and the line 'This undid a change that hurt Blobby.'
+- **Where it is on screen:** On the home page, the right-hand card (under the creature on a narrow screen) is titled 'Blobby's changes' and shows the newest rows with before/after art. The /timeline page repeats that diary in full: the same heading, an 'Evolved N times from visitor ideas' counter, then one card per change (title, before/after pictures, the visitor quote, then a collapsed 'More about this change'). When a change has no screenshot, the picture is a drawn Blobby. Reverts have a red 'Reverted' badge and the line 'This undid a change that hurt Blobby.'
 - **Keyboard shortcuts:** none
 - **Data tables:** `changelog`, `feedback`
 - **Risk level:** medium
@@ -309,6 +312,8 @@ How to reach it:
 | revertNote | `timeline-revert-note` |
 | art | `timeline-art` |
 | prLink | `timeline-pr-link` |
+| home | `timeline-home` |
+| homeHeading | `timeline-home-heading` |
 
 ### `timeline.browse`
 
@@ -320,3 +325,13 @@ The timeline shows the counter and the newest entries. Run it with `pnpm verify:
 4. expectVisible `entry`
 5. expectVisible `art`
 6. screenshot "timeline"
+
+### `timeline.home`
+
+The home page shows recent changes as diary art beside the creature. Run it with `pnpm verify:flow timeline.home`.
+
+1. goto `/`
+2. expectVisible `home`
+3. expectText `homeHeading` contains "Blobby's changes"
+4. expectVisible `art`
+5. screenshot "home-diary"

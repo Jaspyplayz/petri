@@ -13,11 +13,11 @@ export function NavBar() {
   const pathname = usePathname();
   return (
     <header className="border-b border-ink/10">
-      <nav aria-label="Main" className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
-        <Link href="/" className="text-lg font-bold tracking-tight text-culture-deep">
+      <nav aria-label="Main" className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
+        <Link href="/" className="text-xl font-extrabold tracking-tight text-culture-deep">
           Petri
         </Link>
-        <ul className="flex gap-1">
+        <ul className="flex gap-5">
           {links.map((link) => {
             const active = pathname === link.href;
             return (
@@ -26,7 +26,7 @@ export function NavBar() {
                   href={link.href}
                   data-testid={link.testId}
                   aria-current={active ? "page" : undefined}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${active ? "bg-culture-deep text-agar" : "text-ink-soft hover:bg-agar-deep"}`}
+                  className={`text-sm font-semibold text-nav ${active ? "underline decoration-2 underline-offset-8" : "hover:underline"}`}
                 >
                   {link.label}
                 </Link>

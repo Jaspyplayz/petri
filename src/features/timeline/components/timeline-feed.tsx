@@ -8,7 +8,10 @@ export async function TimelineFeed() {
   const shipped = liveChangeCount(counts.changes, counts.reverts);
   return (
     <div className="space-y-6">
-      <p data-testid="timeline-counter" className="text-lg font-semibold text-culture-deep">
+      <p
+        data-testid="timeline-counter"
+        className="inline-block bg-[linear-gradient(90deg,#e56b9a_0%,#ef9a45_22%,#6fbe73_55%,#6aa4e4_78%,#b07ad6_100%)] bg-clip-text text-lg font-extrabold text-transparent"
+      >
         {evolvedLine(shipped)}
       </p>
       {entries.length === 0 ? (

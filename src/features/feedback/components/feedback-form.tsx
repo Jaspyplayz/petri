@@ -54,7 +54,7 @@ export function FeedbackForm() {
       onSubmit={handleSubmit}
       data-testid="feedback-form"
       aria-labelledby="feedback-form-heading"
-      className="space-y-3 rounded-3xl border border-ink/10 bg-agar-deep/60 p-5"
+      className="space-y-3 rounded-[28px] border border-ink/10 bg-card p-5 shadow-[0_10px_28px_rgb(70_50_20/0.05)]"
     >
       <h2 id="feedback-form-heading" className="text-lg font-semibold">
         Teach Blobby…
@@ -74,7 +74,7 @@ export function FeedbackForm() {
         rows={3}
         placeholder="Teach Blobby to…"
         aria-describedby="feedback-char-count"
-        className="w-full resize-none rounded-2xl border border-ink/20 bg-agar p-3 text-sm"
+        className="w-full resize-none rounded-2xl border border-ink/10 bg-agar p-3 text-sm"
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <fieldset className="flex gap-3">
@@ -104,7 +104,7 @@ export function FeedbackForm() {
           >
             {left} characters left
           </span>
-          <Button type="submit" disabled={empty || pending} data-testid="feedback-submit">
+          <Button type="submit" variant="lesson" disabled={empty || pending} data-testid="feedback-submit">
             {pending ? "Sharing…" : "Suggest a lesson"}
           </Button>
         </div>

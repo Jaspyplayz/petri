@@ -40,10 +40,10 @@ test.describe("blob", () => {
 
   test("feeding grows the blob", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByTestId("blob-size")).toHaveText("100%");
+    await expect(page.getByTestId("blob-size")).toHaveText("Cozy! 100%");
     await page.getByTestId("blob-feed-button").click();
-    await expect(page.getByTestId("blob-size")).toHaveText("105%");
-    await expect(page.getByTestId("blob-feeds")).toHaveText("1");
+    await expect(page.getByTestId("blob-size")).toHaveText("Growing! 105%");
+    await expect(page.getByTestId("blob-feeds")).toHaveText("1 Yummy!");
   });
 
   test("the evolution line counts shipped changes and opens the diary", async ({ page }) => {
@@ -54,6 +54,19 @@ test.describe("blob", () => {
     await evolved.click();
     await expect(page).toHaveURL(/\/timeline$/);
     await expect(page.getByTestId("timeline-heading")).toHaveText("Blobby's changes");
+  });
+
+  test("the creature is blotchy and the lesson bar opens feedback", async ({ page }) => {
+    await page.goto("/");
+    const shapes = await page.getByTestId("blob-creature").locator("ellipse, circle").count();
+    expect(shapes).toBeGreaterThan(8);
+    await expect(page.getByTestId("blob-poke-button")).toHaveCSS("background-color", "rgb(247, 183, 208)");
+    await expect(page.getByTestId("blob-feed-button")).toHaveCSS("background-color", "rgb(143, 212, 174)");
+    await expect(page.getByTestId("timeline-home-heading")).toHaveText("Blobby's changes");
+    await expect(page.getByTestId("blob-teach")).toHaveAttribute("href", "/feedback");
+    await page.getByTestId("blob-teach").click();
+    await expect(page).toHaveURL(/\/feedback$/);
+    await expect(page.getByTestId("feedback-heading")).toHaveText("Teach Blobby");
   });
 
   test("renaming validates and saves the name", async ({ page }) => {
