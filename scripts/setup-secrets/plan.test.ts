@@ -12,6 +12,14 @@ describe("parseEnvFile", () => {
   it("handles CRLF line endings", () => {
     expect(parseEnvFile("A=1\r\nB=2\r\n").get("B")).toBe("2");
   });
+
+  it("reads a double-quoted value across lines, so the app's PEM key reaches gh whole", () => {
+    const pem = ["-----BEGIN RSA PRIVATE KEY-----", "MIIEowIBAAKCAQEA", "QW==", "-----END RSA PRIVATE KEY-----"].join("\n");
+    const parsed = parseEnvFile(["A=1", `EVOLUTION_APP_PRIVATE_KEY="${pem}"`, "B=2"].join("\r\n"));
+    expect(Object.fromEntries(parsed)).toEqual({ A: "1", EVOLUTION_APP_PRIVATE_KEY: pem, B: "2" });
+    const action = planSetup(parsed).actions.find((candidate) => candidate.key === "EVOLUTION_APP_PRIVATE_KEY");
+    expect(action && commandFor(action)).toEqual({ command: "gh", args: ["secret", "set", "EVOLUTION_APP_PRIVATE_KEY"], stdin: pem });
+  });
 });
 
 describe("planSetup", () => {

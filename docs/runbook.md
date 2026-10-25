@@ -13,6 +13,7 @@ Run the commands from an up-to-date checkout of `main`, after `pnpm install`, wi
 | Stop one PR's queued auto-merge | `gh pr merge <number> --disable-auto` | The PR's **Disable auto-merge** button |
 | Stop new feedback posts | `pnpm app:flags set feedback_open false --prod` | |
 | Stop every visitor write | `pnpm app:flags set read_only_mode true --prod` | |
+| Cut off the loop's GitHub writes | | Suspend the `petri-evolution-bot` app (see "If the app's key leaks") |
 | Check production for a spike and act on it | `gh workflow run evolution-guardian.yml -f act=true` | **Actions → evolution-guardian → Run workflow**, tick `act` |
 | Undo a merged PR | | The PR's **Revert** button, then merge the new PR |
 | See the trust level and whether to promote | `pnpm trust-report` | |
@@ -75,6 +76,14 @@ pnpm app:flags set read_only_mode true --prod      # no posts, votes, reports or
 ```
 
 `--prod` takes the production URL and service-role key from `.env.setup`. Without it, the command acts on the local database. Set a flag back with the same command and the other value.
+
+## If the app's key leaks
+
+The loop writes to GitHub as the `petri-evolution-bot` GitHub App. Each job makes a token from the app's private key (the `EVOLUTION_APP_PRIVATE_KEY` secret) that lasts an hour. Nothing the app does counts as your approval, because the guardrails refuse a `protected-ok` or `size-ok` from a bot. A leaked key can still open issues and PRs and turn on auto-merge, so:
+
+1. Suspend the app. Under **Settings → Applications → Installed GitHub Apps**, open `petri-evolution-bot`'s **Configure** and click **Suspend**. Every token it made stops working, and the loop's writes fail until you unsuspend it.
+2. On the app's page (**Settings → Developer settings → GitHub Apps**), generate a new private key and delete the old one.
+3. Store the new key with `Get-Content -Raw <path to the .pem> | gh secret set EVOLUTION_APP_PRIVATE_KEY`, then unsuspend the app.
 
 ## Undo a change
 

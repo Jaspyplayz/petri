@@ -10,7 +10,7 @@ import { planIssues, renderIssueBody, triageOutputSchema } from "./evolution/tri
 
 // pnpm evolution:create-issues [--dry-run] turns the triage agent's JSON (artifacts/evolution/triage-output.json)
 // into GitHub issues and marks the feedback triaged or rejected. GH_TOKEN must be a token whose events trigger
-// workflows (EVOLUTION_BOT_TOKEN), so the evolution:ready label starts the build.
+// workflows (the evolution app's), so the evolution:ready label starts the build.
 const root = join(import.meta.dirname, "..");
 const dir = join(root, "artifacts", "evolution");
 const dryRun = process.argv.includes("--dry-run");

@@ -5,7 +5,7 @@ name: evolution-build
 #   agent    no secrets: the builder edits a checkout; only its patch, JSON report and usage numbers leave the job
 #   usage    secrets, but never runs the agent's code: records the builder's turns and runtime in agent_runs
 #   verify   no secrets: checks and applies the patch, runs pnpm check, verify:all and verify:compare
-#   publish  secrets, but never runs the PR's code: pushes the branch and opens the PR with EVOLUTION_BOT_TOKEN
+#   publish  secrets, but never runs the PR's code: pushes the branch and opens the PR with the evolution app's token
 # The cron fallback is added after the Phase 6 dry run (docs/decisions.md).
 on:
   issues:
@@ -135,7 +135,8 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Post-merge and pr-closed dispatch the next build with their job token, so the actor is github-actions,
           # and the action refuses a bot it isn't told about. Only this repository's workflows can dispatch as it.
-          allowed_bots: github-actions
+          # Triage's issues get evolution:ready from the evolution app, which is then the actor.
+          allowed_bots: github-actions,petri-evolution-bot
           github_token: ${{ github.token }}
           prompt: ${{ steps.agent.outputs.prompt }}
           # A `:*` rule matches its prefix followed by a space, so `Bash(pnpm verify:*)` never allowed
@@ -279,13 +280,23 @@ jobs:
       - name: Check the patch again, from this clean checkout
         run: pnpm -s evolution:check-patch "$RUNNER_TEMP/evolution.patch"
 
+      - name: Evolution app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.EVOLUTION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.EVOLUTION_APP_PRIVATE_KEY }}
+          # Push the branch, open the PR with its labels, and read the issue that open-pr checks again.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: read
       # The patch goes on main as it is now, not on the build's base. If main's workflows changed during the build, a
       # branch from the old base would differ from main in .github/workflows/, and GitHub refuses that push from a token
-      # without the workflow scope, which the bot token must never get (run 40031512734). CI and evolution-verify judge
-      # the PR's real head, so the verified patch only has to apply cleanly.
+      # without the workflows permission, which the bot token must never get (run 40031512734). CI and evolution-verify
+      # judge the PR's real head, so the verified patch only has to apply cleanly.
       - name: Push the branch (in a separate worktree, so nothing here runs the PR's code)
         env:
-          BOT_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BOT_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ needs.pick.outputs.branch }}
           NUMBER: ${{ needs.pick.outputs.number }}
         run: |
@@ -302,7 +313,7 @@ jobs:
       - name: Open the PR from the template
         id: pr
         env:
-          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ needs.pick.outputs.branch }}
           NUMBER: ${{ needs.pick.outputs.number }}
           REPORT: ${{ needs.agent.outputs.report }}
