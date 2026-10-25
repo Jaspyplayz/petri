@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  evolvedLine,
   formatMergedAt,
   liveChangeCount,
-  shippedCounterText,
+  revertDiaryLine,
   shortSha,
   trustLevelLabel,
 } from "../lib/timeline-format";
@@ -25,11 +26,17 @@ describe("liveChangeCount", () => {
   });
 });
 
-describe("shippedCounterText", () => {
-  it("pluralises and always credits zero humans", () => {
-    expect(shippedCounterText(0)).toBe("0 changes shipped, 0 written by humans");
-    expect(shippedCounterText(1)).toBe("1 change shipped, 0 written by humans");
-    expect(shippedCounterText(12)).toBe("12 changes shipped, 0 written by humans");
+describe("evolvedLine", () => {
+  it("counts the changes that are still in effect", () => {
+    expect(evolvedLine(0)).toBe("Evolved 0 times from visitor ideas");
+    expect(evolvedLine(1)).toBe("Evolved 1 time from visitor ideas");
+    expect(evolvedLine(12)).toBe("Evolved 12 times from visitor ideas");
+  });
+});
+
+describe("revertDiaryLine", () => {
+  it("says a revert undid a change, in plain words", () => {
+    expect(revertDiaryLine()).toBe("This undid a change that hurt Blobby.");
   });
 });
 

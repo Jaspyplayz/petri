@@ -41,3 +41,11 @@ export function feedbackCategoryLabel(category: FeedbackCategory): string {
       return "Bug";
   }
 }
+
+export function feedbackLearnedLine(status: FeedbackStatus): string | null {
+  return status === "shipped" ? "Blobby learned this" : null;
+}
+
+export function feedbackRejectionReason(status: FeedbackStatus): string | null {
+  return status === "rejected" ? "Blobby left this one alone. It was unclear, not safe, or too big for one lesson." : null;
+}

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { feedbackSortLabel, parseFeedbackSort } from "../lib/feedback-sort";
-import { feedbackCategoryLabel, feedbackStatusClasses, feedbackStatusLabel } from "../lib/feedback-status";
+import {
+  feedbackCategoryLabel,
+  feedbackLearnedLine,
+  feedbackRejectionReason,
+  feedbackStatusClasses,
+  feedbackStatusLabel,
+} from "../lib/feedback-status";
 
 describe("parseFeedbackSort", () => {
   it.each([
@@ -29,5 +35,21 @@ describe("status and category labels", () => {
   it("labels categories", () => {
     expect(feedbackCategoryLabel("idea")).toBe("Idea");
     expect(feedbackCategoryLabel("bug")).toBe("Bug");
+  });
+
+  it("says Blobby learned a shipped idea", () => {
+    expect(feedbackLearnedLine("shipped")).toBe("Blobby learned this");
+    for (const status of ["new", "triaged", "building", "rejected"] as const) {
+      expect(feedbackLearnedLine(status)).toBeNull();
+    }
+  });
+
+  it("gives a rejected idea one gentle reason", () => {
+    expect(feedbackRejectionReason("rejected")).toBe(
+      "Blobby left this one alone. It was unclear, not safe, or too big for one lesson.",
+    );
+    for (const status of ["new", "triaged", "building", "shipped"] as const) {
+      expect(feedbackRejectionReason(status)).toBeNull();
+    }
   });
 });

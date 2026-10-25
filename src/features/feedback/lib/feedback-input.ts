@@ -37,9 +37,9 @@ export function feedbackErrorMessage(error: FeedbackApiError): string {
     case "not_found":
       return "That feedback no longer exists.";
     case "feedback_closed":
-      return "Posting is closed for now. You can still vote.";
+      return "New lessons are paused. You can still vote.";
     case "read_only":
-      return "Petri is read-only for now. Try again later.";
+      return "Blobby is resting. Try again later.";
     case "unavailable":
       return "Something went wrong on our side. Try again in a moment.";
   }

@@ -9,11 +9,11 @@ export function FeedbackScreen({ searchParams }: { readonly searchParams: Search
     <section data-testid="feedback-panel" aria-labelledby="feedback-heading" className="space-y-8">
       <header className="space-y-2">
         <h1 id="feedback-heading" data-testid="feedback-heading" className="text-3xl font-bold tracking-tight">
-          Feedback
+          Teach Blobby
         </h1>
         <p className="text-ink-soft">
-          Suggest an idea or report a bug. The most-voted items get picked up by Petri&apos;s agents and may ship on the
-          Timeline.
+          Share an idea or a bug. The ideas with the most votes are taught to Blobby by agents, and may show up as
+          evolutions on the Timeline.
         </p>
       </header>
       <Suspense fallback={<div className="h-56 rounded-3xl border border-ink/10 bg-agar-deep/60" />}>

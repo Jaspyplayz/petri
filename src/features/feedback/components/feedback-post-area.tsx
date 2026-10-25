@@ -11,8 +11,8 @@ export async function FeedbackPostArea() {
   return (
     <p data-testid="feedback-closed-note" role="status" className="rounded-3xl border border-ink/10 bg-agar-deep/60 p-5 text-ink-soft">
       {flags.readOnly
-        ? "Petri is read-only for now. You can still read the board."
-        : "Posting is closed for now. You can still read the board and vote."}
+        ? "Blobby is resting, so new lessons are paused. You can still read the board."
+        : "New lessons are paused. You can still read the board and vote."}
     </p>
   );
 }

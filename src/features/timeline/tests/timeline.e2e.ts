@@ -3,8 +3,8 @@ import { expect, test } from "@/shared/testing/e2e-fixture";
 test.describe("timeline", () => {
   test("shows seeded entries newest first with the human-free counter", async ({ page }) => {
     await page.goto("/timeline");
-    await expect(page.getByTestId("timeline-heading")).toHaveText("Timeline");
-    await expect(page.getByTestId("timeline-counter")).toHaveText(/^\d+ changes? shipped, 0 written by humans$/);
+    await expect(page.getByTestId("timeline-heading")).toHaveText("Blobby's changes");
+    await expect(page.getByTestId("timeline-counter")).toHaveText(/^Evolved \d+ times? from visitor ideas$/);
 
     const entries = page.getByTestId("timeline-entry");
     await expect(entries.first()).toBeVisible();
@@ -18,6 +18,7 @@ test.describe("timeline", () => {
     await page.goto("/timeline");
     const revert = page.locator('[data-testid="timeline-entry"][data-kind="revert"]').first();
     await expect(revert.getByTestId("timeline-revert-badge")).toHaveText("Reverted");
+    await expect(revert.getByTestId("timeline-revert-note")).toHaveText("This undid a change that hurt Blobby.");
   });
 
   test("is reachable from the navigation", async ({ page }) => {

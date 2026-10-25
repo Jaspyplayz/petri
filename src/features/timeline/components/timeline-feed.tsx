@@ -1,5 +1,5 @@
 import "server-only";
-import { liveChangeCount, shippedCounterText } from "../lib/timeline-format";
+import { evolvedLine, liveChangeCount } from "../lib/timeline-format";
 import { countChanges, listTimeline } from "../server/list-timeline";
 import { TimelineEntry } from "./timeline-entry";
 
@@ -9,11 +9,11 @@ export async function TimelineFeed() {
   return (
     <div className="space-y-6">
       <p data-testid="timeline-counter" className="text-lg font-semibold text-culture-deep">
-        {shippedCounterText(shipped)}
+        {evolvedLine(shipped)}
       </p>
       {entries.length === 0 ? (
         <p data-testid="timeline-empty" className="text-ink-soft">
-          Nothing has shipped yet. The first change will appear here.
+          Nothing has changed Blobby yet. When a lesson ships, it shows up here.
         </p>
       ) : (
         <ol data-testid="timeline-list" className="space-y-4">

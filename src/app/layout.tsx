@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "Petri", template: "%s · Petri" },
-  description: "A small web app that evolves itself from visitor feedback.",
+  description: "Blobby, a pet that evolves from visitor ideas.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

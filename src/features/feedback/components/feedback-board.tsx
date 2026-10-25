@@ -15,7 +15,7 @@ export async function FeedbackBoard({ searchParams }: { readonly searchParams: S
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">What people want</h2>
+        <h2 className="text-lg font-semibold">What to teach Blobby</h2>
         <SortTabs active={sort} />
       </div>
       {items.length === 0 ? (
