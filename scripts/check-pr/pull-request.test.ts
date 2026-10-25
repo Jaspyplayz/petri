@@ -17,6 +17,7 @@ import {
 } from "./pull-request";
 
 const config = loadGuardrailsConfig(repoRoot);
+const EVOLUTION_APP = "petri-evolution-bot[bot]";
 
 function eventPayload(
   overrides: { login?: string; type?: string; labels?: string[]; ref?: string; action?: string } = {},
@@ -72,6 +73,7 @@ describe("agentReasons", () => {
     [{ labels: ["evolution"] }, ['label "evolution"']],
     [{ login: "claude[bot]", type: "Bot" }, ["bot author claude[bot]"]],
     [{ login: "dependabot[bot]", type: "Bot" }, ["bot author dependabot[bot]"]],
+    [{ login: EVOLUTION_APP, type: "Bot" }, [`bot author ${EVOLUTION_APP}`]],
     [{ ref: "evo/12-bigger-blob" }, ["branch evo/12-bigger-blob"]],
     [{ ref: "claude/issue-7-20261022" }, ["branch claude/issue-7-20261022"]],
   ])("flags %j", (overrides, expected) => {
@@ -149,6 +151,11 @@ describe("labelAddedByHuman", () => {
     ["the label has no timestamp", [{ ...labeled("Jaspyplayz"), createdAt: undefined }]],
   ])("rejects it when %s", (_name, events) => {
     expect(approved(events)).toBe(false);
+  });
+
+  it("rejects a label the evolution app added, even with the app listed as a maintainer", () => {
+    expect(approved([labeled(EVOLUTION_APP, "Bot")])).toBe(false);
+    expect(labelAddedByHuman("protected-ok", pr, [labeled(EVOLUTION_APP, "Bot")], ["Jaspyplayz", EVOLUTION_APP], pushed(pushedAt))).toBe(false);
   });
 
   it("voids the approval when new commits are pushed", () => {

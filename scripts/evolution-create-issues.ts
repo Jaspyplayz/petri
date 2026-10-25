@@ -2,15 +2,15 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { featureManifests } from "../src/features/registry";
 import { readEvolutionConfig } from "./evolution/config";
+import { featureRisks } from "./evolution/feature-risks";
 import { loopSupabase } from "./evolution/supabase";
 import type { TriageInput } from "./evolution/triage-input";
 import { planIssues, renderIssueBody, triageOutputSchema } from "./evolution/triage-output";
 
 // pnpm evolution:create-issues [--dry-run] turns the triage agent's JSON (artifacts/evolution/triage-output.json)
 // into GitHub issues and marks the feedback triaged or rejected. GH_TOKEN must be a token whose events trigger
-// workflows (EVOLUTION_BOT_TOKEN), so the evolution:ready label starts the build.
+// workflows (the evolution app's), so the evolution:ready label starts the build.
 const root = join(import.meta.dirname, "..");
 const dir = join(root, "artifacts", "evolution");
 const dryRun = process.argv.includes("--dry-run");
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const config = readEvolutionConfig(root);
   const plan = planIssues(parsed.data, {
     candidateIds: new Set(input.candidates.map((candidate) => candidate.id)),
-    featureRisk: new Map(featureManifests.map((manifest) => [manifest.id, manifest.riskLevel])),
+    featureRisk: featureRisks(root),
     maxIssues: config.maxIssuesPerTriage,
   });
   for (const problem of plan.problems) process.stdout.write(`! ${problem}\n`);

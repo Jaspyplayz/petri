@@ -29,8 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # The bot token pushes the guardian's branches and opens their PRs, so CI runs on them. The issue and comments use
-    # this job's token, so they come from github-actions and notify the maintainer (nobody is notified of their own
-    # actions). pull-requests: write is for a retried rollback's comment on an earlier run's PR.
+    # this job's token, so they come from github-actions. Neither is the maintainer's account, so the maintainer is
+    # notified of the PRs and the issue. pull-requests: write is for a retried rollback's comment on an earlier run's PR.
     permissions:
       contents: read
       issues: write
@@ -79,11 +79,23 @@ jobs:
 
       # A failed rollback still gets the PRs and the issue, so the steps below don't depend on it. A deployment an
       # earlier run already acted on (check's handled output) only gets the rollback retried.
+      - name: Evolution app token
+        id: app-token
+        if: ${{ !cancelled() && env.ACT == 'true' && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' && steps.check.outputs.culprit != '' && steps.check.outputs.handled == '' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.EVOLUTION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.EVOLUTION_APP_PRIVATE_KEY }}
+          # Push the pause and revert branches, open their PRs and turn auto-merge on. pull-requests: write also lets
+          # open-pr create the revert label.
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Push the pause branch (pause, lower trust)
         id: pause
         if: ${{ !cancelled() && env.ACT == 'true' && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' && steps.check.outputs.culprit != '' && steps.check.outputs.handled == '' }}
         env:
-          BOT_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BOT_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ steps.check.outputs.pause_branch }}
           PR: ${{ steps.check.outputs.pr }}
         run: |
@@ -104,7 +116,7 @@ jobs:
         id: pause-pr
         if: ${{ !cancelled() && steps.pause.outputs.sha != '' }}
         env:
-          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ steps.check.outputs.pause_branch }}
           HEAD_SHA: ${{ steps.pause.outputs.sha }}
         run: pnpm -s evolution:guardian open-pr pause
@@ -113,7 +125,7 @@ jobs:
         id: revert
         if: ${{ !cancelled() && env.ACT == 'true' && steps.check.outcome == 'success' && steps.check.outputs.spike == 'true' && steps.check.outputs.culprit != '' && steps.check.outputs.handled == '' }}
         env:
-          BOT_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          BOT_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ steps.check.outputs.revert_branch }}
           CULPRIT: ${{ steps.check.outputs.culprit }}
         run: |
@@ -132,7 +144,7 @@ jobs:
         id: revert-pr
         if: ${{ !cancelled() && steps.revert.outputs.sha != '' }}
         env:
-          GH_TOKEN: ${{ secrets.EVOLUTION_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ steps.check.outputs.revert_branch }}
           HEAD_SHA: ${{ steps.revert.outputs.sha }}
         run: pnpm -s evolution:guardian open-pr revert
@@ -159,5 +171,5 @@ jobs:
           STEPS: >-
             promote=${{ steps.promote.outcome }} rollback=${{ steps.rollback.outcome }} pause=${{ steps.pause.outcome }}
             pause-pr=${{ steps.pause-pr.outcome }} revert=${{ steps.revert.outcome }} revert-pr=${{ steps.revert-pr.outcome }}
-            notify=${{ steps.notify.outcome }}
+            notify=${{ steps.notify.outcome }} app-token=${{ steps.app-token.outcome }}
         run: pnpm -s evolution:guardian record

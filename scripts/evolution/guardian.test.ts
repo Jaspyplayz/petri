@@ -560,7 +560,7 @@ describe("the guardian's PRs pass the guardrails for agent PRs", () => {
   const guardrails = loadGuardrailsConfig(root);
   const config = readFileSync(join(root, CONFIG_PATH), "utf8").replace(/("trustLevel"\s*:\s*)\d+/, "$13");
 
-  it("treats a guardian/ branch as an agent PR, even though the bot token acts as the owner", () => {
+  it("treats a guardian/ branch as an agent PR, even one a human's account opened", () => {
     const pullRequest = {
       action: "opened",
       number: 1,

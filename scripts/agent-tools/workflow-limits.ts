@@ -3,8 +3,10 @@
 // (CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, which keeps tokens out of the agent's subprocesses), after a run step in the same
 // job that installs bubblewrap and allows user namespaces (the scrub needs both, or the CLI won't even install). A run
 // step that gets the Claude token, such as the evals runner's, comes after that step too. A run step never names a
-// secret inline or prints the environment. A schedule runs at most every 15 minutes. The test runs these on every file
-// in .github/workflows, so a new or edited workflow can't drop them.
+// secret inline or prints the environment. A schedule runs at most every 15 minutes. Every app token mint names its
+// permission-* inputs, since without them the token gets every permission the app has, and names only the evolution
+// app's own (MANUAL_STEPS 10), so no token gets workflows even if the app is granted it later. The test runs these on
+// every file in .github/workflows, so a new or edited workflow can't drop them.
 import { load } from "js-yaml";
 
 const MAX_TIMEOUT_MINUTES = 240;
@@ -18,11 +20,22 @@ const PRINTS_ENV = [
 ];
 const INSTALLS_SANDBOX = [/apt-get install[^\n]*\bbubblewrap\b/, /apparmor_restrict_unprivileged_userns=0/];
 const CLAUDE_CREDENTIALS = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"];
+const APP_PERMISSIONS = ["contents", "issues", "pull-requests", "metadata"];
 
 type Json = Record<string, unknown>;
 
 function record(value: unknown): Json | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Json) : undefined;
+}
+
+function appTokenProblems(where: string, inputs: Json | undefined): string[] {
+  const asked = Object.keys(inputs ?? {})
+    .filter((key) => key.startsWith("permission-"))
+    .map((key) => key.slice("permission-".length));
+  if (asked.length === 0) return [`${where} mints an app token without permission-* inputs, so it gets every permission the app has`];
+  return asked
+    .filter((permission) => !APP_PERMISSIONS.includes(permission))
+    .map((permission) => `${where} asks its app token for ${permission}; the app may only have ${APP_PERMISSIONS.join(", ")}`);
 }
 
 export function cronProblem(cron: string): string | undefined {
@@ -76,6 +89,7 @@ export function workflowLimitProblems(file: string, text: string): string[] {
         }
       }
       const uses = typeof step.uses === "string" ? step.uses : "";
+      if (uses.startsWith("actions/create-github-app-token")) problems.push(...appTokenProblems(`${file}: job ${name}`, record(step.with)));
       if (!uses.startsWith("anthropics/claude-code-action")) continue;
       if (String(record(step.env)?.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB) !== "1") {
         problems.push(`${file}: job ${name} runs claude-code-action without env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"`);

@@ -82,6 +82,7 @@ petri/
 | `src/features/X/**` | its own files and `src/shared/**` (**never** another feature) |
 | `src/shared/**` | `src/shared/**` only (never `features/`) |
 | client components | never `server/**` or the service-role client (dependency-graph check) |
+| anything outside `server/**` and `src/shared/supabase/` | never the service-role client |
 
 ## 2. Data model (Supabase Postgres, RLS on every table)
 
@@ -202,17 +203,17 @@ Every agent workflow starts with a gate step that exits early when `vars.EVOLUTI
 | `evolution-guardian-after-deploy.yml` | `workflow_dispatch` (input `act`). Phase 9.1 adds `push: main` | 8 | Waits up to 20 minutes for production to serve the commit's deployment, then dispatches `evolution-guardian.yml` 10, 30 and 60 minutes after it went live. Stops when the build failed, a newer deploy went live or production stops serving it. One run per commit; a newer commit's run doesn't cancel it. |
 | `evolution-postmortem.yml` | `workflow_dispatch` (inputs `pr`, `revert`, `note`), dispatched by post-merge when a guardian revert merges | 8 | Gathers the evidence (PR, diff, issue, revert, incident issue, the release's Sentry errors), then the postmortem agent, without secrets, appends to `docs/agent-mistakes.md`, climbs the fix ladder (design → hard rule → skill → CLAUDE.md) within what `postmortem` in `.github/guardrails.json` lets it add or change (never delete) and adds an eval case. A job without secrets checks its patch and report and runs `pnpm check`, and a trusted job opens the `postmortem/` PR (`needs-human` for protected files), which a human merges. Other mistakes stay with `/postmortem` by hand. |
 | `evals.yml` | PRs touching `.claude/skills/**` (capped) + nightly while `EVALS_NIGHTLY` is `true` | 7 | Runs `pnpm evals` for the changed skills and reports in the job summary and an artifact. `evals/results.jsonl` is committed only from local runs. |
-| `evolution-weekly.yml` | `workflow_dispatch` (weekly cron from 9.1) | 5/8 | Opens the weekly `agent_runs` issue (runs, turns, agent minutes and API-equivalent $ per workflow against `weeklyBudget`), then `trust-report.ts` suggests (never applies) a promotion in an issue. It only reports; the gate closes triage and build when over budget. |
+| `evolution-weekly.yml` | `workflow_dispatch` (weekly cron from 9.1) | 5/8 | Opens the weekly `agent_runs` issue (runs, turns, agent minutes and API-equivalent $ per workflow against `weeklyBudget`, then the feedback items reports hid that week, without their text), then `trust-report.ts` suggests (never applies) a promotion in an issue. It only reports; the gate closes triage and build when over budget. |
 
 **Branch protection on `main`:** require `ci-ok` and `evolution-verify`, require the branch to be up to date, no force pushes, 0 approvals. Repo auto-merge is enabled.
 
-**Tokens:** events created with the default `GITHUB_TOKEN` don't trigger other workflows. So every write that has to start a downstream workflow uses `EVOLUTION_BOT_TOKEN` or the Claude App token:
+**Tokens:** events created with the default `GITHUB_TOKEN` don't trigger other workflows. So every write that has to start a downstream workflow uses the bot token, an installation token of the `petri-evolution-bot` GitHub App (contents, issues and PRs read and write, no workflows). The job mints it right before its first use with `actions/create-github-app-token`, asking only for the permissions that job needs, and it lasts an hour. It's used for:
 
 - creating or labelling issues (triage → build)
 - opening PRs (build, guardian, postmortem)
 - `gh pr merge --auto` (automerge → post-merge on push)
 
-Read-only jobs get only `GITHUB_TOKEN` with minimal `permissions:`.
+Runs those events start have `petri-evolution-bot[bot]` as their actor, so the builder, planner and judge list it in `allowed_bots`. Read-only jobs get only `GITHUB_TOKEN` with minimal `permissions:`.
 
 **Gate step details:**
 
@@ -294,7 +295,7 @@ The level lives in `.evolution/config.json`, a protected file that only a human 
 | 0 | nothing (agents open PRs, a human merges) |
 | 1 | `riskLevel: low` changes inside one existing feature folder |
 | 2 | new features via the generator; changes inside any single feature |
-| 3 | `shared/`, multi-feature changes, deps from an allow-list |
+| 3 | `shared/`, a feature's `server/` code, multi-feature changes, deps from an allow-list |
 | 4 | additive Supabase migrations (CI-checked) |
 
 Any automatic revert drops the level by one and pauses the loop for 24h. `trust-report.ts` only *suggests* promotions.

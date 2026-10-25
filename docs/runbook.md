@@ -13,6 +13,7 @@ Run the commands from an up-to-date checkout of `main`, after `pnpm install`, wi
 | Stop one PR's queued auto-merge | `gh pr merge <number> --disable-auto` | The PR's **Disable auto-merge** button |
 | Stop new feedback posts | `pnpm app:flags set feedback_open false --prod` | |
 | Stop every visitor write | `pnpm app:flags set read_only_mode true --prod` | |
+| Cut off the loop's GitHub writes | | Suspend the `petri-evolution-bot` app (see "If the app's key leaks") |
 | Check production for a spike and act on it | `gh workflow run evolution-guardian.yml -f act=true` | **Actions → evolution-guardian → Run workflow**, tick `act` |
 | Undo a merged PR | | The PR's **Revert** button, then merge the new PR |
 | See the trust level and whether to promote | `pnpm trust-report` | |
@@ -75,6 +76,14 @@ pnpm app:flags set read_only_mode true --prod      # no posts, votes, reports or
 ```
 
 `--prod` takes the production URL and service-role key from `.env.setup`. Without it, the command acts on the local database. Set a flag back with the same command and the other value.
+
+## If the app's key leaks
+
+The loop writes to GitHub as the `petri-evolution-bot` GitHub App. Each job makes a token from the app's private key (the `EVOLUTION_APP_PRIVATE_KEY` secret) that lasts an hour. Nothing the app does counts as your approval, because the guardrails refuse a `protected-ok` or `size-ok` from a bot. A leaked key can still open issues and PRs and turn on auto-merge, so:
+
+1. Suspend the app. Under **Settings → Applications → Installed GitHub Apps**, open `petri-evolution-bot`'s **Configure** and click **Suspend**. Every token it made stops working, and the loop's writes fail until you unsuspend it.
+2. On the app's page (**Settings → Developer settings → GitHub Apps**), generate a new private key and delete the old one.
+3. Store the new key with `Get-Content -Raw <path to the .pem> | gh secret set EVOLUTION_APP_PRIVATE_KEY`, then unsuspend the app.
 
 ## Undo a change
 
@@ -147,6 +156,8 @@ gh workflow run evolution-weekly.yml
 ```
 
 It opens an `evolution:weekly` issue with each workflow's runs, failures, turns, agent minutes and API-equivalent dollars over the last 7 days, and the share of `weeklyBudget` they used. Then it runs the trust report.
+
+The issue also lists the feedback items that visitor reports hid in those 7 days: each item's id, category, report count, and the time its 3rd report came in. It shows no feedback text, because the issue is public and these items were hidden for abuse. Under the list is the SQL to read an item and to unhide one, which deletes its reports before it sets `hidden = false`. A long list in one week can mean someone with many networks is hiding good feedback, so read a few of the items.
 
 `pnpm evolution:weekly` prints the same table from the database in `.env.local`, which `pnpm env:local` points at the local stack. To see production's rows one by one, open the `agent_runs` table in Supabase's Table Editor.
 
