@@ -6,10 +6,13 @@ name: evolution-build
 #   usage    secrets, but never runs the agent's code: records the builder's turns and runtime in agent_runs
 #   verify   no secrets: checks and applies the patch, runs pnpm check, verify:all and verify:compare
 #   publish  secrets, but never runs the PR's code: pushes the branch and opens the PR with the evolution app's token
-# The cron fallback is added after the Phase 6 dry run (docs/decisions.md).
+# Every 6 hours, 30 minutes after triage, a scheduled run builds the oldest ready issue that no label run or dispatch
+# built (Phase 9.1).
 on:
   issues:
     types: [labeled]
+  schedule:
+    - cron: "37 */6 * * *"
   workflow_dispatch:
     inputs:
       issue:
@@ -24,7 +27,7 @@ permissions:
 # a run. Only the ones that can build share the group: in a shared group, a skipped run for another label cancelled
 # the pending evolution:ready run (#48's). The others get a group of their own and finish at once.
 concurrency:
-  group: ${{ (github.event_name == 'workflow_dispatch' || github.event.label.name == 'evolution:ready') && 'evolution-build' || format('evolution-build-other-{0}', github.run_id) }}
+  group: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.label.name == 'evolution:ready') && 'evolution-build' || format('evolution-build-other-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:
@@ -32,7 +35,7 @@ env:
 
 jobs:
   pick:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'evolution:ready'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event.label.name == 'evolution:ready'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

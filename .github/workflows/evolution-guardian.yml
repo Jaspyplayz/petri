@@ -6,10 +6,12 @@ name: evolution-guardian
 # reverts the change. Then it opens an issue. While its rollback holds production, it promotes the oldest ready
 # deployment that has the merged revert, once the pause is on main, because Vercel puts nothing new live after a
 # rollback until a promote. Runs that found something, or whose check failed, go in agent_runs. Without the act input
-# it only reports what it would do. Dispatch only until Phase 9.1 adds the 15-minute cron, which acts;
+# it only reports what it would do. Its 15-minute schedule acts (Phase 9.1), and
 # evolution-guardian-after-deploy.yml dispatches it 10, 30 and 60 minutes after a deploy. No loop gate: the kill
 # switch and the pause stop agents, the guardian only rolls back and reverts, and its promote has its own conditions.
 on:
+  schedule:
+    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       act:
