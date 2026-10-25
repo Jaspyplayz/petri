@@ -215,6 +215,7 @@ export default defineConfig([
     plugins: { petri: petriPlugin },
     rules: {
       "petri/no-comments": "error",
+      "petri/url-input-never-throws": "error",
       "no-console": "error",
       "no-restricted-globals": restrictedGlobals(),
       "no-restricted-properties": ["error", { object: "process", property: "env", message: envMessage }],

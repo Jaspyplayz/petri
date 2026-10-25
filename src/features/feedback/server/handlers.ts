@@ -127,7 +127,7 @@ export async function handleReport(request: Request, rawId: string): Promise<Res
   if (writesOff) return writesOff;
 
   try {
-    const ipHash = hashClientIp(request.headers);
+    const ipHash = hashClientIp(request.headers, 48);
     if (!(await consumeRateLimit(ipHash, "report", RATE_LIMITS.report))) return rateLimitedResponse(RATE_LIMITS.report);
 
     const { error } = await serviceSupabase().from("feedback_reports").insert({ feedback_id: id.data, reporter_hash: ipHash });
