@@ -48,7 +48,7 @@ test.describe("blob", () => {
 
   test("the evolution line counts shipped changes and opens the diary", async ({ page }) => {
     await page.goto("/");
-    const evolved = page.getByTestId("blob-evolved");
+    const evolved = page.getByTestId("blob-panel").getByTestId("blob-evolved");
     await expect(evolved).toHaveText("Evolved 1 time from visitor ideas");
     await expect(evolved).toHaveAttribute("href", "/timeline");
     await evolved.click();
