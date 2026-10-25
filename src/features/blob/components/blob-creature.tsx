@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, type AnimationEvent, type ReactNode, type SubmitEvent } from "react";
 import { track } from "@/shared/lib/track";
 import { useLocalStorage } from "@/shared/lib/use-local-storage";
+import { BlobGlyph } from "@/shared/ui/blob-glyph";
 import { Button } from "@/shared/ui/button";
 import {
   BLOB_NAME_MAX_LENGTH,
@@ -21,12 +22,13 @@ import {
   type BlobColorId,
   type BlobState,
 } from "../lib/blob-state";
+import { sizeMood, snackMood } from "../lib/size-mood";
 import styles from "./blob.module.css";
 
 type Mood = "calm" | "poked" | "fed";
 
 const evolvedLinkClass =
-  "text-center text-2xl font-bold tracking-tight text-culture-deep underline decoration-culture/40 underline-offset-4";
+  "inline-block bg-[linear-gradient(90deg,#e56b9a_0%,#ef9a45_18%,#e4c04a_38%,#6fbe73_58%,#6aa4e4_78%,#b07ad6_100%)] bg-clip-text text-center text-xl font-extrabold leading-tight tracking-tight text-transparent sm:text-2xl";
 
 export function EvolvedLink({ label }: { readonly label: string }) {
   return (
@@ -91,10 +93,11 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
 
   const full = isFullyGrown(state);
   const body = blobColor(state);
+  const yum = snackMood(state.feeds);
 
   return (
-    <section data-testid="blob-panel" aria-labelledby="blob-name" className="flex flex-col items-center gap-6">
-      <h1 id="blob-name" data-testid="blob-name" className="text-3xl font-bold tracking-tight">
+    <section data-testid="blob-panel" aria-labelledby="blob-name" className="flex flex-col items-center gap-4">
+      <h1 id="blob-name" data-testid="blob-name" className="sr-only">
         {state.name}
       </h1>
 
@@ -103,78 +106,64 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
         onClick={handlePoke}
         data-testid="blob-creature"
         aria-label={`Poke ${state.name}`}
-        className="rounded-full p-2"
+        className="rounded-full p-1"
       >
-        <svg viewBox="0 0 200 200" width="260" height="260" aria-hidden="true">
-          <ellipse cx="100" cy="182" rx={46 * state.size} ry="8" className="fill-ink/10" />
-          <g className={styles.creature} style={{ transform: `scale(${String(state.size * 0.8)})` }}>
-            <g
-              key={wobbles}
-              className={wobbling ? styles.wobble : styles.breathe}
-              data-mood={mood}
-              data-testid="blob-body"
-              style={{ fill: body.fill }}
-              onAnimationEnd={handleAnimationEnd}
-            >
-              <path
-                d="M100 38c34 0 64 22 68 62 4 38-18 78-68 78s-74-36-70-76c4-40 36-64 70-64z"
-                style={{ stroke: body.stroke }}
-                strokeWidth="4"
-              />
-              <ellipse cx="78" cy="96" rx="9" ry={mood === "poked" ? 3 : 11} className="fill-blob-face" />
-              <ellipse cx="122" cy="96" rx="9" ry={mood === "poked" ? 3 : 11} className="fill-blob-face" />
-              <circle cx="81" cy="91" r="3" className="fill-white" />
-              <circle cx="125" cy="91" r="3" className="fill-white" />
-              <g data-testid="blob-eyelid" className={styles.eyelid}>
-                <ellipse cx="78" cy="96" rx="11" ry="12" />
-                <ellipse cx="122" cy="96" rx="11" ry="12" />
-                <path d="M69 98q9 5 18 0M113 98q9 5 18 0" className="fill-none stroke-blob-face" strokeWidth="3" strokeLinecap="round" />
-              </g>
-              {mood === "fed" ? (
-                <ellipse cx="100" cy="128" rx="12" ry="10" className="fill-blob-face" />
-              ) : (
-                <path d="M84 124q16 14 32 0" className="fill-none stroke-blob-face" strokeWidth="5" strokeLinecap="round" />
-              )}
-              <ellipse cx="62" cy="116" rx="9" ry="5" className="fill-spore/50" />
-              <ellipse cx="138" cy="116" rx="9" ry="5" className="fill-spore/50" />
-            </g>
-          </g>
-        </svg>
+        <BlobGlyph
+          fill={body.fill}
+          look="full"
+          mood={mood}
+          shadowRx={46 * state.size}
+          width={260}
+          height={260}
+          className={styles.lift}
+          frameClassName={styles.creature}
+          frameStyle={{ transform: `scale(${String(state.size * 0.8)})` }}
+          poseKey={wobbles}
+          body={{
+            "data-testid": "blob-body",
+            className: wobbling ? styles.wobble : styles.breathe,
+            "data-mood": mood,
+            onAnimationEnd: handleAnimationEnd,
+          }}
+          eyelid={{ "data-testid": "blob-eyelid", className: styles.eyelid }}
+        />
       </button>
 
-      <div className="flex justify-center">{evolved}</div>
+      <div className="flex justify-center px-2">{evolved}</div>
 
-      <dl className="flex gap-6 text-sm text-ink-soft">
-        <div className="flex gap-1">
-          <dt>Size</dt>
-          <dd data-testid="blob-size" className="font-semibold text-ink">
-            {formatSize(state)}
+      <dl className="flex flex-wrap items-baseline justify-center gap-x-6 gap-y-1 font-extrabold tracking-tight text-ink">
+        <div className="flex items-baseline gap-1.5">
+          <dt className="text-sm">Size</dt>
+          <dd data-testid="blob-size" className="text-2xl leading-none text-culture-deep">
+            {sizeMood(state)}
+            <span className="sr-only"> {formatSize(state)}</span>
           </dd>
         </div>
-        <div className="flex gap-1">
-          <dt>Pokes</dt>
-          <dd data-testid="blob-pokes" className="font-semibold text-ink">
+        <div className="flex items-baseline gap-1.5">
+          <dt className="text-sm">Pokes</dt>
+          <dd data-testid="blob-pokes" className="text-2xl leading-none">
             {state.pokes}
           </dd>
         </div>
-        <div className="flex gap-1">
-          <dt>Snacks</dt>
-          <dd data-testid="blob-feeds" className="font-semibold text-ink">
+        <div className="flex items-baseline gap-1.5">
+          <dt className="text-sm">Snacks</dt>
+          <dd data-testid="blob-feeds" className="text-2xl leading-none">
             {state.feeds}
+            {yum ? <span className="text-feed-ink">{` ${yum}`}</span> : null}
           </dd>
         </div>
       </dl>
 
       <div className="flex gap-3">
-        <Button onClick={handlePoke} variant="secondary" data-testid="blob-poke-button">
+        <Button onClick={handlePoke} variant="poke" data-testid="blob-poke-button" className="min-w-24">
           Poke
         </Button>
-        <Button onClick={handleFeed} disabled={full} data-testid="blob-feed-button">
+        <Button onClick={handleFeed} variant="feed" disabled={full} data-testid="blob-feed-button" className="min-w-24">
           {full ? "Too full" : "Feed"}
         </Button>
       </div>
 
-      <div role="group" aria-label="Blob colour" data-testid="blob-color-picker" className="flex gap-3">
+      <div role="group" aria-label="Blob colour" data-testid="blob-color-picker" className="flex gap-2.5">
         {BLOB_COLORS.map((color) => (
           <button
             key={color.id}
@@ -186,16 +175,16 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
             aria-label={color.label}
             aria-pressed={state.color === color.id}
             style={{ backgroundColor: color.fill, borderColor: color.stroke }}
-            className={`h-8 w-8 rounded-full border-2 ${state.color === color.id ? "ring-2 ring-ink ring-offset-2 ring-offset-agar" : ""}`}
+            className={`h-7 w-7 rounded-full border-2 ${state.color === color.id ? "ring-2 ring-ink ring-offset-2 ring-offset-agar" : ""}`}
           />
         ))}
       </div>
 
       <form onSubmit={handleRename} className="flex flex-col items-center gap-2" noValidate>
-        <label htmlFor="blob-name-input" className="text-sm text-ink-soft">
+        <label htmlFor="blob-name-input" className="sr-only">
           Name your blob
         </label>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <input
             id="blob-name-input"
             data-testid="blob-name-input"
@@ -206,9 +195,9 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
             maxLength={BLOB_NAME_MAX_LENGTH}
             aria-invalid={nameError !== null}
             aria-describedby={nameError ? "blob-name-error" : undefined}
-            className="w-48 rounded-full border border-ink/20 bg-agar px-4 py-2 text-sm"
+            className="w-52 rounded-full border border-ink/10 bg-card px-4 py-2.5 text-sm shadow-sm"
           />
-          <Button type="submit" variant="secondary" data-testid="blob-name-save">
+          <Button type="submit" variant="tan" data-testid="blob-name-save">
             Save
           </Button>
         </div>

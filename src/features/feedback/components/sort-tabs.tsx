@@ -10,7 +10,7 @@ export function SortTabs({ active }: { readonly active: FeedbackSort }) {
           href={`/feedback?sort=${sort}`}
           data-testid={`feedback-sort-${sort}`}
           aria-current={sort === active ? "page" : undefined}
-          className={`rounded-full px-3 py-1 text-sm font-medium ${sort === active ? "bg-ink text-agar" : "text-ink-soft hover:bg-agar-deep"}`}
+          className={`rounded-full px-3 py-1 text-sm font-bold ${sort === active ? "bg-lesson text-lesson-ink" : "text-ink-soft hover:bg-card"}`}
         >
           {feedbackSortLabel(sort)}
         </Link>

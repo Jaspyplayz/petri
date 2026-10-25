@@ -10,6 +10,15 @@
   --color-spore: #e8a33d;
   --color-warning: #b4462f;
   --color-blob-face: #1f2a24;
+  --color-card: #fffdf8;
+  --color-teach: #f3e6c4;
+  --color-poke: #f7b7d0;
+  --color-poke-ink: #4a2c38;
+  --color-feed: #8fd4ae;
+  --color-feed-ink: #1b5138;
+  --color-lesson: #d9c6f5;
+  --color-lesson-ink: #43286e;
+  --color-nav: #6d5cae;
   --font-sans: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
 }
@@ -24,6 +33,12 @@
     --color-culture-deep: #8fdcbb;
     --color-spore: #f2b85c;
     --color-warning: #f08a6f;
+    --color-card: #24302a;
+    --color-teach: #2c342c;
+    --color-nav: #d9c6f5;
+    --color-poke-ink: #2a121c;
+    --color-feed-ink: #10281c;
+    --color-lesson-ink: #2a1844;
   }
 }
 

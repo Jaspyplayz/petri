@@ -3,9 +3,9 @@ import { TimelineFeed } from "./timeline-feed";
 
 export function TimelineScreen() {
   return (
-    <section data-testid="timeline-panel" aria-labelledby="timeline-heading" className="space-y-6">
+    <section data-testid="timeline-panel" aria-labelledby="timeline-heading" className="mx-auto max-w-3xl space-y-6">
       <header className="space-y-2">
-        <h1 id="timeline-heading" data-testid="timeline-heading" className="text-3xl font-bold tracking-tight">
+        <h1 id="timeline-heading" data-testid="timeline-heading" className="text-3xl font-extrabold tracking-tight">
           {"Blobby's changes"}
         </h1>
         <p className="text-ink-soft">

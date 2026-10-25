@@ -1,19 +1,27 @@
 import { Suspense } from "react";
 import { PageView } from "@/features/analytics";
-import { BlobCreature, EvolvedLink } from "@/features/blob";
-import { evolvedLine, evolvedTimes } from "@/features/timeline";
+import { BlobCreature, EvolvedLink, TeachBlobby } from "@/features/blob";
+import { evolvedLine, evolvedTimes, HomeDiary } from "@/features/timeline";
 
 export default function HomePage() {
   return (
     <>
       <PageView featureId="blob" />
-      <BlobCreature
-        evolved={
-          <Suspense fallback={<EvolvedLink label="Evolved … from visitor ideas" />}>
-            <EvolvedCount />
+      <div className="grid items-start gap-8 lg:grid-cols-2">
+        <BlobCreature
+          evolved={
+            <Suspense fallback={<EvolvedLink label="Evolved … from visitor ideas" />}>
+              <EvolvedCount />
+            </Suspense>
+          }
+        />
+        <div className="flex flex-col gap-4">
+          <Suspense fallback={<div className="h-80 rounded-[28px] border border-ink/10 bg-card" />}>
+            <HomeDiary />
           </Suspense>
-        }
-      />
+          <TeachBlobby />
+        </div>
+      </div>
     </>
   );
 }

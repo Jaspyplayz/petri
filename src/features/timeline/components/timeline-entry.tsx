@@ -1,15 +1,27 @@
 import Image from "next/image";
 import { Card } from "@/shared/ui/card";
+import { diaryScene, type DiaryPhase } from "../lib/diary";
 import { formatMergedAt, revertDiaryLine, shortSha, trustLevelLabel } from "../lib/timeline-format";
 import type { TimelineEntry as Entry } from "../server/list-timeline";
+import { ChangeArt } from "./change-art";
 
-function ArtFrame({ label, urls }: { readonly label: string; readonly urls: readonly string[] }) {
+function ArtFrame({
+  label,
+  phase,
+  urls,
+  scene,
+}: {
+  readonly label: string;
+  readonly phase: DiaryPhase;
+  readonly urls: readonly string[];
+  readonly scene: ReturnType<typeof diaryScene>;
+}) {
   return (
     <figure className="space-y-2">
       <div className="flex gap-2">
         {urls.length === 0 ? (
-          <div className="flex h-28 w-40 items-center justify-center rounded-2xl border border-dashed border-ink/20 bg-agar px-3 text-center text-xs text-ink-soft">
-            {`No ${label.toLowerCase()} picture yet`}
+          <div className="flex h-28 w-28 items-center justify-center rounded-3xl bg-agar">
+            <ChangeArt scene={scene} phase={phase} width={96} height={96} />
           </div>
         ) : (
           urls.map((url, index) => (
@@ -20,12 +32,16 @@ function ArtFrame({ label, urls }: { readonly label: string; readonly urls: read
               width={320}
               height={200}
               unoptimized
-              className="h-auto w-40 rounded-2xl border border-ink/10"
+              className="h-auto w-40 rounded-3xl border border-ink/10"
             />
           ))
         )}
       </div>
-      <figcaption className="text-xs font-semibold uppercase tracking-wide text-culture-deep">{label}</figcaption>
+      <figcaption
+        className={`text-xs font-bold uppercase tracking-wide ${phase === "before" ? "text-culture-deep" : "text-poke-ink"}`}
+      >
+        {label}
+      </figcaption>
     </figure>
   );
 }
@@ -33,6 +49,7 @@ function ArtFrame({ label, urls }: { readonly label: string; readonly urls: read
 export function TimelineEntry({ entry }: { readonly entry: Entry }) {
   const sha = shortSha(entry.commit_sha);
   const isRevert = entry.kind === "revert";
+  const scene = diaryScene(entry.title, entry.summary, entry.kind);
   return (
     <li>
       <Card data-testid="timeline-entry" data-kind={entry.kind} className={isRevert ? "border-warning/40" : ""}>
@@ -62,8 +79,8 @@ export function TimelineEntry({ entry }: { readonly entry: Entry }) {
           </header>
 
           <div data-testid="timeline-art" className="flex flex-wrap gap-6">
-            <ArtFrame label="Before" urls={entry.before_screenshot_urls} />
-            <ArtFrame label="After" urls={entry.after_screenshot_urls} />
+            <ArtFrame label="Before" phase="before" urls={entry.before_screenshot_urls} scene={scene} />
+            <ArtFrame label="After" phase="after" urls={entry.after_screenshot_urls} scene={scene} />
           </div>
 
           {entry.linkedFeedback.length > 0 ? (

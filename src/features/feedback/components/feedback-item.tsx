@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BlobGlyph } from "@/shared/ui/blob-glyph";
 import { feedbackAgeLabel } from "../lib/feedback-age";
 import {
   feedbackCategoryLabel,
@@ -10,14 +11,7 @@ import {
 import type { FeedbackItem as Item } from "../server/list-feedback";
 
 function LearnedBlob() {
-  return (
-    <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" className="shrink-0">
-      <circle cx="16" cy="16" r="14" className="fill-culture" />
-      <circle cx="11" cy="14" r="1.8" className="fill-blob-face" />
-      <circle cx="21" cy="14" r="1.8" className="fill-blob-face" />
-      <path d="M11 20q5 4 10 0" className="fill-none stroke-blob-face" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
+  return <BlobGlyph fill="#2f8f6b" look="full" scale={0.8} width={32} height={32} className="shrink-0" />;
 }
 
 export function FeedbackItem({
@@ -37,7 +31,7 @@ export function FeedbackItem({
     <li
       data-testid="feedback-item"
       data-feedback-id={item.id}
-      className="flex gap-4 rounded-3xl border border-ink/10 bg-agar-deep/60 p-4"
+      className="flex gap-4 rounded-[28px] border border-ink/10 bg-card p-4 shadow-[0_8px_24px_rgb(70_50_20/0.04)]"
     >
       {voteControl}
       <div className="min-w-0 flex-1 space-y-2">

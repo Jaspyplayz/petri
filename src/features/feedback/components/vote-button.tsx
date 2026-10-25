@@ -49,7 +49,7 @@ export function VoteButton({ feedbackId, count }: { readonly feedbackId: string;
         aria-pressed={voted}
         aria-label={voted ? "Voted" : "Upvote"}
         data-testid="feedback-vote-button"
-        className={`flex h-10 w-10 items-center justify-center rounded-full border text-lg transition-colors ${voted ? "border-culture-deep bg-culture-deep text-agar" : "border-ink/20 hover:border-culture hover:text-culture-deep"}`}
+        className={`flex h-10 w-10 items-center justify-center rounded-full border text-lg transition-colors ${voted ? "border-culture-deep bg-culture text-agar" : "border-ink/15 bg-card hover:border-culture hover:text-culture-deep"}`}
       >
         <span aria-hidden="true">▲</span>
       </button>
