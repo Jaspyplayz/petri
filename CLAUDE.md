@@ -50,7 +50,7 @@ The current level is `trustLevel` in [`.evolution/config.json`](./.evolution/con
 | 0 | Nothing. Agents open PRs; a human merges. | The loop runs end-to-end 3 times |
 | 1 | `riskLevel: low` changes inside ONE existing feature folder (copy, styling, blob behaviours) | 10 auto-merged PRs, 0 reverts |
 | 2 | New features created with the generator; changes inside any single feature | 20 more PRs, ≤1 revert, Sentry clean |
-| 3 | Changes touching `src/shared/`, several features, or adding dependencies from an allow-list | 30 more PRs, ≤1 revert |
+| 3 | Changes touching `src/shared/`, a feature's `server/` code, several features, or adding dependencies from an allow-list | 30 more PRs, ≤1 revert |
 | 4 | Supabase migrations (additive only, CI-checked) | A human decision |
 
 - The level is 0 until the Phase 6 dry run passes; then a human sets it to 1.

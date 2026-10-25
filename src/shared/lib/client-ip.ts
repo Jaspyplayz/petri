@@ -16,14 +16,16 @@ function expandIpv6(ip: string): string[] | null {
   return groups.every((group) => /^[0-9a-f]{1,4}$/i.test(group)) ? groups : null;
 }
 
-export function rateLimitBucket(ip: string): string {
+export type Ipv6Prefix = 64 | 48;
+
+export function rateLimitBucket(ip: string, ipv6Prefix: Ipv6Prefix = 64): string {
   const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
   if (mapped?.[1]) return mapped[1];
   if (!ip.includes(":")) return ip;
   const groups = expandIpv6(ip.split("%")[0] ?? ip);
   if (!groups) return ip.toLowerCase();
   return `${groups
-    .slice(0, 4)
+    .slice(0, ipv6Prefix / 16)
     .map((group) => group.toLowerCase().replace(/^0+(?=.)/, ""))
-    .join(":")}::/64`;
+    .join(":")}::/${String(ipv6Prefix)}`;
 }

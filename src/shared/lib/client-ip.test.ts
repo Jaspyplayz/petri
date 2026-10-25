@@ -39,4 +39,24 @@ describe("rateLimitBucket", () => {
   it("leaves malformed input usable as its own bucket", () => {
     expect(rateLimitBucket("1:2:3")).toBe("1:2:3");
   });
+
+  it("groups two /64s of one IPv6 /48 into one /48 bucket and keeps their /64 buckets apart", () => {
+    const a = "2001:db8:abcd:12::1";
+    const b = "2001:0db8:abcd:ff00:1:2:3:4";
+    expect(rateLimitBucket(a, 48)).toBe("2001:db8:abcd::/48");
+    expect(rateLimitBucket(b, 48)).toBe(rateLimitBucket(a, 48));
+    expect(rateLimitBucket(a, 64)).toBe("2001:db8:abcd:12::/64");
+    expect(rateLimitBucket(b, 64)).toBe("2001:db8:abcd:ff00::/64");
+    expect(rateLimitBucket("2001:db8:abce:12::1", 48)).not.toBe(rateLimitBucket(a, 48));
+  });
+
+  it("treats IPv4, mapped IPv4, zone ids, :: and malformed input the same way at /48", () => {
+    expect(rateLimitBucket("203.0.113.7", 48)).toBe("203.0.113.7");
+    expect(rateLimitBucket("unknown", 48)).toBe("unknown");
+    expect(rateLimitBucket("::ffff:203.0.113.7", 48)).toBe("203.0.113.7");
+    expect(rateLimitBucket("fe80::1%eth0", 48)).toBe("fe80:0:0::/48");
+    expect(rateLimitBucket("2001:db8::1", 48)).toBe("2001:db8:0::/48");
+    expect(rateLimitBucket("::1", 48)).toBe("0:0:0::/48");
+    expect(rateLimitBucket("1:2:3", 48)).toBe("1:2:3");
+  });
 });
