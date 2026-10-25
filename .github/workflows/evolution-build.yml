@@ -286,6 +286,10 @@ jobs:
         with:
           client-id: ${{ vars.EVOLUTION_APP_CLIENT_ID }}
           private-key: ${{ secrets.EVOLUTION_APP_PRIVATE_KEY }}
+          # Push the branch, open the PR with its labels, and read the issue that open-pr checks again.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: read
       # The patch goes on main as it is now, not on the build's base. If main's workflows changed during the build, a
       # branch from the old base would differ from main in .github/workflows/, and GitHub refuses that push from a token
       # without the workflows permission, which the bot token must never get (run 40031512734). CI and evolution-verify

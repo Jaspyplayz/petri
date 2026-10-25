@@ -28,8 +28,9 @@ jobs:
   guardian:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The bot token pushes the guardian's branches and opens their PRs, so CI runs on them. pull-requests: write is for
-    # a retried rollback's comment on an earlier run's PR.
+    # The bot token pushes the guardian's branches and opens their PRs, so CI runs on them. The issue and comments use
+    # this job's token, so they come from github-actions. Neither is the maintainer's account, so the maintainer is
+    # notified of the PRs and the issue. pull-requests: write is for a retried rollback's comment on an earlier run's PR.
     permissions:
       contents: read
       issues: write
@@ -85,6 +86,10 @@ jobs:
         with:
           client-id: ${{ vars.EVOLUTION_APP_CLIENT_ID }}
           private-key: ${{ secrets.EVOLUTION_APP_PRIVATE_KEY }}
+          # Push the pause and revert branches, open their PRs and turn auto-merge on. pull-requests: write also lets
+          # open-pr create the revert label.
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Push the pause branch (pause, lower trust)
         id: pause

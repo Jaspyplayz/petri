@@ -60,6 +60,9 @@ jobs:
         with:
           client-id: ${{ vars.EVOLUTION_APP_CLIENT_ID }}
           private-key: ${{ secrets.EVOLUTION_APP_PRIVATE_KEY }}
+          # gh pr merge --auto turns auto-merge on, or merges at once a PR that can already merge.
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Turn on auto-merge (squash, only for the head that was verified)
         if: steps.policy.outputs.merge != ''

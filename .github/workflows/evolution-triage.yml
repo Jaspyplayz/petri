@@ -109,6 +109,8 @@ jobs:
         with:
           client-id: ${{ vars.EVOLUTION_APP_CLIENT_ID }}
           private-key: ${{ secrets.EVOLUTION_APP_PRIVATE_KEY }}
+          # create-issues only runs gh issue create, labels included.
+          permission-issues: write
 
       - name: Create the issues and mark the feedback (script, not the agent)
         if: steps.gate.outputs.open == 'true'

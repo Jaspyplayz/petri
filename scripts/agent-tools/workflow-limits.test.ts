@@ -117,6 +117,19 @@ jobs:
     ]);
   });
 
+  it("refuses an app token mint that names no permissions, or one the evolution app doesn't have", () => {
+    const mint = (inputs: string) =>
+      `permissions:\n  contents: read\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n    steps:\n      - id: app-token\n        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0\n        with:\n          client-id: x\n          private-key: x\n${inputs}`;
+    expect(workflowLimitProblems("w.yml", mint("          permission-contents: write\n          permission-issues: read\n"))).toEqual([]);
+    expect(workflowLimitProblems("w.yml", mint(""))).toEqual([
+      "w.yml: job publish mints an app token without permission-* inputs, so it gets every permission the app has",
+    ]);
+    expect(workflowLimitProblems("w.yml", mint("          permission-contents: write\n          permission-workflows: write\n          permission-actions: read\n"))).toEqual([
+      "w.yml: job publish asks its app token for workflows; the app may only have contents, issues, pull-requests, metadata",
+      "w.yml: job publish asks its app token for actions; the app may only have contents, issues, pull-requests, metadata",
+    ]);
+  });
+
   it("skips reusable-workflow jobs, which can't set a timeout", () => {
     expect(workflowLimitProblems("r.yml", "permissions:\n  contents: read\njobs:\n  call:\n    uses: ./.github/workflows/x.yml\n")).toEqual([]);
   });
@@ -140,10 +153,21 @@ describe("cronProblem", () => {
 
 describe("every workflow in .github/workflows", () => {
   const dir = join(root, ".github", "workflows");
+  const workflows = readdirSync(dir)
+    .filter((file) => /\.ya?ml$/.test(file))
+    .map((file) => [file, readFileSync(join(dir, file), "utf8")] as const);
   it("keeps the limits", () => {
-    const problems = readdirSync(dir)
-      .filter((file) => /\.ya?ml$/.test(file))
-      .flatMap((file) => workflowLimitProblems(file, readFileSync(join(dir, file), "utf8")));
-    expect(problems).toEqual([]);
+    expect(workflows.flatMap(([file, text]) => workflowLimitProblems(file, text))).toEqual([]);
+  });
+
+  it("sees every job that mints the evolution app token", () => {
+    const unscoped = workflows.flatMap(([file, text]) => workflowLimitProblems(file, text.replace(/^ +permission-[a-z-]+: \w+\r?\n/gm, "")));
+    expect(unscoped.filter((problem) => problem.includes(" mints an app token ")).map((problem) => problem.split(" mints")[0])).toEqual([
+      "evolution-automerge.yml: job automerge",
+      "evolution-build.yml: job publish",
+      "evolution-guardian.yml: job guardian",
+      "evolution-postmortem.yml: job publish",
+      "evolution-triage.yml: job triage",
+    ]);
   });
 });

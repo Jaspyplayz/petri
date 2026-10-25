@@ -206,7 +206,7 @@ Every agent workflow starts with a gate step that exits early when `vars.EVOLUTI
 
 **Branch protection on `main`:** require `ci-ok` and `evolution-verify`, require the branch to be up to date, no force pushes, 0 approvals. Repo auto-merge is enabled.
 
-**Tokens:** events created with the default `GITHUB_TOKEN` don't trigger other workflows. So every write that has to start a downstream workflow uses the bot token, an installation token of the `petri-evolution-bot` GitHub App (contents, issues and PRs read and write, no workflows). The job mints it right before its first use with `actions/create-github-app-token`, and it lasts an hour. It's used for:
+**Tokens:** events created with the default `GITHUB_TOKEN` don't trigger other workflows. So every write that has to start a downstream workflow uses the bot token, an installation token of the `petri-evolution-bot` GitHub App (contents, issues and PRs read and write, no workflows). The job mints it right before its first use with `actions/create-github-app-token`, asking only for the permissions that job needs, and it lasts an hour. It's used for:
 
 - creating or labelling issues (triage → build)
 - opening PRs (build, guardian, postmortem)

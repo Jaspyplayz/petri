@@ -300,6 +300,9 @@ jobs:
         with:
           client-id: ${{ vars.EVOLUTION_APP_CLIENT_ID }}
           private-key: ${{ secrets.EVOLUTION_APP_PRIVATE_KEY }}
+          # Push the branch and open the PR with its labels.
+          permission-contents: write
+          permission-pull-requests: write
       # On main as it is now, like the build's publish: the bot token can't push a branch whose workflows differ from
       # main's (it never gets the workflows permission). No git hooks run: the patch may change eslint.config.mjs, which
       # a lint hook would run next to the bot token. gather found no open PR from this branch, so one that exists is
