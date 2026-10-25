@@ -113,8 +113,8 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
           look="full"
           mood={mood}
           shadowRx={46 * state.size}
-          width={260}
-          height={260}
+          width={300}
+          height={300}
           className={styles.lift}
           frameClassName={styles.creature}
           frameStyle={{ transform: `scale(${String(state.size * 0.8)})` }}
@@ -131,34 +131,32 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
 
       <div className="flex justify-center px-2">{evolved}</div>
 
-      <dl className="flex flex-wrap items-baseline justify-center gap-x-6 gap-y-1 font-extrabold tracking-tight text-ink">
+      <dl className="flex flex-wrap items-baseline justify-center gap-x-5 gap-y-1 text-xl font-extrabold tracking-tight text-ink sm:text-2xl">
         <div className="flex items-baseline gap-1.5">
-          <dt className="text-sm">Size</dt>
-          <dd data-testid="blob-size" className="text-2xl leading-none text-culture-deep">
+          <dt>Size:</dt>
+          <dd data-testid="blob-size">
             {sizeMood(state)}
             <span className="sr-only"> {formatSize(state)}</span>
           </dd>
         </div>
         <div className="flex items-baseline gap-1.5">
-          <dt className="text-sm">Pokes</dt>
-          <dd data-testid="blob-pokes" className="text-2xl leading-none">
-            {state.pokes}
-          </dd>
+          <dt>Pokes:</dt>
+          <dd data-testid="blob-pokes">{state.pokes}</dd>
         </div>
         <div className="flex items-baseline gap-1.5">
-          <dt className="text-sm">Snacks</dt>
-          <dd data-testid="blob-feeds" className="text-2xl leading-none">
+          <dt>Snacks:</dt>
+          <dd data-testid="blob-feeds">
             {state.feeds}
-            {yum ? <span className="text-feed-ink">{` ${yum}`}</span> : null}
+            {yum ? ` ${yum}` : ""}
           </dd>
         </div>
       </dl>
 
       <div className="flex gap-3">
-        <Button onClick={handlePoke} variant="poke" data-testid="blob-poke-button" className="min-w-24">
+        <Button onClick={handlePoke} variant="poke" data-testid="blob-poke-button" className="min-w-28">
           Poke
         </Button>
-        <Button onClick={handleFeed} variant="feed" disabled={full} data-testid="blob-feed-button" className="min-w-24">
+        <Button onClick={handleFeed} variant="feed" disabled={full} data-testid="blob-feed-button" className="min-w-28">
           {full ? "Too full" : "Feed"}
         </Button>
       </div>

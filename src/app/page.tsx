@@ -7,7 +7,7 @@ export default function HomePage() {
   return (
     <>
       <PageView featureId="blob" />
-      <div className="grid items-start gap-8 lg:grid-cols-2">
+      <div className="grid items-start gap-6 min-[900px]:grid-cols-2">
         <BlobCreature
           evolved={
             <Suspense fallback={<EvolvedLink label="Evolved … from visitor ideas" />}>
