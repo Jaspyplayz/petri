@@ -37,6 +37,7 @@ Detail lives in the skills and docs. This file is the short version.
 ## Guard against hallucination
 
 - Before you name a root cause, cite the files and lines you actually read (`path:line`).
+- Before you tell someone what a check or label requires, read the check and cite the line that decides. Before you call something absent, count the matches: `head` or a result limit shows only a sample.
 - Use subagents to search the code instead of guessing where something lives.
 - Prove it, don't guess. "I found it" needs a reproduction: a verify flow or a test that fails before the fix and passes after it.
 - If you can't reproduce it, say so in the PR or issue rather than shipping a guess.

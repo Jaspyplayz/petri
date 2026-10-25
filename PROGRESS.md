@@ -89,6 +89,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 - [x] A build that pushed its branch but didn't open the PR blocked every retry of that issue, because the branch was never deleted (#107). Fixed in #114: the build checks that no open PR from this repository has the branch as its head, then pushes with `--force`.
 - [x] Raise the two 2026-10-24 mistakes in `docs/agent-mistakes.md`, the `.git/config` claim and the `protected-ok` advice, to rung (c). `investigate-before-claiming` now has an anti-pattern line for each: an absence read from output that `head` or a result limit cut short, and a check's rule told to someone without reading the check. Its description names that second moment. The eval case `evals/investigate-before-claiming/cases/03-cut-search-and-gate-rule` tests both.
 - [ ] Two things about #108's split are still unconfirmed. The first post-merge run on an evolution merge should show that GitHub passes `production-url` on to `verify`, with no "Skip output" warning. And when `record` fails after writing its outputs, `finish` should still record the run in `agent_runs`. That second case comes from GitHub's docs, and no run has shown it yet.
+- [ ] Keep eval and verify artifacts where removing a worktree can't delete them, or have the runners copy each run out. `artifacts/` is ignored, so `git status` never shows it (the 2026-10-24 worktree entry in `docs/agent-mistakes.md`).
 
 ---
 
