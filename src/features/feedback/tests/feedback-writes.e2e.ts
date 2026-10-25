@@ -107,6 +107,31 @@ test.describe("feedback writes", () => {
     await expect(page.getByTestId("feedback-list")).not.toContainText(text);
   });
 
+  test("an IPv6 /48 counts as one network for reports", async ({ page, request }) => {
+    const text = `IPv6 hide probe ${String(Date.now())}`;
+    const posted = await request.post("/api/feedback", { data: { body: text, category: "idea" } });
+    expect(posted.status()).toBe(201);
+    const { id } = (await posted.json()) as { id: string };
+    const base = randomInt(0, 0x10000);
+    const reportFrom = async (network48: number, subnet64: number) => {
+      const prefix = `2001:db8:${((base + network48) % 0x10000).toString(16)}:${subnet64.toString(16)}`;
+      const report = await request.post(`/api/feedback/${id}/report`, {
+        data: {},
+        headers: { "x-forwarded-for": `${prefix}::${randomInt(1, 0x10000).toString(16)}` },
+      });
+      return report.status();
+    };
+    expect([await reportFrom(0, 1), await reportFrom(0, 2), await reportFrom(0, 0xff00)]).toEqual([201, 200, 200]);
+    await page.goto("/feedback?sort=new");
+    await expect(page.locator(`[data-feedback-id="${id}"]`)).toBeVisible();
+
+    expect([await reportFrom(1, 1), await reportFrom(2, 1)]).toEqual([201, 201]);
+    await page.reload();
+    await expect(page.getByTestId("feedback-list")).toBeVisible();
+    await expect(page.locator(`[data-feedback-id="${id}"]`)).toHaveCount(0);
+    await expect(page.getByTestId("feedback-list")).not.toContainText(text);
+  });
+
   test("reports refuse unknown items and cross-site requests", async ({ request }) => {
     const unknown = await request.post("/api/feedback/00000000-0000-4000-8000-00000000ffff/report", { data: {} });
     expect(unknown.status()).toBe(404);

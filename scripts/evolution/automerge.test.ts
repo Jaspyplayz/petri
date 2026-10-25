@@ -5,12 +5,14 @@ import { decide, footprint, manifestRiskLevel, requiredLevel, type ChangedFile, 
 const existing = new Set(["blob", "feedback", "timeline"]);
 const modified = (filename: string): ChangedFile => ({ filename, status: "modified" });
 const added = (filename: string): ChangedFile => ({ filename, status: "added" });
+const renamed = (from: string, to: string): ChangedFile => ({ filename: to, status: "renamed", previous_filename: from });
 
 describe("footprint", () => {
   it("groups files by feature and lets FEATURE_MAP.md move with them", () => {
     expect(footprint([modified("src/features/blob/components/blob.tsx"), modified("FEATURE_MAP.md")], existing)).toEqual({
       features: ["blob"],
       newFeatures: [],
+      server: [],
       shared: false,
       dependencies: false,
       migrations: false,
@@ -53,6 +55,22 @@ describe("requiredLevel", () => {
     expect(requiredLevel(fp([blob, modified("src/features/feedback/x.ts")]), "low").level).toBe(3);
     expect(requiredLevel(fp([blob, modified("src/shared/lib/x.ts")]), "low").level).toBe(3);
     expect(requiredLevel(fp([added("supabase/migrations/1_x.sql")]), "low").level).toBe(4);
+  });
+
+  it.each([
+    ["a medium-risk edit", "feedback", [modified("src/features/feedback/server/handlers.ts")], "medium"],
+    ["a rename into server/", "feedback", [renamed("src/features/feedback/lib/x.ts", "src/features/feedback/server/x.ts")], "low"],
+    ["a rename out of server/", "feedback", [renamed("src/features/feedback/server/x.ts", "src/features/feedback/lib/x.ts")], "low"],
+    ["a new feature with a server/ file", "hats", [added("src/features/hats/index.ts"), added("src/features/hats/server/x.ts")], "low"],
+    ["a nested server/ folder", "feedback", [modified("src/features/feedback/lib/server/x.ts")], "low"],
+  ] as const)("needs level 3 for a feature's server code: %s", (_, feature, files, risk) => {
+    expect(requiredLevel(fp([...files]), risk)).toEqual({ level: 3, why: `it changes server/ code in src/features/${feature}/` });
+  });
+
+  it("keeps today's level for a feature's components", () => {
+    const component = modified("src/features/feedback/components/feedback-form.tsx");
+    expect(requiredLevel(fp([component]), "low").level).toBe(1);
+    expect(requiredLevel(fp([component]), "medium").level).toBe(2);
   });
 
   it("leaves high risk, dependencies, other paths and empty changes to a human", () => {

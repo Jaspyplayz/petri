@@ -82,6 +82,7 @@ petri/
 | `src/features/X/**` | its own files and `src/shared/**` (**never** another feature) |
 | `src/shared/**` | `src/shared/**` only (never `features/`) |
 | client components | never `server/**` or the service-role client (dependency-graph check) |
+| anything outside `server/**` and `src/shared/supabase/` | never the service-role client |
 
 ## 2. Data model (Supabase Postgres, RLS on every table)
 
@@ -294,7 +295,7 @@ The level lives in `.evolution/config.json`, a protected file that only a human 
 | 0 | nothing (agents open PRs, a human merges) |
 | 1 | `riskLevel: low` changes inside one existing feature folder |
 | 2 | new features via the generator; changes inside any single feature |
-| 3 | `shared/`, multi-feature changes, deps from an allow-list |
+| 3 | `shared/`, a feature's `server/` code, multi-feature changes, deps from an allow-list |
 | 4 | additive Supabase migrations (CI-checked) |
 
 Any automatic revert drops the level by one and pauses the loop for 24h. `trust-report.ts` only *suggests* promotions.
