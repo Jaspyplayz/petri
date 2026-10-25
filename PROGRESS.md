@@ -74,7 +74,7 @@ Resuming after a context reset? Read this file, then `CLAUDE.md`, `docs/decision
 
 ## Phase 9 — Long-run mode and handoff
 
-- [ ] 9.1 crons on (after MANUAL_STEPS done; triage, build fallback, guardian and `evolution-weekly.yml`) · [x] 9.2 `docs/runbook.md` (every `pnpm` script, workflow, input, label and path it names was checked against the repo) · [ ] 9.3 `docs/porting.md` · [ ] 9.4 red-team review + fixes
+- [ ] 9.1 crons on (after MANUAL_STEPS done; triage, build fallback, guardian and `evolution-weekly.yml`) · [x] 9.2 `docs/runbook.md` (every `pnpm` script, workflow, input, label and path it names was checked against the repo) · [x] 9.3 `docs/porting.md` (from a read-only survey of what each piece needs from the app; every path it names exists) · [ ] 9.4 red-team review + fixes
 
 ---
 
