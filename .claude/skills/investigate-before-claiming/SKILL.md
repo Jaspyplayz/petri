@@ -1,6 +1,6 @@
 ---
 name: investigate-before-claiming
-description: Use before you name a root cause, say where something lives, say a change "works" or "is fixed", or answer "why does X happen". Also use when you catch yourself guessing a file, function, flag or behaviour you haven't read. Read the code, cite path:line, search with subagents, and reproduce before claiming.
+description: Use before you name a root cause, say where something lives, say a change "works" or "is fixed", tell someone what a check or label requires, or answer "why does X happen". Also use when you catch yourself guessing a file, function, flag or behaviour you haven't read. Read the code, cite path:line, search with subagents, and reproduce before claiming.
 ---
 
 # investigate-before-claiming
@@ -41,3 +41,5 @@ The bad version would have shipped a prompt change and left the real bug in plac
 - Quoting a memory, an old PR or a summary as if it were the current code. Check that the file, function or flag still exists.
 - Explaining a flaky result by its likeliest cause. Count runs: "failed 3 of 3 locally" is evidence, "it's flaky" isn't.
 - Letting a confirmed hypothesis grow: proving one cause doesn't prove the neighbouring ones.
+- Concluding that something is absent from output that `head`, a `head_limit` or a summary cut short. Count the matches, or open the file the claim is about.
+- Telling someone what a check or label requires from memory, a past PR or a paraphrase. Read the check's code or its doc, and cite the line that decides.
