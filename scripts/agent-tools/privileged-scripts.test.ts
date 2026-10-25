@@ -63,7 +63,7 @@ describe("privilegedScriptProblems", () => {
     ]);
   });
 
-  it("counts a job that can write even with no token in its env, since actions/checkout leaves it in .git/config", () => {
+  it("counts a job that can write even with no token in its env, since actions/checkout leaves it in .git/config by default", () => {
     expect(privilegedScriptProblems("w.yml", workflow("pull-requests: write", "      - run: tsx src/risk.ts"), repo)).toEqual([
       'w.yml: job j (holds a write token), "tsx src/risk.ts" runs src/risk.ts, which is outside the protected paths',
     ]);
@@ -122,11 +122,6 @@ describe("privilegedScriptProblems", () => {
     const real = repoAt(root);
     const dir = join(root, ".github", "workflows");
     const problems = readdirSync(dir).flatMap((file) => privilegedScriptProblems(file, readFileSync(join(dir, file), "utf8"), real));
-    // Known, not fixed yet (docs/decisions.md P9): post-merge verifies production with the merged manifests' flows in
-    // the job whose later steps get the service-role key. The second expect fails once the job is split, so this goes.
-    const postMergeVerify = (problem: string): boolean =>
-      problem.startsWith("evolution-post-merge.yml: job post-merge ") && problem.includes(`"Verify production (flows that don't write)" runs scripts/verify.ts, which loads src/`);
-    expect(problems.filter((problem) => !postMergeVerify(problem))).toEqual([]);
-    expect(problems.filter(postMergeVerify)).not.toEqual([]);
+    expect(problems).toEqual([]);
   });
 });

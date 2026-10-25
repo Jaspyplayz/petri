@@ -5,10 +5,14 @@ name: evolution-post-merge
 # don't write (verify:all --read-only) and record the run in agent_runs. A merged guardian revert gets its "Reverted"
 # row, the agent_runs record and the postmortem (evolution-postmortem), nothing else: production serves the rollback
 # until the guardian promotes the revert.
-# Any other push stops after the first step. The row goes in before verification because the change shipped either way,
-# and timeline.browse needs an entry. No gate: it only records what a merge already shipped. Rolling back and
+# Any other push stops after the record job. The row goes in before verification because the change shipped either
+# way, and timeline.browse needs an entry. No gate: it only records what a merge already shipped. Rolling back and
 # reverting are the guardian's job, not this workflow's.
 # On a clean finish of a change it dispatches the build for the next evolution:ready issue, whose own gate applies.
+# verify:all runs the merged manifests' flows, which an agent PR can change and auto-merge from trust level 1, and code
+# a step runs can reach the later steps of its job ($GITHUB_ENV, $GITHUB_PATH, a process left running). So verify has a
+# job of its own, with no secret and a read-only token. record and finish hold the secrets and the write token, and run
+# only protected scripts (docs/decisions.md P9).
 on:
   push:
     branches: [main]
@@ -20,8 +24,11 @@ concurrency:
   group: evolution-post-merge-${{ github.sha }}
   cancel-in-progress: false
 
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
 jobs:
-  post-merge:
+  record:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -30,8 +37,13 @@ jobs:
       issues: write
       pull-requests: write
       statuses: read
-    env:
-      NEXT_TELEMETRY_DISABLED: "1"
+    outputs:
+      kind: ${{ steps.record.outputs.kind }}
+      pr: ${{ steps.record.outputs.pr }}
+      issue: ${{ steps.record.outputs.issue }}
+      started-at: ${{ steps.record.outputs.started-at }}
+      production-url: ${{ steps.record.outputs.production-url }}
+      reverted: ${{ steps.record.outputs.reverted }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,46 +60,80 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: pnpm -s evolution:post-merge record
 
+  # finish learns of a failed verify only from needs.verify.result, so the verify step mustn't have continue-on-error.
+  verify:
+    needs: record
+    if: needs.record.result == 'success' && needs.record.outputs.kind == 'change'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+
       # No --with-deps: ubuntu-latest has Chromium's libraries, and these flows check content, not pixels.
       - name: Install Chromium
-        if: steps.record.outcome == 'success' && steps.record.outputs.kind == 'change'
         run: pnpm exec playwright install --only-shell chromium
 
       - name: Verify production (flows that don't write)
-        id: verify
-        if: steps.record.outcome == 'success' && steps.record.outputs.kind == 'change'
-        continue-on-error: true
         env:
-          PRODUCTION_URL: ${{ steps.record.outputs.production-url }}
+          PRODUCTION_URL: ${{ needs.record.outputs.production-url }}
         run: pnpm -s verify:all --read-only --base-url "$PRODUCTION_URL"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always() && steps.record.outputs.kind == 'change'
+        if: always()
         with:
           name: post-merge-verify
           path: artifacts/verify/
           if-no-files-found: ignore
           retention-days: 30
 
+  # Runs after a failed record or verify too. It takes verify's result and nothing else from that job: no outputs and
+  # no artifact, since that job ran code an agent PR can change.
+  finish:
+    needs: [record, verify]
+    if: always() && needs.record.outputs.pr != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+      pull-requests: write
+      statuses: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+
       - name: Record the run in agent_runs
-        if: always() && steps.record.outputs.pr != ''
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          PR: ${{ steps.record.outputs.pr }}
-          KIND: ${{ steps.record.outputs.kind }}
-          ISSUE: ${{ steps.record.outputs.issue }}
-          STARTED_AT: ${{ steps.record.outputs.started-at }}
-          RECORD_OUTCOME: ${{ steps.record.outcome }}
-          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          PR: ${{ needs.record.outputs.pr }}
+          KIND: ${{ needs.record.outputs.kind }}
+          ISSUE: ${{ needs.record.outputs.issue }}
+          STARTED_AT: ${{ needs.record.outputs.started-at }}
+          RECORD_OUTCOME: ${{ needs.record.result }}
+          VERIFY_OUTCOME: ${{ needs.verify.result }}
         run: pnpm -s evolution:post-merge finish
 
       # The merge freed the one open-PR slot, so start the build for the oldest evolution:ready issue, if any. A ready
       # issue that arrived while a PR was open would otherwise wait for a manual dispatch (#48 did). Only after a
-      # clean finish: a failed production verify is the guardian's to handle, not a reason to build more.
+      # clean finish: the step above exits 1 when record or verify failed, and with no always() this one is then
+      # skipped. A failed production verify is the guardian's to handle, not a reason to build more.
       - name: Start the next build
-        if: steps.record.outputs.kind == 'change'
+        if: needs.record.outputs.kind == 'change'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -98,9 +144,9 @@ jobs:
       # isGuardianRevert accepted the merged PR before record named the change it reverted. The postmortem doesn't
       # need the Timeline row, so a failed row doesn't stop it; its own gate applies.
       - name: Start the postmortem of the reverted change
-        if: always() && steps.record.outputs.kind == 'revert' && steps.record.outputs.reverted != ''
+        if: always() && needs.record.outputs.kind == 'revert' && needs.record.outputs.reverted != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          REVERTED: ${{ steps.record.outputs.reverted }}
-          REVERT: ${{ steps.record.outputs.pr }}
+          REVERTED: ${{ needs.record.outputs.reverted }}
+          REVERT: ${{ needs.record.outputs.pr }}
         run: gh workflow run evolution-postmortem.yml --repo "$GITHUB_REPOSITORY" --ref main -f pr="$REVERTED" -f revert="$REVERT"
