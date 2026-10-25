@@ -59,10 +59,72 @@ const serverOnlyFirst = {
   },
 };
 
+const STRING_ARRAY_REFERENCES = new Set(["Array", "ReadonlyArray"]);
+
+function isStringArrayType(node) {
+  if (node.type === "TSTypeOperator" && node.operator === "readonly" && node.typeAnnotation) {
+    return isStringArrayType(node.typeAnnotation);
+  }
+  if (node.type === "TSArrayType") return node.elementType.type === "TSStringKeyword";
+  if (node.type === "TSTypeReference" && node.typeName.type === "Identifier" && STRING_ARRAY_REFERENCES.has(node.typeName.name)) {
+    const args = node.typeArguments?.params ?? [];
+    return args.length === 1 && args[0].type === "TSStringKeyword";
+  }
+  return false;
+}
+
+function isSearchParamValueType(node) {
+  if (node?.type !== "TSUnionType") return false;
+  return (
+    node.types.some((member) => member.type === "TSStringKeyword") &&
+    node.types.some((member) => member.type === "TSUndefinedKeyword") &&
+    node.types.some(isStringArrayType)
+  );
+}
+
+function readsSearchParams(param) {
+  const target = param.type === "AssignmentPattern" ? param.left : param;
+  if (target.type === "Identifier") {
+    return target.name === "searchParams" || isSearchParamValueType(target.typeAnnotation?.typeAnnotation);
+  }
+  if (target.type === "ObjectPattern") {
+    return target.properties.some(
+      (property) => property.type === "Property" && property.key.type === "Identifier" && property.key.name === "searchParams",
+    );
+  }
+  return false;
+}
+
+const FUNCTION_TYPES = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
+
+/** @type {import("eslint").Rule.RuleModule} */
+const urlInputNeverThrows = {
+  meta: {
+    type: "problem",
+    docs: { description: "Code that reads URL search parameters falls back to a default instead of throwing." },
+    schema: [],
+    messages: {
+      throws:
+        "This function reads a URL search parameter, which any visitor can set to anything. Fall back to a default (no filter, the default sort) instead of throwing: a throw here breaks the page for that URL and raises an unhandled error.",
+    },
+  },
+  create(context) {
+    return {
+      ThrowStatement(node) {
+        const readsUrl = context.sourceCode
+          .getAncestors(node)
+          .some((ancestor) => FUNCTION_TYPES.has(ancestor.type) && ancestor.params.some(readsSearchParams));
+        if (readsUrl) context.report({ node, messageId: "throws" });
+      },
+    };
+  },
+};
+
 export const petriPlugin = {
   meta: { name: "petri" },
   rules: {
     "no-comments": noComments,
     "server-only-first": serverOnlyFirst,
+    "url-input-never-throws": urlInputNeverThrows,
   },
 };
