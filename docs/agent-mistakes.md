@@ -238,3 +238,11 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** It undid one change by restoring the whole file from git, without checking what else in the file was uncommitted. It's the same class as the entry above: a destructive command run without looking at everything it removes.
 - **Category:** destructive command without looking at the target (uncommitted work)
 - **Fix rung:** none reached yet. Commit before seeding a control, or undo a seed with the inverse edit.
+
+## 2026-10-26 · Sent a delegate to edit protected paths from a session without human mode
+
+- **What happened:** The coordinating agent planned the later-steps change to the loop and briefed a delegate to build it. Every code and prompt file in the brief is a protected path (`scripts/**`, `.evolution/**`, `.claude/**` in `.github/guardrails.json`), and the session had been started without `EVOLUTION_HUMAN=1`. The delegate's first edit was refused, and it stopped without writing anything, after about 180k tokens of reading. The maintainer then had to restart in human mode, which took three tries.
+- **Evidence:** The file guard answered "Blocked: .claude/worktrees/split-ideas/scripts/evolution/triage-input.ts is a protected path … start Claude Code with EVOLUTION_HUMAN=1" (`.claude/hooks/guard-files.ts:9`). `docs/MANUAL_STEPS.md` step 9 already said the switch was removed after #117, so new sessions start without it.
+- **Root cause:** The agent checked what the change needed but not whether this session could make it. It never compared the target paths with `protectedPaths`, and it didn't try one edit before handing the work out.
+- **Category:** work started without checking the guard that decides it (protected paths in a normal session)
+- **Fix rung:** none reached yet. Before briefing a delegate to edit files, make one real edit to a target file. The guard answers in one call.
