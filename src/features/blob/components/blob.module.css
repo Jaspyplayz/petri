@@ -26,6 +26,10 @@
   animation: blink 3.5s step-end infinite;
 }
 
+.eyelidShut {
+  visibility: visible;
+}
+
 @keyframes blink {
   0%, 92% { visibility: hidden; }
   92.01%, 99% { visibility: visible; }

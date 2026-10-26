@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type AnimationEvent, type ReactNode, type SubmitEvent } from "react";
+import { useMemo, useState, useSyncExternalStore, type AnimationEvent, type ReactNode, type SubmitEvent } from "react";
 import { track } from "@/shared/lib/track";
 import { useLocalStorage } from "@/shared/lib/use-local-storage";
 import { BlobGlyph } from "@/shared/ui/blob-glyph";
@@ -23,9 +23,27 @@ import {
   type BlobState,
 } from "../lib/blob-state";
 import { sizeMood, snackMood } from "../lib/size-mood";
+import { localHour, timeMood, timeMoodLabel } from "../lib/time-mood";
 import styles from "./blob.module.css";
 
 type Mood = "calm" | "poked" | "fed";
+
+const HOUR_CHECK_MS = 60_000;
+
+function subscribeToClock(onChange: () => void) {
+  const timer = window.setInterval(onChange, HOUR_CHECK_MS);
+  return () => {
+    window.clearInterval(timer);
+  };
+}
+
+function useLocalHour(): number | null {
+  return useSyncExternalStore(
+    subscribeToClock,
+    () => localHour(window.location.search, new Date()),
+    () => null,
+  );
+}
 
 const evolvedLinkClass =
   "inline-block bg-[linear-gradient(90deg,#e56b9a_0%,#ef9a45_18%,#e4c04a_38%,#6fbe73_58%,#6aa4e4_78%,#b07ad6_100%)] bg-clip-text text-center text-xl font-extrabold leading-tight tracking-tight text-transparent sm:text-2xl";
@@ -46,6 +64,8 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
   const [mood, setMood] = useState<Mood>("calm");
   const [draftName, setDraftName] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  const hour = useLocalHour();
+  const dayMood = hour === null ? "awake" : timeMood(hour);
 
   const save = (next: BlobState) => {
     setStored(serializeBlobState(next));
@@ -125,7 +145,7 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
             "data-mood": mood,
             onAnimationEnd: handleAnimationEnd,
           }}
-          eyelid={{ "data-testid": "blob-eyelid", className: styles.eyelid }}
+          eyelid={{ "data-testid": "blob-eyelid", className: dayMood === "sleepy" ? styles.eyelidShut : styles.eyelid }}
         />
       </button>
 
@@ -138,6 +158,10 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
             {sizeMood(state)}
             <span className="sr-only"> {formatSize(state)}</span>
           </dd>
+        </div>
+        <div className="flex items-baseline gap-1.5">
+          <dt>Mood:</dt>
+          <dd data-testid="blob-mood">{timeMoodLabel(dayMood)}</dd>
         </div>
         <div className="flex items-baseline gap-1.5">
           <dt>Pokes:</dt>
