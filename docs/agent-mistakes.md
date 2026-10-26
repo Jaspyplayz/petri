@@ -246,3 +246,11 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** The agent checked what the change needed but not whether this session could make it. It never compared the target paths with `protectedPaths`, and it didn't try one edit before handing the work out.
 - **Category:** work started without checking the guard that decides it (protected paths in a normal session)
 - **Fix rung:** none reached yet. Before briefing a delegate to edit files, make one real edit to a target file. The guard answers in one call.
+
+## 2026-10-26 · Listed guard bypasses in a public PR body
+
+- **What happened:** While opening #129 (folder rules in the file guard), the agent pasted a reviewer's list of older guard bypasses into the PR's Risk section, with examples. The repo is public. Earlier in the same session it had told the maintainer it would keep bypass details out of public issues for exactly that reason.
+- **Evidence:** About a minute later the agent replaced the body. `gh pr view 129 --json body` then matched none of the listed techniques. GitHub keeps the first version in the PR's edit history.
+- **Root cause:** It drafted the Risk section from its own notes and didn't re-read the draft as a public text before `gh pr create`. Its own earlier rule wasn't written down anywhere it would see while drafting.
+- **Category:** security detail published in a public place
+- **Fix rung:** none reached yet. Before opening a PR on a guard change, read the body as a stranger would. Name a bypass class only in general terms. Keep specific commands in local notes or a private channel.
