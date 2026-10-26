@@ -65,7 +65,7 @@ export function isTrustedRoot(root: string, trustedRoot: string): boolean {
   return gitdir !== undefined && contains(join(trustedRoot, ".git", "worktrees"), gitdir);
 }
 
-// Agents can't write under .git, so git's back-link there is what a planted .git file can't fake.
+// Only git writes under .git, so the back-link there means git registered this folder as a worktree, as `git worktree add` does.
 function isLinkedWorktree(root: string, main: string): boolean {
   const gitdir = gitdirOf(root);
   if (gitdir === undefined || relative(join(main, ".git", "worktrees"), dirname(gitdir)) !== "") return false;
