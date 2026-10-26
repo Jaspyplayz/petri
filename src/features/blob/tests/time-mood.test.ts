@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localHour, timeMood, timeMoodLabel } from "../lib/time-mood";
+import { localHour, shownMood, timeMood, timeMoodLabel } from "../lib/time-mood";
 
 describe("timeMood", () => {
   it.each([
@@ -19,6 +19,22 @@ describe("timeMoodLabel", () => {
   it("names each mood", () => {
     expect(timeMoodLabel("sleepy")).toBe("Sleepy");
     expect(timeMoodLabel("awake")).toBe("Awake");
+    expect(timeMoodLabel("happy")).toBe("Happy");
+  });
+});
+
+describe("shownMood", () => {
+  it("is happy right after a snack in the daytime", () => {
+    expect(shownMood("awake", true)).toBe("happy");
+  });
+
+  it("stays sleepy at night, even after a snack", () => {
+    expect(shownMood("sleepy", true)).toBe("sleepy");
+  });
+
+  it("follows the clock when Blobby wasn't just fed", () => {
+    expect(shownMood("awake", false)).toBe("awake");
+    expect(shownMood("sleepy", false)).toBe("sleepy");
   });
 });
 
