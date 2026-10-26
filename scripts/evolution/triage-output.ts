@@ -39,7 +39,13 @@ export function triageJsonSchema(): string {
   return JSON.stringify(schema);
 }
 
-export type IssuePlan = { readonly issues: readonly TriageIssue[]; readonly rejected: readonly Rejection[]; readonly problems: readonly string[] };
+// finished: feedback whose rest triage rejected after some of its steps were built, so it ships with those steps.
+export type IssuePlan = {
+  readonly issues: readonly TriageIssue[];
+  readonly rejected: readonly Rejection[];
+  readonly finished: readonly string[];
+  readonly problems: readonly string[];
+};
 
 export const RISK_ORDER: readonly RiskLevel[] = ["low", "medium", "high"];
 
@@ -68,7 +74,8 @@ const MAX_STEPS_PER_FEEDBACK = 5;
 
 // The script, not the agent, decides what becomes an issue: known features only, feedback ids from the input only,
 // each id used once, risk never below the feature's manifest, at most maxIssues, and at most MAX_STEPS_PER_FEEDBACK
-// steps for a feedback item (stepsBuilt counts the ones already on the Timeline).
+// steps for a feedback item (stepsBuilt counts the ones already on the Timeline). A wish with built steps is never
+// rejected, because part of it is on the Timeline: it ships with those steps instead.
 export function planIssues(
   output: TriageOutput,
   options: { candidateIds: ReadonlySet<string>; featureRisk: ReadonlyMap<string, RiskLevel>; stepsBuilt: ReadonlyMap<string, number>; maxIssues: number },
@@ -103,15 +110,22 @@ export function planIssues(
     issues.push(defangIssue(lastStep === undefined ? issue : { ...issue, laterSteps: [] }, higherRisk(issue.riskLevel, manifestRisk), ids));
   }
   const rejected: Rejection[] = [];
+  const finished: string[] = [];
   for (const rejection of output.rejected) {
     if (!options.candidateIds.has(rejection.feedbackId) || used.has(rejection.feedbackId)) {
       problems.push(`ignored the rejection of ${rejection.feedbackId}: it isn't in the input or is already in an issue`);
       continue;
     }
     used.add(rejection.feedbackId);
+    const built = options.stepsBuilt.get(rejection.feedbackId) ?? 0;
+    if (built > 0) {
+      finished.push(rejection.feedbackId);
+      problems.push(`shipped ${rejection.feedbackId} with its ${String(built)} built steps instead of rejecting the rest (${rejection.reason}: ${defang(rejection.note)})`);
+      continue;
+    }
     rejected.push({ ...rejection, note: defang(rejection.note) });
   }
-  return { issues, rejected, problems };
+  return { issues, rejected, finished, problems };
 }
 
 export const ISSUE_DATA_PREFIX = "<!-- evolution-issue:v1 ";

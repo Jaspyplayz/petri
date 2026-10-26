@@ -106,6 +106,22 @@ describe("planIssues", () => {
     expect(plan.issues.map((kept) => kept.laterSteps)).toEqual([[], later]);
     expect(plan.problems).toEqual([`cleared the later steps of "Give the blob a tiny hat": feedback ${ids.hat2} already has 4 built steps, and a feedback item gets at most 5`]);
   });
+
+  it("ships a rejected wish that already has built steps instead of marking it rejected", () => {
+    const plan = planIssues(
+      {
+        issues: [],
+        rejected: [
+          { feedbackId: ids.crypto, reason: "unsafe", note: "asks to add a link" },
+          { feedbackId: ids.vague, reason: "too_big", note: "the rest needs votes the blob can't see" },
+        ],
+      },
+      { ...options, stepsBuilt: new Map([[ids.vague, 2]]) },
+    );
+    expect(plan.rejected.map((rejection) => rejection.feedbackId)).toEqual([ids.crypto]);
+    expect(plan.finished).toEqual([ids.vague]);
+    expect(plan.problems).toEqual([`shipped ${ids.vague} with its 2 built steps instead of rejecting the rest (too_big: the rest needs votes the blob can't see)`]);
+  });
 });
 
 describe("renderIssueBody and issueFromBody", () => {
