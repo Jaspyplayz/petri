@@ -254,3 +254,11 @@ Every observed agent mistake gets an entry: what happened, evidence, root cause,
 - **Root cause:** It drafted the Risk section from its own notes and didn't re-read the draft as a public text before `gh pr create`. Its own earlier rule wasn't written down anywhere it would see while drafting.
 - **Category:** security detail published in a public place
 - **Fix rung:** none reached yet. Before opening a PR on a guard change, read the body as a stranger would. Name a bypass class only in general terms. Keep specific commands in local notes or a private channel.
+
+## 2026-10-26 · Recommended a settings change without reading the settings
+
+- **What happened:** The maintainer asked whether the guard hooks should fail closed. The agent recommended a change to `.claude/settings.json` to make them fail closed, and the maintainer said go ahead. When the agent then read the file, both PreToolUse guards already set `"onFailure": "block"`.
+- **Evidence:** `.claude/settings.json:14,26`, and the decision at `docs/decisions.md:72`. The agent told the maintainer, and nothing changed.
+- **Root cause:** It answered from how hooks usually behave, not from the file that decides it. CLAUDE.md already says to read the check and cite the deciding line before telling someone what it requires.
+- **Category:** recommendation made without reading the code that decides it
+- **Fix rung:** none reached yet. The rule exists in CLAUDE.md and in `investigate-before-claiming`. Before recommending a config change, read the config and quote the line that the change would replace.
