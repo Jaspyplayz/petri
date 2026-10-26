@@ -1,6 +1,7 @@
+import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { type FileGuard, fileProblem } from "./files";
 import { isSecretFile, postmortemProblem, projectRoot, protectedRepoPath, secretTarget, toNativePath } from "./paths";
 
@@ -96,5 +97,50 @@ describe("paths", () => {
   it("maps Git Bash drive paths to Windows paths only on Windows", () => {
     expect(toNativePath("/c/Users/x", true)).toBe("C:/Users/x");
     expect(toNativePath("/c/Users/x", false)).toBe("/c/Users/x");
+  });
+
+  describe("in a worktree nested in the main checkout", () => {
+    const main = realpathSync(mkdtempSync(join(tmpdir(), "petri-nested-")));
+    afterAll(() => {
+      rmSync(main, { recursive: true, force: true });
+    });
+    const inMain = (path: string) => join(main, path);
+    const backTo = (path: string) => `${inMain(`${path}/.git`)}\n`;
+    const guardrails = (root: string) => {
+      mkdirSync(join(root, ".github"), { recursive: true });
+      copyFileSync(join(projectRoot, ".github/guardrails.json"), join(root, ".github/guardrails.json"));
+      return root;
+    };
+    // Gives the folder at path its own guardrails and a .git file naming gitdir, and writes git's back-link there if given.
+    const link = (path: string, gitdir: string, backLink: string | undefined) => {
+      mkdirSync(inMain(gitdir), { recursive: true });
+      writeFileSync(join(guardrails(inMain(path)), ".git"), `gitdir: ${inMain(gitdir)}\n`);
+      if (backLink !== undefined) writeFileSync(inMain(`${gitdir}/gitdir`), backLink);
+    };
+    guardrails(main);
+    const worktree = inMain(".claude/worktrees/feature");
+    link(".claude/worktrees/feature", ".git/worktrees/feature", backTo(".claude/worktrees/feature"));
+
+    it.each([
+      ["main checkout", main],
+      ["worktree", worktree],
+    ])("judges worktree files by the worktree's rules when the project root is the %s", (_, root) => {
+      const guard = { ...pathGuard, projectRoot: root };
+      expect(protectedRepoPath(join(worktree, "src/x.ts"), worktree, guard)).toBeUndefined();
+      expect(protectedRepoPath(join(worktree, "scripts/x.ts"), worktree, guard)).toBe("scripts/x.ts");
+      expect(protectedRepoPath(join(worktree, ".claude/hooks/x.ts"), worktree, guard)).toBe(".claude/hooks/x.ts");
+    });
+
+    it.each<[string, string, string, string | undefined]>([
+      ["a folder whose .git file names another worktree's gitdir", ".claude/worktrees/forged", ".git/worktrees/feature", undefined],
+      ["a folder whose gitdir is outside .git", ".claude/worktrees/planted", "src/planted-gitdir", backTo(".claude/worktrees/planted")],
+      ["a folder whose gitdir is nested below .git/worktrees", ".claude/worktrees/deep", ".git/worktrees/deep/sub", backTo(".claude/worktrees/deep")],
+      ["a folder git never linked back to", ".claude/worktrees/unlinked", ".git/worktrees/unlinked", undefined],
+      ["a folder with an empty back-link", ".claude/worktrees/empty", ".git/worktrees/empty", ""],
+      ["a linked worktree outside .claude/worktrees", ".github/feature", ".git/worktrees/outside", backTo(".github/feature")],
+    ])("keeps the main checkout's rules on %s", (_, path, gitdir, backLink) => {
+      link(path, gitdir, backLink);
+      expect(protectedRepoPath(inMain(`${path}/src/x.ts`), inMain(path), { ...pathGuard, projectRoot: main })).toBe(`${path}/src/x.ts`);
+    });
   });
 });
