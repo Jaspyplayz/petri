@@ -40,6 +40,19 @@ describe("protected paths can't be escaped", () => {
     expect(protectedRepoPath(join(link, "workflows/ci.yml"), scratch, { projectRoot, caseInsensitive })).toBe(".github/workflows/ci.yml");
   });
 
+  it.each([".github", ".claude", "scripts", "evals", "supabase/migrations", "src/shared/testing", "src/features/blob/.claude"])(
+    "protects the folder %s itself, not only what's inside it",
+    (folder) => {
+      expect(protectedRepoPath(join(projectRoot, folder), projectRoot, { projectRoot, caseInsensitive })).toBe(folder);
+    },
+  );
+
+  it("follows a directory link to a protected folder", () => {
+    const link = join(scratch, "github-folder-link");
+    symlinkSync(join(projectRoot, ".github"), link, "junction");
+    expect(protectedRepoPath(link, scratch, { projectRoot, caseInsensitive })).toBe(".github");
+  });
+
   it("follows a file link to a secret file, where the platform lets unprivileged users create one", () => {
     const secret = join(scratch, ".env.setup");
     writeFileSync(secret, "NOT_A_REAL_SECRET=1\n");
@@ -218,6 +231,13 @@ describe("review findings stay closed", () => {
   ])("%s", (command, reason) => {
     expect(commandProblem(command, guard)).toContain(reason);
   });
+
+  it.each(["rm -rf .github", "rm -rf .claude", "rm -r scripts", "mv src .github", "cp -r src .github", "rsync -a src/ .github"])(
+    "blocks %s, which changes a protected folder as a whole",
+    (command) => {
+      expect(commandProblem(command, guard)).toContain("is a protected path");
+    },
+  );
 
   it.each([
     "rm -rf node_modules/.cache dist",
