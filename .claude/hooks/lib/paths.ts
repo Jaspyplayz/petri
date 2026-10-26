@@ -90,8 +90,9 @@ function protectedGlobs(root: string, fallbackRoot: string): readonly string[] {
 function protectedWithin(absolute: string, guard: PathGuard): string | undefined {
   const flags = guard.caseInsensitive ? "i" : "";
   const enclosing = repoRoots(dirname(absolute));
+  // Only Claude Code's worktree folder is exempt, so a worktree placed in a protected folder can't lift its rules.
   for (const root of [guard.projectRoot, ...enclosing]) {
-    if (!contains(root, absolute) || enclosing.some((nested) => contains(root, nested) && isLinkedWorktree(nested, root))) continue;
+    if (!contains(root, absolute) || enclosing.some((nested) => contains(join(root, ".claude", "worktrees"), nested) && isLinkedWorktree(nested, root))) continue;
     const repoPath = toRepoPath(relative(root, absolute));
     if (protectedGlobs(root, guard.projectRoot).some((glob) => new RegExp(globToRegExp(glob).source, flags).test(repoPath))) return repoPath;
   }
