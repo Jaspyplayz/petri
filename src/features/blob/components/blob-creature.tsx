@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useSyncExternalStore, type AnimationEvent, type ReactNode, type SubmitEvent } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore, type AnimationEvent, type ReactNode, type SubmitEvent } from "react";
 import { track } from "@/shared/lib/track";
 import { useLocalStorage } from "@/shared/lib/use-local-storage";
 import { BlobGlyph } from "@/shared/ui/blob-glyph";
@@ -23,7 +23,7 @@ import {
   type BlobState,
 } from "../lib/blob-state";
 import { sizeMood, snackMood } from "../lib/size-mood";
-import { localHour, timeMood, timeMoodLabel } from "../lib/time-mood";
+import { HAPPY_MS, localHour, shownMood, timeMood, timeMoodLabel } from "../lib/time-mood";
 import styles from "./blob.module.css";
 
 type Mood = "calm" | "poked" | "fed";
@@ -66,6 +66,9 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
   const [nameError, setNameError] = useState<string | null>(null);
   const hour = useLocalHour();
   const dayMood = hour === null ? "awake" : timeMood(hour);
+  const [justFed, setJustFed] = useState(false);
+  const happyTimer = useRef<number | undefined>(undefined);
+  const shown = shownMood(dayMood, justFed);
 
   const save = (next: BlobState) => {
     setStored(serializeBlobState(next));
@@ -84,6 +87,11 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
     setWobbles((count) => count + 1);
     setWobbling(true);
     setMood("fed");
+    setJustFed(true);
+    window.clearTimeout(happyTimer.current);
+    happyTimer.current = window.setTimeout(() => {
+      setJustFed(false);
+    }, HAPPY_MS);
     track("blob", "feed");
   };
 
@@ -126,7 +134,7 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
         onClick={handlePoke}
         data-testid="blob-creature"
         aria-label={`Poke ${state.name}`}
-        className="rounded-full p-1"
+        className="relative rounded-full p-1"
       >
         <BlobGlyph
           fill={body.fill}
@@ -147,6 +155,23 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
           }}
           eyelid={{ "data-testid": "blob-eyelid", className: dayMood === "sleepy" ? styles.eyelidShut : styles.eyelid }}
         />
+        {shown === "happy" ? (
+          <svg
+            viewBox="0 0 200 200"
+            width={300}
+            height={300}
+            aria-hidden="true"
+            overflow="visible"
+            className="pointer-events-none absolute inset-1"
+          >
+            <g className={styles.creature} style={{ transform: `scale(${String(state.size * 0.8)})` }}>
+              <g key={wobbles} className={wobbling ? styles.wobble : styles.breathe}>
+                <path data-testid="blob-smile" d="M76 118Q100 152 124 118Z" className="fill-blob-face" />
+                <path d="M88 134Q100 142 112 134Q100 128 88 134Z" fill="#f28aa8" />
+              </g>
+            </g>
+          </svg>
+        ) : null}
       </button>
 
       <div className="flex justify-center px-2">{evolved}</div>
@@ -161,7 +186,7 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
         </div>
         <div className="flex items-baseline gap-1.5">
           <dt>Mood:</dt>
-          <dd data-testid="blob-mood">{timeMoodLabel(dayMood)}</dd>
+          <dd data-testid="blob-mood">{timeMoodLabel(shown)}</dd>
         </div>
         <div className="flex items-baseline gap-1.5">
           <dt>Pokes:</dt>
