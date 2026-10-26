@@ -106,14 +106,19 @@ describe("paths", () => {
     });
     const worktree = join(main, ".claude/worktrees/feature");
     const forged = join(main, ".claude/worktrees/forged");
+    const outside = join(main, ".github/feature");
     const gitdir = join(main, ".git/worktrees/feature");
-    mkdirSync(gitdir, { recursive: true });
-    writeFileSync(join(gitdir, "gitdir"), `${join(worktree, ".git")}\n`);
-    for (const root of [main, worktree, forged]) {
+    const outsideGitdir = join(main, ".git/worktrees/outside");
+    for (const [dir, root] of [[gitdir, worktree], [outsideGitdir, outside]] as const) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "gitdir"), `${join(root, ".git")}\n`);
+    }
+    for (const root of [main, worktree, forged, outside]) {
       mkdirSync(join(root, ".github"), { recursive: true });
       copyFileSync(join(projectRoot, ".github/guardrails.json"), join(root, ".github/guardrails.json"));
     }
     for (const root of [worktree, forged]) writeFileSync(join(root, ".git"), `gitdir: ${gitdir}\n`);
+    writeFileSync(join(outside, ".git"), `gitdir: ${outsideGitdir}\n`);
 
     it.each([
       ["main checkout", main],
@@ -127,6 +132,10 @@ describe("paths", () => {
 
     it("keeps the main checkout's rules on a folder whose .git file git never linked back to", () => {
       expect(protectedRepoPath(join(forged, "src/x.ts"), forged, { ...pathGuard, projectRoot: main })).toContain(".claude/worktrees/forged/src/x.ts");
+    });
+
+    it("keeps the main checkout's rules on a linked worktree outside .claude/worktrees", () => {
+      expect(protectedRepoPath(join(outside, "src/x.ts"), outside, { ...pathGuard, projectRoot: main })).toContain(".github/feature/src/x.ts");
     });
   });
 });
