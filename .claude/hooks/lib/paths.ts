@@ -47,14 +47,30 @@ export function findRepoRoot(start: string): string | undefined {
   return repoRoots(start)[0];
 }
 
+function contains(parent: string, child: string): boolean {
+  const inside = relative(parent, child);
+  return inside !== "" && !inside.startsWith("..") && !isAbsolute(inside);
+}
+
+function gitdirOf(root: string): string | undefined {
+  const marker = join(root, ".git");
+  if (!existsSync(marker) || lstatSync(marker).isDirectory()) return undefined;
+  const gitdir = /^gitdir:\s*(.+)$/m.exec(readFileSync(marker, "utf8"))?.[1]?.trim();
+  return gitdir === undefined ? undefined : resolve(root, gitdir);
+}
+
 export function isTrustedRoot(root: string, trustedRoot: string): boolean {
   if (relative(trustedRoot, root) === "") return true;
-  const marker = join(root, ".git");
-  if (!existsSync(marker) || lstatSync(marker).isDirectory()) return false;
-  const gitdir = /^gitdir:\s*(.+)$/m.exec(readFileSync(marker, "utf8"))?.[1]?.trim();
-  if (gitdir === undefined) return false;
-  const inside = relative(join(trustedRoot, ".git", "worktrees"), resolve(root, gitdir));
-  return inside !== "" && !inside.startsWith("..") && !isAbsolute(inside);
+  const gitdir = gitdirOf(root);
+  return gitdir !== undefined && contains(join(trustedRoot, ".git", "worktrees"), gitdir);
+}
+
+// Agents can't write under .git, so git's back-link there is what a planted .git file can't fake.
+function isLinkedWorktree(root: string, main: string): boolean {
+  const gitdir = gitdirOf(root);
+  if (gitdir === undefined || relative(join(main, ".git", "worktrees"), dirname(gitdir)) !== "") return false;
+  const backLink = join(gitdir, "gitdir");
+  return existsSync(backLink) && relative(join(root, ".git"), resolve(gitdir, readFileSync(backLink, "utf8").trim())) === "";
 }
 
 export function realPath(path: string, links = 0): string {
@@ -73,10 +89,10 @@ function protectedGlobs(root: string, fallbackRoot: string): readonly string[] {
 
 function protectedWithin(absolute: string, guard: PathGuard): string | undefined {
   const flags = guard.caseInsensitive ? "i" : "";
-  for (const root of [guard.projectRoot, ...repoRoots(dirname(absolute))]) {
-    const inside = relative(root, absolute);
-    if (inside === "" || inside.startsWith("..") || isAbsolute(inside)) continue;
-    const repoPath = toRepoPath(inside);
+  const enclosing = repoRoots(dirname(absolute));
+  for (const root of [guard.projectRoot, ...enclosing]) {
+    if (!contains(root, absolute) || enclosing.some((nested) => contains(root, nested) && isLinkedWorktree(nested, root))) continue;
+    const repoPath = toRepoPath(relative(root, absolute));
     if (protectedGlobs(root, guard.projectRoot).some((glob) => new RegExp(globToRegExp(glob).source, flags).test(repoPath))) return repoPath;
   }
   return undefined;
