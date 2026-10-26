@@ -46,8 +46,8 @@ export function builderJsonSchema(): string {
 export type BuiltIssue = TriageIssue & { readonly number: number; readonly url: string };
 
 // artifacts/evolution/issue.json, what the builder, the verify planner and the judge read. It leaves out the later
-// steps, so they build and judge this step's acceptance criteria and nothing more.
-export type IssueJson = Omit<BuiltIssue, "laterSteps">;
+// steps and the note for visitors, so they build and judge this step's acceptance criteria and nothing more.
+export type IssueJson = Omit<BuiltIssue, "laterSteps" | "changedMeaning">;
 
 export function renderIssueJson(issue: BuiltIssue): string {
   const fields: IssueJson = {

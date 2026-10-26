@@ -13,6 +13,7 @@ const issue: BuiltIssue = {
   riskLevel: "low",
   feedbackIds: ["00000000-0000-4000-8000-000000000001"],
   laterSteps: [],
+  changedMeaning: null,
 };
 
 const report: BuilderReport = {
@@ -34,8 +35,8 @@ describe("slugify and branchName", () => {
 });
 
 describe("renderIssueJson", () => {
-  it("gives the builder and the verifier this step's fields and none of the later steps", () => {
-    expect(JSON.parse(renderIssueJson({ ...issue, laterSteps: ["Make Blobby look surprised"] }))).toEqual({
+  it("gives the builder and the verifier this step's fields, not the later steps or the note for visitors", () => {
+    expect(JSON.parse(renderIssueJson({ ...issue, laterSteps: ["Make Blobby look surprised"], changedMeaning: "Blobby can't see votes yet." }))).toEqual({
       title: issue.title,
       userStory: issue.userStory,
       acceptanceCriteria: issue.acceptanceCriteria,

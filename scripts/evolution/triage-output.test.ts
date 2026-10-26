@@ -18,6 +18,7 @@ function issue(overrides: Partial<TriageIssue> = {}): TriageIssue {
     riskLevel: "low",
     feedbackIds: [ids.hat, ids.hat2],
     laterSteps: [],
+    changedMeaning: null,
     ...overrides,
   };
 }
@@ -44,6 +45,7 @@ describe("triageOutputSchema", () => {
     const schema = JSON.parse(triageJsonSchema()) as { required: string[]; properties: { issues: { items: { required: string[] } } } };
     expect(schema).toMatchObject({ type: "object", required: ["issues", "rejected"] });
     expect(schema.properties.issues.items.required).toContain("laterSteps");
+    expect(schema.properties.issues.items.required).toContain("changedMeaning");
     expect(triageJsonSchema()).not.toContain("'");
   });
 });
@@ -91,9 +93,14 @@ describe("planIssues", () => {
   });
 
   it("defangs mentions and comment endings in the agent's text", () => {
-    const plan = planIssues({ issues: [issue({ title: "Ping @octocat --> now", laterSteps: ["Then ping @octocat -->"] })], rejected: [] }, options);
+    const plan = planIssues(
+      { issues: [issue({ title: "Ping @octocat --> now", laterSteps: ["Then ping @octocat -->"], changedMeaning: "You asked @octocat -->" })], rejected: [] },
+      options,
+    );
     expect(plan.issues[0]?.title).toBe("Ping @​octocat --​> now");
     expect(plan.issues[0]?.laterSteps).toEqual(["Then ping @​octocat --​>"]);
+    expect(plan.issues[0]?.changedMeaning).toBe("You asked @​octocat --​>");
+    expect(planIssues({ issues: [issue()], rejected: [] }, options).issues[0]?.changedMeaning).toBeNull();
     expect(defang("mail a@b")).toBe("mail a@​b");
   });
 
@@ -140,7 +147,17 @@ describe("renderIssueBody and issueFromBody", () => {
     expect(renderIssueBody(issue())).not.toContain("## Later steps");
   });
 
-  it("still reads an issue filed before later steps existed, as one with none", () => {
+  it("says how the step differs from the feedback, after the user story, only when it does", () => {
+    const note = "You asked Blobby to cheer when your idea gets votes. Blobby can't see votes yet, so it cheers when you poke it.";
+    const body = renderIssueBody(issue({ changedMeaning: note }));
+    expect(body).toContain(`## Changed from the feedback\n\n${note}\n`);
+    expect(body.indexOf("## User story")).toBeLessThan(body.indexOf("## Changed from the feedback"));
+    expect(body.indexOf("## Changed from the feedback")).toBeLessThan(body.indexOf("## Acceptance criteria"));
+    expect(renderIssueBody(issue())).not.toContain("## Changed from the feedback");
+    expect(issueFromBody(body)).toEqual(issue({ changedMeaning: note }));
+  });
+
+  it("still reads an issue filed before later steps or notes existed, as one with neither", () => {
     const { title, userStory, acceptanceCriteria, featureId, riskLevel, feedbackIds } = issue();
     const old = { title, userStory, acceptanceCriteria, featureId, riskLevel, feedbackIds };
     expect(issueFromBody(`<!-- evolution-issue:v1 ${JSON.stringify(old)} -->`)).toEqual(issue());
