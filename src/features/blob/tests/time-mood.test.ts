@@ -20,6 +20,7 @@ describe("timeMoodLabel", () => {
     expect(timeMoodLabel("sleepy")).toBe("Sleepy");
     expect(timeMoodLabel("awake")).toBe("Awake");
     expect(timeMoodLabel("happy")).toBe("Happy");
+    expect(timeMoodLabel("surprised")).toBe("Surprised");
   });
 });
 
@@ -30,6 +31,12 @@ describe("shownMood", () => {
 
   it("stays sleepy at night, even after a snack", () => {
     expect(shownMood("sleepy", true)).toBe("sleepy");
+  });
+
+  it("is surprised after evolving, day or night, until a daytime snack", () => {
+    expect(shownMood("awake", false, true)).toBe("surprised");
+    expect(shownMood("sleepy", true, true)).toBe("surprised");
+    expect(shownMood("awake", true, true)).toBe("happy");
   });
 
   it("follows the clock when Blobby wasn't just fed", () => {

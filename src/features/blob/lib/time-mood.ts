@@ -1,5 +1,5 @@
 export type TimeMood = "sleepy" | "awake";
-export type ShownMood = TimeMood | "happy";
+export type ShownMood = TimeMood | "happy" | "surprised";
 
 export const HAPPY_MS = 4000;
 
@@ -10,12 +10,14 @@ export function timeMood(hour: number): TimeMood {
   return hour >= NIGHT_STARTS || hour < NIGHT_ENDS ? "sleepy" : "awake";
 }
 
-export function shownMood(time: TimeMood, justFed: boolean): ShownMood {
-  return time === "awake" && justFed ? "happy" : time;
+export function shownMood(time: TimeMood, justFed: boolean, surprised = false): ShownMood {
+  if (time === "awake" && justFed) return "happy";
+  return surprised ? "surprised" : time;
 }
 
 export function timeMoodLabel(mood: ShownMood): string {
   if (mood === "happy") return "Happy";
+  if (mood === "surprised") return "Surprised";
   return mood === "sleepy" ? "Sleepy" : "Awake";
 }
 

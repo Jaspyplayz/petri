@@ -27,5 +27,6 @@ export default function HomePage() {
 }
 
 async function EvolvedCount() {
-  return <EvolvedLink label={evolvedLine(await evolvedTimes())} />;
+  const count = await evolvedTimes();
+  return <EvolvedLink label={evolvedLine(count)} count={count} />;
 }

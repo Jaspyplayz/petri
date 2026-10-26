@@ -23,6 +23,7 @@ import {
   type BlobState,
 } from "../lib/blob-state";
 import { sizeMood, snackMood } from "../lib/size-mood";
+import { currentSurprise, noticeEvolved, subscribeToSurprise } from "../lib/surprise";
 import { HAPPY_MS, localHour, shownMood, timeMood, timeMoodLabel } from "../lib/time-mood";
 import styles from "./blob.module.css";
 
@@ -48,9 +49,12 @@ function useLocalHour(): number | null {
 const evolvedLinkClass =
   "inline-block bg-[linear-gradient(90deg,#e56b9a_0%,#ef9a45_18%,#e4c04a_38%,#6fbe73_58%,#6aa4e4_78%,#b07ad6_100%)] bg-clip-text text-center text-xl font-extrabold leading-tight tracking-tight text-transparent sm:text-2xl";
 
-export function EvolvedLink({ label }: { readonly label: string }) {
+export function EvolvedLink({ label, count }: { readonly label: string; readonly count?: number }) {
+  const notice = (link: HTMLAnchorElement | null) => {
+    if (link && count !== undefined) noticeEvolved(count);
+  };
   return (
-    <Link href="/timeline" data-testid="blob-evolved" className={evolvedLinkClass}>
+    <Link href="/timeline" ref={notice} data-testid="blob-evolved" className={evolvedLinkClass}>
       {label}
     </Link>
   );
@@ -68,7 +72,8 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
   const dayMood = hour === null ? "awake" : timeMood(hour);
   const [justFed, setJustFed] = useState(false);
   const happyTimer = useRef<number | undefined>(undefined);
-  const shown = shownMood(dayMood, justFed);
+  const surprise = useSyncExternalStore(subscribeToSurprise, currentSurprise, () => null);
+  const shown = shownMood(dayMood, justFed, surprise?.surprised === true);
 
   const save = (next: BlobState) => {
     setStored(serializeBlobState(next));
@@ -153,7 +158,7 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
             "data-mood": mood,
             onAnimationEnd: handleAnimationEnd,
           }}
-          eyelid={{ "data-testid": "blob-eyelid", className: dayMood === "sleepy" ? styles.eyelidShut : styles.eyelid }}
+          eyelid={{ "data-testid": "blob-eyelid", className: shown === "sleepy" ? styles.eyelidShut : styles.eyelid }}
         />
         {shown === "happy" ? (
           <svg
@@ -168,6 +173,29 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
               <g key={wobbles} className={wobbling ? styles.wobble : styles.breathe}>
                 <path data-testid="blob-smile" d="M76 118Q100 152 124 118Z" className="fill-blob-face" />
                 <path d="M88 134Q100 142 112 134Q100 128 88 134Z" fill="#f28aa8" />
+              </g>
+            </g>
+          </svg>
+        ) : null}
+        {shown === "surprised" ? (
+          <svg
+            viewBox="0 0 200 200"
+            width={300}
+            height={300}
+            aria-hidden="true"
+            overflow="visible"
+            className="pointer-events-none absolute inset-1"
+          >
+            <g className={styles.creature} style={{ transform: `scale(${String(state.size * 0.8)})` }}>
+              <g key={wobbles} data-testid="blob-surprised" className={wobbling ? styles.wobble : styles.breathe}>
+                <path
+                  d="M64 78q14-12 28-2M108 76q14-10 28 2"
+                  className="fill-none stroke-blob-face"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                />
+                <ellipse cx="100" cy="132" rx="11" ry="14" className="fill-blob-face" />
+                <ellipse cx="100" cy="138" rx="6" ry="5" fill="#f28aa8" />
               </g>
             </g>
           </svg>
