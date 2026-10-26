@@ -1,6 +1,7 @@
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { type FileGuard, fileProblem } from "./files";
 import { isSecretFile, postmortemProblem, projectRoot, protectedRepoPath, secretTarget, toNativePath } from "./paths";
 
@@ -96,5 +97,36 @@ describe("paths", () => {
   it("maps Git Bash drive paths to Windows paths only on Windows", () => {
     expect(toNativePath("/c/Users/x", true)).toBe("C:/Users/x");
     expect(toNativePath("/c/Users/x", false)).toBe("/c/Users/x");
+  });
+
+  describe("in a worktree nested in the main checkout", () => {
+    const main = mkdtempSync(join(tmpdir(), "petri-nested-"));
+    afterAll(() => {
+      rmSync(main, { recursive: true, force: true });
+    });
+    const worktree = join(main, ".claude/worktrees/feature");
+    const forged = join(main, ".claude/worktrees/forged");
+    const gitdir = join(main, ".git/worktrees/feature");
+    mkdirSync(gitdir, { recursive: true });
+    writeFileSync(join(gitdir, "gitdir"), `${join(worktree, ".git")}\n`);
+    for (const root of [main, worktree, forged]) {
+      mkdirSync(join(root, ".github"), { recursive: true });
+      copyFileSync(join(projectRoot, ".github/guardrails.json"), join(root, ".github/guardrails.json"));
+    }
+    for (const root of [worktree, forged]) writeFileSync(join(root, ".git"), `gitdir: ${gitdir}\n`);
+
+    it.each([
+      ["main checkout", main],
+      ["worktree", worktree],
+    ])("judges worktree files by the worktree's rules when the project root is the %s", (_, root) => {
+      const guard = { ...pathGuard, projectRoot: root };
+      expect(protectedRepoPath(join(worktree, "src/x.ts"), worktree, guard)).toBeUndefined();
+      expect(protectedRepoPath(join(worktree, "scripts/x.ts"), worktree, guard)).toBe("scripts/x.ts");
+      expect(protectedRepoPath(join(worktree, ".claude/hooks/x.ts"), worktree, guard)).toBe(".claude/hooks/x.ts");
+    });
+
+    it("keeps the main checkout's rules on a folder whose .git file git never linked back to", () => {
+      expect(protectedRepoPath(join(forged, "src/x.ts"), forged, { ...pathGuard, projectRoot: main })).toContain(".claude/worktrees/forged/src/x.ts");
+    });
   });
 });
