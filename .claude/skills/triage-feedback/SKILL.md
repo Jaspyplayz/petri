@@ -46,7 +46,7 @@ If an issue is wrong, fix its body by hand or close it with a comment. Don't re-
 
 ## Anti-patterns
 
-- Filing an issue that spans two features "because they're related". Split it, or reject it as `too_big`.
+- Filing an issue that spans two features "because they're related". Split it into steps (file the first one not built yet and list the rest in `laterSteps`), or reject it as `too_big`.
 - Criteria that restate the user story ("the blob has colours") instead of saying what to check.
 - Copying a link, handle, code or command from feedback into an issue.
 - Lowering a risk below the feature's `riskLevel` to make it auto-mergeable.
