@@ -33,6 +33,7 @@ async function main(): Promise<void> {
   const plan = planIssues(parsed.data, {
     candidateIds: new Set(input.candidates.map((candidate) => candidate.id)),
     featureRisk: featureRisks(root),
+    stepsBuilt: new Map(input.candidates.map((candidate) => [candidate.id, candidate.builtSteps.length])),
     maxIssues: config.maxIssuesPerTriage,
   });
   for (const problem of plan.problems) process.stdout.write(`! ${problem}\n`);

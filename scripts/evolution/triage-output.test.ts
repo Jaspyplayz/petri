@@ -17,6 +17,7 @@ function issue(overrides: Partial<TriageIssue> = {}): TriageIssue {
     featureId: "blob",
     riskLevel: "low",
     feedbackIds: [ids.hat, ids.hat2],
+    laterSteps: [],
     ...overrides,
   };
 }
@@ -27,6 +28,7 @@ const options = {
     ["blob", "low"],
     ["feedback", "medium"],
   ] as const),
+  stepsBuilt: new Map<string, number>(),
   maxIssues: 3,
 };
 
@@ -39,7 +41,10 @@ describe("triageOutputSchema", () => {
   });
 
   it("is also available as a JSON Schema for the agent", () => {
-    expect(JSON.parse(triageJsonSchema())).toMatchObject({ type: "object", required: ["issues", "rejected"] });
+    const schema = JSON.parse(triageJsonSchema()) as { required: string[]; properties: { issues: { items: { required: string[] } } } };
+    expect(schema).toMatchObject({ type: "object", required: ["issues", "rejected"] });
+    expect(schema.properties.issues.items.required).toContain("laterSteps");
+    expect(triageJsonSchema()).not.toContain("'");
   });
 });
 
@@ -86,9 +91,20 @@ describe("planIssues", () => {
   });
 
   it("defangs mentions and comment endings in the agent's text", () => {
-    const plan = planIssues({ issues: [issue({ title: "Ping @octocat --> now" })], rejected: [] }, options);
+    const plan = planIssues({ issues: [issue({ title: "Ping @octocat --> now", laterSteps: ["Then ping @octocat -->"] })], rejected: [] }, options);
     expect(plan.issues[0]?.title).toBe("Ping @​octocat --​> now");
+    expect(plan.issues[0]?.laterSteps).toEqual(["Then ping @​octocat --​>"]);
     expect(defang("mail a@b")).toBe("mail a@​b");
+  });
+
+  it("clears the later steps of an issue whose feedback already has 4 built steps, so a wish gets at most 5", () => {
+    const later = ["Make Blobby look surprised"];
+    const plan = planIssues(
+      { issues: [issue({ laterSteps: later }), issue({ title: "Make Blobby look happy", feedbackIds: [ids.vague], laterSteps: later })], rejected: [] },
+      { ...options, stepsBuilt: new Map([[ids.hat2, 4], [ids.vague, 3]]) },
+    );
+    expect(plan.issues.map((kept) => kept.laterSteps)).toEqual([[], later]);
+    expect(plan.problems).toEqual([`cleared the later steps of "Give the blob a tiny hat": feedback ${ids.hat2} already has 4 built steps, and a feedback item gets at most 5`]);
   });
 });
 
@@ -98,6 +114,20 @@ describe("renderIssueBody and issueFromBody", () => {
     expect(body).toContain("## Acceptance criteria (verification steps)");
     expect(body).toContain("   - blob-hat is visible on blob-creature");
     expect(issueFromBody(body)).toEqual(issue());
+  });
+
+  it("lists the later steps after the issue's details, only when there are some", () => {
+    const body = renderIssueBody(issue({ laterSteps: ["Make Blobby look surprised", "Make Blobby look happy"] }));
+    expect(body).toContain("## Later steps\n\nTriage files these as later issues, one at a time, after this one ships.\n\n- Make Blobby look surprised\n- Make Blobby look happy\n");
+    expect(body.indexOf("- **Linked feedback:**")).toBeLessThan(body.indexOf("## Later steps"));
+    expect(body.indexOf("## Later steps")).toBeLessThan(body.indexOf("Created by evolution-triage"));
+    expect(renderIssueBody(issue())).not.toContain("## Later steps");
+  });
+
+  it("still reads an issue filed before later steps existed, as one with none", () => {
+    const { title, userStory, acceptanceCriteria, featureId, riskLevel, feedbackIds } = issue();
+    const old = { title, userStory, acceptanceCriteria, featureId, riskLevel, feedbackIds };
+    expect(issueFromBody(`<!-- evolution-issue:v1 ${JSON.stringify(old)} -->`)).toEqual(issue());
   });
 
   it("returns undefined for an issue a human wrote or a broken data comment", () => {

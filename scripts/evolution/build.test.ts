@@ -12,6 +12,7 @@ const issue: BuiltIssue = {
   featureId: "blob",
   riskLevel: "low",
   feedbackIds: ["00000000-0000-4000-8000-000000000001"],
+  laterSteps: [],
 };
 
 const report: BuilderReport = {

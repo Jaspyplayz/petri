@@ -16,6 +16,7 @@ export const triageIssueSchema = z
     featureId: z.string().regex(/^[a-z][a-z0-9-]{0,39}$/),
     riskLevel: z.enum(["low", "medium", "high"]),
     feedbackIds: z.array(z.uuid()).min(1).max(10),
+    laterSteps: z.array(text(200)).max(4).default([]),
   })
   .strict();
 
@@ -59,14 +60,18 @@ function defangIssue(issue: TriageIssue, riskLevel: RiskLevel, feedbackIds: stri
     acceptanceCriteria: issue.acceptanceCriteria.map((item) => ({ criterion: defang(item.criterion), verify: item.verify.map(defang) })),
     riskLevel,
     feedbackIds,
+    laterSteps: issue.laterSteps.map(defang),
   };
 }
 
+const MAX_STEPS_PER_FEEDBACK = 5;
+
 // The script, not the agent, decides what becomes an issue: known features only, feedback ids from the input only,
-// each id used once, risk never below the feature's manifest, and at most maxIssues.
+// each id used once, risk never below the feature's manifest, at most maxIssues, and at most MAX_STEPS_PER_FEEDBACK
+// steps for a feedback item (stepsBuilt counts the ones already on the Timeline).
 export function planIssues(
   output: TriageOutput,
-  options: { candidateIds: ReadonlySet<string>; featureRisk: ReadonlyMap<string, RiskLevel>; maxIssues: number },
+  options: { candidateIds: ReadonlySet<string>; featureRisk: ReadonlyMap<string, RiskLevel>; stepsBuilt: ReadonlyMap<string, number>; maxIssues: number },
 ): IssuePlan {
   const used = new Set<string>();
   const problems: string[] = [];
@@ -89,7 +94,13 @@ export function planIssues(
       continue;
     }
     for (const id of ids) used.add(id);
-    issues.push(defangIssue(issue, higherRisk(issue.riskLevel, manifestRisk), ids));
+    const lastStep = ids.find((id) => (options.stepsBuilt.get(id) ?? 0) >= MAX_STEPS_PER_FEEDBACK - 1);
+    if (lastStep !== undefined && issue.laterSteps.length > 0) {
+      problems.push(
+        `cleared the later steps of "${issue.title}": feedback ${lastStep} already has ${String(options.stepsBuilt.get(lastStep))} built steps, and a feedback item gets at most ${String(MAX_STEPS_PER_FEEDBACK)}`,
+      );
+    }
+    issues.push(defangIssue(lastStep === undefined ? issue : { ...issue, laterSteps: [] }, higherRisk(issue.riskLevel, manifestRisk), ids));
   }
   const rejected: Rejection[] = [];
   for (const rejection of output.rejected) {
@@ -122,6 +133,9 @@ export function renderIssueBody(issue: TriageIssue): string {
     `- **Risk level:** ${issue.riskLevel}`,
     `- **Linked feedback:** ${issue.feedbackIds.map((id) => `\`${id}\``).join(", ")}`,
     "",
+    ...(issue.laterSteps.length === 0
+      ? []
+      : ["## Later steps", "", "Triage files these as later issues, one at a time, after this one ships.", "", ...issue.laterSteps.map((step) => `- ${step}`), ""]),
     "Created by evolution-triage. The build agent reads only the fields in the data comment below.",
     "",
     `${ISSUE_DATA_PREFIX}${JSON.stringify(issue)} -->`,
