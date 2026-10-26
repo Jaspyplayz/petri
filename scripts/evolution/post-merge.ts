@@ -42,9 +42,9 @@ export function whatChanged(body: string): string[] {
 // changelog.summary is 1–2000 characters.
 const SUMMARY_MAX = 2000;
 
-// The plain-English paragraph on the Timeline: the issue's user story, then what changed.
-export function changelogSummary(userStory: string, changes: readonly string[]): string {
-  const sentences = [userStory, ...changes].map((text) => text.replace(/\s+/g, " ").trim()).filter((text) => text !== "");
+// The plain-English paragraph on the Timeline, from the parts that aren't null or blank.
+export function changelogSummary(parts: readonly (string | null)[]): string {
+  const sentences = parts.map((part) => (part ?? "").replace(/\s+/g, " ").trim()).filter((text) => text !== "");
   const text = sentences.map((sentence) => (/[.!?]$/.test(sentence) ? sentence : `${sentence}.`)).join(" ");
   return text.length <= SUMMARY_MAX ? text : `${text.slice(0, SUMMARY_MAX - 1)}…`;
 }
@@ -102,7 +102,8 @@ export function revertRow(input: { readonly reverted: RevertedChange; readonly p
 }
 
 // The Timeline entry for a merged evolution PR. Title and feedback come from the issue, which triage wrote and only
-// the loop edits; the PR body only adds the change list and the screenshots.
+// the loop edits; the PR body only adds the change list and the screenshots. The summary opens with the issue's note on
+// how it differs from the feedback, because the home page's diary shows only its first 3 lines.
 export function changelogRow(input: {
   readonly issue: BuiltIssue;
   readonly pr: MergedPr;
@@ -114,7 +115,7 @@ export function changelogRow(input: {
   return {
     kind: "change",
     title: issue.title.slice(0, 200),
-    summary: changelogSummary(issue.userStory, whatChanged(pr.body)),
+    summary: changelogSummary([issue.changedMeaning, issue.userStory, ...whatChanged(pr.body)]),
     feedback_ids: [...issue.feedbackIds],
     pr_number: pr.number,
     pr_url: pr.url,
