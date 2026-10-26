@@ -94,7 +94,9 @@ function protectedWithin(absolute: string, guard: PathGuard): string | undefined
   for (const root of [guard.projectRoot, ...enclosing]) {
     if (!contains(root, absolute) || enclosing.some((nested) => contains(join(root, ".claude", "worktrees"), nested) && isLinkedWorktree(nested, root))) continue;
     const repoPath = toRepoPath(relative(root, absolute));
-    if (protectedGlobs(root, guard.projectRoot).some((glob) => new RegExp(globToRegExp(glob).source, flags).test(repoPath))) return repoPath;
+    // A rule for a folder's contents covers the folder too, so `rm -rf .github` is blocked like a write to `.github/x`.
+    const covers = (pattern: RegExp) => pattern.test(repoPath) || pattern.test(`${repoPath}/`);
+    if (protectedGlobs(root, guard.projectRoot).some((glob) => covers(new RegExp(globToRegExp(glob).source, flags)))) return repoPath;
   }
   return undefined;
 }
