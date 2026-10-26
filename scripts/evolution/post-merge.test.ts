@@ -59,13 +59,13 @@ describe("whatChanged and changelogSummary", () => {
     expect(whatChanged("no sections")).toEqual([]);
   });
 
-  it("joins the user story and the changes into sentences", () => {
-    expect(changelogSummary("As a visitor, I want a hat", whatChanged(body))).toBe("As a visitor, I want a hat. The blob wears a hat. Hats are blue.");
-    expect(changelogSummary("  Two\n  lines!  ", [])).toBe("Two lines!");
+  it("joins the parts that are there into sentences", () => {
+    expect(changelogSummary([null, "As a visitor, I want a hat", ...whatChanged(body)])).toBe("As a visitor, I want a hat. The blob wears a hat. Hats are blue.");
+    expect(changelogSummary(["  Two\n  lines!  "])).toBe("Two lines!");
   });
 
   it("stays within the 2000 characters the table allows", () => {
-    const summary = changelogSummary("x".repeat(3000), []);
+    const summary = changelogSummary(["x".repeat(3000)]);
     expect(summary).toHaveLength(2000);
     expect(summary.endsWith("…")).toBe(true);
   });
@@ -105,6 +105,7 @@ describe("changelogRow", () => {
     riskLevel: "low",
     feedbackIds: ["00000000-0000-4000-8000-000000000001"],
     laterSteps: [],
+    changedMeaning: null,
   };
   const data: PrData = {
     issueNumber: 4,
@@ -130,6 +131,12 @@ describe("changelogRow", () => {
       after_screenshot_urls: [shot("after")],
       merged_at: "2026-10-23T18:00:00Z",
     });
+  });
+
+  it("opens the summary with the note on how the step differs from the feedback, where the home page's 3 lines show it", () => {
+    const note = "You asked Blobby to cheer when your idea gets votes. Blobby can't see votes yet, so it cheers when you poke it.";
+    const row = changelogRow({ issue: { ...issue, changedMeaning: note }, pr, data, trustLevel: 1, supabaseUrl: SUPABASE });
+    expect(row.summary).toBe(`${note} As a visitor, I want the blob to wear a hat. Added a hat.`);
   });
 });
 

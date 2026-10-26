@@ -17,6 +17,7 @@ export const triageIssueSchema = z
     riskLevel: z.enum(["low", "medium", "high"]),
     feedbackIds: z.array(z.uuid()).min(1).max(10),
     laterSteps: z.array(text(200)).max(4).default([]),
+    changedMeaning: text(300).nullable().default(null),
   })
   .strict();
 
@@ -67,6 +68,7 @@ function defangIssue(issue: TriageIssue, riskLevel: RiskLevel, feedbackIds: stri
     riskLevel,
     feedbackIds,
     laterSteps: issue.laterSteps.map(defang),
+    changedMeaning: issue.changedMeaning === null ? null : defang(issue.changedMeaning),
   };
 }
 
@@ -136,6 +138,7 @@ export function renderIssueBody(issue: TriageIssue): string {
     "",
     issue.userStory,
     "",
+    ...(issue.changedMeaning === null ? [] : ["## Changed from the feedback", "", issue.changedMeaning, ""]),
     "## Acceptance criteria (verification steps)",
     "",
     ...issue.acceptanceCriteria.flatMap((item, index) => [
