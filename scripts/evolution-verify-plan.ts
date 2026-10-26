@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import type { BuiltIssue } from "./evolution/build";
+import type { IssueJson } from "./evolution/build";
 import { planFiles, verifyPlanSchema } from "./evolution/verdict";
 
 // pnpm evolution:verify-plan <plan.json> <issue.json> <out dir> checks the planner's JSON and writes one verify script
@@ -13,7 +13,7 @@ function main(): void {
   }
   const parsed = verifyPlanSchema.safeParse(JSON.parse(readFileSync(planFile, "utf8")));
   if (!parsed.success) throw new Error(`the verify plan doesn't match the schema: ${z.prettifyError(parsed.error)}`);
-  const issue = JSON.parse(readFileSync(issueFile, "utf8")) as BuiltIssue;
+  const issue = JSON.parse(readFileSync(issueFile, "utf8")) as IssueJson;
   const files = planFiles(parsed.data, issue.acceptanceCriteria.length);
   mkdirSync(outDir, { recursive: true });
   for (const { file, json } of files) writeFileSync(join(outDir, file), json);

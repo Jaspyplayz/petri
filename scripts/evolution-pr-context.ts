@@ -3,6 +3,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadGuardrailsConfig } from "./check-pr/config";
 import { parseNumstatZ } from "./check-pr/git";
+import { renderIssueJson } from "./evolution/build";
 import { gh, issueNumberArg } from "./evolution/github-issue";
 import { evolutionPrsSharingHead, isEvolutionPr, linkedIssue, PR_FIELDS, type GhPr } from "./evolution/github-pr";
 import { parseRawZ, patchProblems } from "./evolution/patch";
@@ -62,7 +63,7 @@ function main(): void {
 
   const out = join(root, "artifacts", "evolution");
   mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, "issue.json"), `${JSON.stringify(issue, null, 2)}\n`);
+  writeFileSync(join(out, "issue.json"), renderIssueJson(issue));
   writeFileSync(join(out, "pr.diff"), git(dir, ["diff", "--no-renames", base, pr.headRefOid]));
   output({
     evolution: "true",

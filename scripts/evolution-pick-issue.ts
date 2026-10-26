@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { branchName } from "./evolution/build";
+import { branchName, renderIssueJson } from "./evolution/build";
 import { buildableIssue, gh, ISSUE_FIELDS, issueNumberArg, type GhIssue } from "./evolution/github-issue";
 
 // pnpm evolution:pick-issue [number] picks the issue to build (the given one, or the oldest open evolution:ready
@@ -37,7 +37,7 @@ function main(): void {
   }
   const dir = join(root, "artifacts", "evolution");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "issue.json"), `${JSON.stringify(result.issue, null, 2)}\n`);
+  writeFileSync(join(dir, "issue.json"), renderIssueJson(result.issue));
   const branch = branchName(found.number, result.issue.title);
   process.stdout.write(`pick-issue: building #${String(found.number)} on ${branch}\n`);
   output({ found: "true", number: String(found.number), branch });
