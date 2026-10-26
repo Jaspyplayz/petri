@@ -13,7 +13,10 @@ export type TriageCandidate = {
   readonly ageDays: number;
   readonly score: number;
   readonly text: string;
+  readonly builtSteps: readonly string[];
 };
+
+export type ChangeRow = { readonly title: string; readonly feedback_ids: readonly string[] };
 
 export type TriageInput = {
   readonly generatedAt: string;
@@ -42,7 +45,7 @@ export function neutralize(text: string): string {
     .trim();
 }
 
-export function rankFeedback(rows: readonly FeedbackRow[], options: { now: Date; minVotes: number; limit: number }): TriageCandidate[] {
+export function rankFeedback(rows: readonly FeedbackRow[], options: { now: Date; minVotes: number; limit: number }): Omit<TriageCandidate, "builtSteps">[] {
   return rows
     .filter((row) => row.vote_count >= options.minVotes)
     .map((row) => {
@@ -58,6 +61,15 @@ export function rankFeedback(rows: readonly FeedbackRow[], options: { now: Date;
     })
     .sort((a, b) => b.score - a.score || b.votes - a.votes || a.id.localeCompare(b.id))
     .slice(0, options.limit);
+}
+
+// Each candidate's steps already on the Timeline: the titles of the changes linked to it, in the order of changes
+// (oldest first). Triage files the next step and never builds one of these again.
+export function withBuiltSteps(candidates: readonly Omit<TriageCandidate, "builtSteps">[], changes: readonly ChangeRow[]): TriageCandidate[] {
+  return candidates.map((candidate) => ({
+    ...candidate,
+    builtSteps: changes.filter((change) => change.feedback_ids.includes(candidate.id)).map((change) => neutralize(change.title)),
+  }));
 }
 
 export function featureUsage(events: readonly { readonly feature_id: string }[]): Record<string, number> {

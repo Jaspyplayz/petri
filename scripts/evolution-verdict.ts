@@ -1,7 +1,7 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import type { BuiltIssue } from "./evolution/build";
+import type { IssueJson } from "./evolution/build";
 import { gh, issueNumberArg } from "./evolution/github-issue";
 import { finalVerdict, renderVerdictComment, VERDICT_MARKER, verdictSchema } from "./evolution/verdict";
 
@@ -25,7 +25,7 @@ function main(): void {
   const [verdictFile, issueFile, prArg, sha] = process.argv.slice(2);
   if (verdictFile === undefined || issueFile === undefined || sha === undefined || !/^[0-9a-f]{40}$/.test(sha)) throw new Error(usage);
   const pr = issueNumberArg(prArg, usage);
-  const issue = JSON.parse(readFileSync(issueFile, "utf8")) as BuiltIssue;
+  const issue = JSON.parse(readFileSync(issueFile, "utf8")) as IssueJson;
   const parsed = verdictSchema.safeParse(JSON.parse(readFileSync(verdictFile, "utf8")));
   if (!parsed.success) throw new Error(`the verdict doesn't match the schema: ${z.prettifyError(parsed.error)}`);
   const result = finalVerdict(parsed.data, issue.acceptanceCriteria.length);

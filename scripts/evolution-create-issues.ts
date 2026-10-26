@@ -9,7 +9,7 @@ import type { TriageInput } from "./evolution/triage-input";
 import { planIssues, renderIssueBody, triageOutputSchema } from "./evolution/triage-output";
 
 // pnpm evolution:create-issues [--dry-run] turns the triage agent's JSON (artifacts/evolution/triage-output.json)
-// into GitHub issues and marks the feedback triaged or rejected. GH_TOKEN must be a token whose events trigger
+// into GitHub issues and marks the feedback triaged, rejected or shipped. GH_TOKEN must be a token whose events trigger
 // workflows (the evolution app's), so the evolution:ready label starts the build.
 const root = join(import.meta.dirname, "..");
 const dir = join(root, "artifacts", "evolution");
@@ -33,10 +33,13 @@ async function main(): Promise<void> {
   const plan = planIssues(parsed.data, {
     candidateIds: new Set(input.candidates.map((candidate) => candidate.id)),
     featureRisk: featureRisks(root),
+    stepsBuilt: new Map(input.candidates.map((candidate) => [candidate.id, candidate.builtSteps.length])),
     maxIssues: config.maxIssuesPerTriage,
   });
   for (const problem of plan.problems) process.stdout.write(`! ${problem}\n`);
-  process.stdout.write(`create-issues: ${String(plan.issues.length)} issue(s), ${String(plan.rejected.length)} rejection(s)${dryRun ? " (dry run)" : ""}\n`);
+  process.stdout.write(
+    `create-issues: ${String(plan.issues.length)} issue(s), ${String(plan.rejected.length)} rejection(s), ${String(plan.finished.length)} finished${dryRun ? " (dry run)" : ""}\n`,
+  );
   if (dryRun) {
     for (const issue of plan.issues) process.stdout.write(`\n# ${issue.title}\n${renderIssueBody(issue)}`);
     for (const rejection of plan.rejected) process.stdout.write(`rejected ${rejection.feedbackId}: ${rejection.reason} (${rejection.note})\n`);
@@ -55,6 +58,10 @@ async function main(): Promise<void> {
   if (plan.rejected.length > 0) {
     const update = await supabase.from("feedback").update({ status: "rejected" }).in("id", plan.rejected.map((rejection) => rejection.feedbackId));
     if (update.error) throw new Error(`marking feedback rejected failed: ${update.error.message}`);
+  }
+  if (plan.finished.length > 0) {
+    const update = await supabase.from("feedback").update({ status: "shipped" }).in("id", [...plan.finished]);
+    if (update.error) throw new Error(`marking finished feedback shipped failed: ${update.error.message}`);
   }
 }
 

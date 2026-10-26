@@ -9,6 +9,7 @@ import { isEvolutionPr, linkedIssue, PR_FIELDS, type GhPr } from "./evolution/gi
 import { isGuardianRevert, parseRevertBranch } from "./evolution/guardian";
 import {
   changelogRow,
+  feedbackStatusAfterMerge,
   mergedPrNumber,
   postMergePassed,
   revertedChangeProblem,
@@ -21,9 +22,9 @@ import { loopSupabase } from "./evolution/supabase";
 
 // pnpm evolution:post-merge record|finish runs from main after a push (evolution-post-merge.yml).
 // record: if the pushed commit is a merged evolution PR, wait for Vercel's production deployment, insert its changelog
-//   row (once per PR), mark its feedback shipped and comment on its issue. If it's a merged guardian revert, insert
-//   the "Reverted" row (once per PR). Writes kind (none, change or revert), pr, issue, started-at and production-url
-//   to $GITHUB_OUTPUT.
+//   row (once per PR), mark its feedback shipped (or new, when its issue lists later steps) and comment on its issue.
+//   If it's a merged guardian revert, insert the "Reverted" row (once per PR). Writes kind (none, change or revert),
+//   pr, issue, started-at and production-url to $GITHUB_OUTPUT.
 // finish: after verify:all --read-only ran against production (changes only), record the run in agent_runs and, if
 //   anything failed, comment on the PR and exit 1.
 const root = join(import.meta.dirname, "..");
@@ -90,7 +91,9 @@ async function record(): Promise<void> {
   const supabase = loopSupabase();
   const existing = await supabase.from("changelog").select("id").eq("kind", "change").eq("pr_number", number).maybeSingle();
   if (existing.error) throw new Error(`reading the changelog failed: ${existing.error.message}`);
-  // A rerun keeps the one row and its one comment, but still marks the feedback shipped (that update is idempotent).
+  const status = feedbackStatusAfterMerge(issue);
+  // A rerun keeps the one row and its one comment, and sets the status again only on feedback still linked to this
+  // issue. Once triage files a next step, create-issues links the feedback to that issue, so a rerun leaves it alone.
   let id = existing.data?.id;
   if (id === undefined) {
     const row = changelogRow({ issue, pr: { number, url: pr.url, body: pr.body, mergedAt: pr.mergedAt, sha }, data, trustLevel, supabaseUrl: env("NEXT_PUBLIC_SUPABASE_URL") });
@@ -98,11 +101,13 @@ async function record(): Promise<void> {
     if (inserted.error) throw new Error(`inserting the changelog row failed: ${inserted.error.message}`);
     id = inserted.data.id;
     const timeline = new URL("/timeline", productionUrl).toString();
-    gh(root, ["issue", "comment", String(issue.number), "--body", `Shipped in #${String(number)} (${sha.slice(0, 7)}). It's on the Timeline: ${timeline}`]);
+    const next = status === "new" ? " Its feedback goes back to triage, which files the next step." : "";
+    gh(root, ["issue", "comment", String(issue.number), "--body", `Shipped in #${String(number)} (${sha.slice(0, 7)}). It's on the Timeline: ${timeline}${next}`]);
   }
-  const shipped = await supabase.from("feedback").update({ status: "shipped", pr_url: pr.url }).in("id", [...issue.feedbackIds]);
-  if (shipped.error) throw new Error(`marking the feedback shipped failed: ${shipped.error.message}`);
-  process.stdout.write(`post-merge: #${String(number)} is on the Timeline (${id}); ${String(issue.feedbackIds.length)} feedback item(s) shipped\n`);
+  const updated = await supabase.from("feedback").update({ status, pr_url: pr.url }).in("id", [...issue.feedbackIds]).eq("issue_number", issue.number).select("id");
+  if (updated.error) throw new Error(`setting the feedback to ${status} failed: ${updated.error.message}`);
+  const outcome = status === "new" ? "went back to triage for the next step" : "shipped";
+  process.stdout.write(`post-merge: #${String(number)} is on the Timeline (${id}); ${String(updated.data.length)} feedback item(s) ${outcome}\n`);
 }
 
 // A merged guardian revert (isGuardianRevert: its branch, label and incident marker) goes on the Timeline as

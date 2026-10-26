@@ -35,6 +35,7 @@ describe("buildableIssue", () => {
     featureId: "blob",
     riskLevel: "low" as const,
     feedbackIds: ["00000000-0000-4000-8000-000000000001"],
+    laterSteps: [],
   };
   const issue = (overrides: Partial<GhIssue> = {}): GhIssue => ({
     number: 7,

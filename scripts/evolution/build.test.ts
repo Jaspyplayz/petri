@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { branchName, builderJsonSchema, builderReportSchema, prDataFromBody, prTitle, renderPrBody, slugify, type BuilderReport, type BuiltIssue } from "./build";
+import { branchName, builderJsonSchema, builderReportSchema, prDataFromBody, prTitle, renderIssueJson, renderPrBody, slugify, type BuilderReport, type BuiltIssue } from "./build";
 import { finalShots } from "./screenshots";
 
 const issue: BuiltIssue = {
@@ -12,6 +12,7 @@ const issue: BuiltIssue = {
   featureId: "blob",
   riskLevel: "low",
   feedbackIds: ["00000000-0000-4000-8000-000000000001"],
+  laterSteps: [],
 };
 
 const report: BuilderReport = {
@@ -29,6 +30,21 @@ describe("slugify and branchName", () => {
     expect(slugify("Ünïcödé & `rm -rf /` …")).toBe("unicode-rm-rf");
     expect(slugify("x".repeat(60))).toHaveLength(40);
     expect(slugify("!!!")).toBe("change");
+  });
+});
+
+describe("renderIssueJson", () => {
+  it("gives the builder and the verifier this step's fields and none of the later steps", () => {
+    expect(JSON.parse(renderIssueJson({ ...issue, laterSteps: ["Make Blobby look surprised"] }))).toEqual({
+      title: issue.title,
+      userStory: issue.userStory,
+      acceptanceCriteria: issue.acceptanceCriteria,
+      featureId: "blob",
+      riskLevel: "low",
+      feedbackIds: issue.feedbackIds,
+      number: 42,
+      url: "https://github.com/o/r/issues/42",
+    });
   });
 });
 

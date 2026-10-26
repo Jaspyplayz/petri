@@ -73,6 +73,11 @@ export function revertedChangeProblem(row: RevertedChange | null, reverted: { re
   return undefined;
 }
 
+// The status of a merged issue's feedback: shipped after its last step, or back to new so triage files the next one.
+export function feedbackStatusAfterMerge(issue: Pick<BuiltIssue, "laterSteps">): "shipped" | "new" {
+  return issue.laterSteps.length === 0 ? "shipped" : "new";
+}
+
 // Whether a post-merge run passed: a change needs its row and a passing production verify, a revert only its row.
 export function postMergePassed(kind: "change" | "revert", outcomes: { readonly record: string; readonly verify: string }): boolean {
   return outcomes.record === "success" && (kind === "revert" || outcomes.verify === "success");

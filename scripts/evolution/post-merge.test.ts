@@ -3,6 +3,7 @@ import type { BuiltIssue, PrData } from "./build";
 import {
   changelogRow,
   changelogSummary,
+  feedbackStatusAfterMerge,
   mergedPrNumber,
   postMergePassed,
   revertedChangeProblem,
@@ -103,6 +104,7 @@ describe("changelogRow", () => {
     featureId: "blob",
     riskLevel: "low",
     feedbackIds: ["00000000-0000-4000-8000-000000000001"],
+    laterSteps: [],
   };
   const data: PrData = {
     issueNumber: 4,
@@ -165,6 +167,13 @@ describe("revertRow", () => {
     expect(revertedChangeProblem(null, branch)).toBe("#63 has no Timeline entry");
     expect(revertedChangeProblem({ ...reverted, commit_sha: "1234567".padEnd(40, "0") }, branch)).toMatch(/is commit 1234567.*, not abcdef1/);
     expect(revertedChangeProblem({ ...reverted, commit_sha: null }, branch)).toMatch(/is commit \(none\)/);
+  });
+});
+
+describe("feedbackStatusAfterMerge", () => {
+  it("ships the feedback after its last step, and sends it back to triage while steps are left", () => {
+    expect(feedbackStatusAfterMerge({ laterSteps: [] })).toBe("shipped");
+    expect(feedbackStatusAfterMerge({ laterSteps: ["Make Blobby look surprised"] })).toBe("new");
   });
 });
 
