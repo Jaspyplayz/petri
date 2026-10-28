@@ -6,7 +6,7 @@
 
 ![Blobby on the home page](docs/screenshots/home.png)
 ![The feedback board](docs/screenshots/feedback.png)
-<!-- ![The Timeline of agent-built changes](docs/screenshots/timeline.png) -->
+![The Timeline of agent-built changes](docs/screenshots/timeline.png)
 
 ## What it does
 
