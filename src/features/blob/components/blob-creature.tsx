@@ -24,7 +24,7 @@ import {
 } from "../lib/blob-state";
 import { sizeMood, snackMood } from "../lib/size-mood";
 import { currentSurprise, noticeEvolved, subscribeToSurprise } from "../lib/surprise";
-import { HAPPY_MS, localHour, shownMood, timeMood, timeMoodLabel } from "../lib/time-mood";
+import { HAPPY_MS, colorSnackMood, localHour, shownMood, timeMood, timeMoodLabel } from "../lib/time-mood";
 import styles from "./blob.module.css";
 
 type Mood = "calm" | "poked" | "fed";
@@ -73,7 +73,7 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
   const [justFed, setJustFed] = useState(false);
   const happyTimer = useRef<number | undefined>(undefined);
   const surprise = useSyncExternalStore(subscribeToSurprise, currentSurprise, () => null);
-  const shown = shownMood(dayMood, justFed, surprise?.surprised === true);
+  const shown = shownMood(dayMood, justFed, surprise?.surprised === true, colorSnackMood(state.color));
 
   const save = (next: BlobState) => {
     setStored(serializeBlobState(next));
@@ -154,7 +154,7 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
           poseKey={wobbles}
           body={{
             "data-testid": "blob-body",
-            className: wobbling ? styles.wobble : styles.breathe,
+            className: [wobbling ? styles.wobble : styles.breathe, shown === "sad" ? styles.sad : ""].join(" "),
             "data-mood": mood,
             onAnimationEnd: handleAnimationEnd,
           }}
@@ -173,6 +173,28 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
               <g key={wobbles} className={wobbling ? styles.wobble : styles.breathe}>
                 <path data-testid="blob-smile" d="M76 118Q100 152 124 118Z" className="fill-blob-face" />
                 <path d="M88 134Q100 142 112 134Q100 128 88 134Z" fill="#f28aa8" />
+              </g>
+            </g>
+          </svg>
+        ) : null}
+        {shown === "sad" ? (
+          <svg
+            viewBox="0 0 200 200"
+            width={300}
+            height={300}
+            aria-hidden="true"
+            overflow="visible"
+            className="pointer-events-none absolute inset-1"
+          >
+            <g className={styles.creature} style={{ transform: `scale(${String(state.size * 0.8)})` }}>
+              <g key={wobbles} className={wobbling ? styles.wobble : styles.breathe}>
+                <path
+                  data-testid="blob-frown"
+                  d="M84 136Q100 120 116 136"
+                  className="fill-none stroke-blob-face"
+                  strokeWidth="5"
+                  strokeLinecap="round"
+                />
               </g>
             </g>
           </svg>
