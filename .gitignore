@@ -58,8 +58,5 @@ Thumbs.db
 .idea/
 .vscode/
 
-# vercel link
-.vercel
-
 # Claude Code personal settings (local permissions, EVOLUTION_HUMAN)
 .claude/settings.local.json
