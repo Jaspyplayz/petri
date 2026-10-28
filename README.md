@@ -4,12 +4,9 @@
 
 **Live demo:** [petri-pi.vercel.app](https://petri-pi.vercel.app)
 
-<!--
-  Screenshots: save PNGs to docs/screenshots/ and remove this comment.
-  ![Blobby on the home page](docs/screenshots/home.png)
-  ![The feedback board](docs/screenshots/feedback.png)
-  ![The Timeline of agent-built changes](docs/screenshots/timeline.png)
--->
+![Blobby on the home page](docs/screenshots/home.png)
+![The feedback board](docs/screenshots/feedback.png)
+<!-- ![The Timeline of agent-built changes](docs/screenshots/timeline.png) -->
 
 ## What it does
 
