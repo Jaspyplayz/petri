@@ -30,6 +30,12 @@
   visibility: visible;
 }
 
+/* While the frown shows, hide the glyph's own smile and gulp mouth under it. */
+.sad > path[d="M80 124q20 16 40 0"],
+.sad > ellipse[cx="100"][cy="128"] {
+  visibility: hidden;
+}
+
 @keyframes blink {
   0%, 92% { visibility: hidden; }
   92.01%, 99% { visibility: visible; }
