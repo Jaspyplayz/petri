@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { colorSnackMood, localHour, shownMood, timeMood, timeMoodLabel } from "../lib/time-mood";
+import { colorPokePose, colorSnackMood,localHour, shownMood, timeMood, timeMoodLabel } from "../lib/time-mood";
 
 describe("timeMood", () => {
   it.each([
@@ -30,6 +30,14 @@ describe("colorSnackMood", () => {
     expect(colorSnackMood("purple")).toBe("sad");
     expect(colorSnackMood("green")).toBe("happy");
     expect(colorSnackMood("pink")).toBe("happy");
+  });
+});
+
+describe("colorPokePose", () => {
+  it("makes a purple Blobby shrink when poked and every other colour wobble", () => {
+    expect(colorPokePose("purple")).toBe("shrink");
+    expect(colorPokePose("green")).toBe("wobble");
+    expect(colorPokePose("pink")).toBe("wobble");
   });
 });
 

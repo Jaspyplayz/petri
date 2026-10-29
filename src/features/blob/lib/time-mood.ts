@@ -15,6 +15,12 @@ export function colorSnackMood(color: string): SnackMood {
   return color === "purple" ? "sad" : "happy";
 }
 
+export type PokePose = "wobble" | "shrink";
+
+export function colorPokePose(color: string): PokePose {
+  return color === "purple" ? "shrink" : "wobble";
+}
+
 export function shownMood(time: TimeMood, justFed: boolean, surprised = false, snack: SnackMood = "happy"): ShownMood {
   if (time === "awake" && justFed) return snack;
   return surprised ? "surprised" : time;

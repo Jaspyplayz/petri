@@ -15,6 +15,21 @@
   transform-origin: 49.5% 81.3%;
 }
 
+.shrink {
+  animation: shrink 900ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  transform-box: view-box;
+  transform-origin: 49.5% 81.3%;
+}
+
+/* A sweat drop that shows only while a purple Blobby shrinks back. */
+.shrinkMark {
+  visibility: hidden;
+}
+
+.shrinkMarkShown {
+  visibility: visible;
+}
+
 .breathe {
   animation: breathe 3.2s ease-in-out infinite;
   transform-box: view-box;
@@ -51,13 +66,21 @@
   100% { transform: scale(1, 1); }
 }
 
+@keyframes shrink {
+  0% { transform: scale(1, 1); }
+  30% { transform: scale(0.78, 0.78); }
+  70% { transform: scale(0.8, 0.8); }
+  100% { transform: scale(1, 1); }
+}
+
 @keyframes breathe {
   0%, 100% { transform: scale(1, 1); }
   50% { transform: scale(1.02, 0.98); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wobble {
+  .wobble,
+  .shrink {
     animation-duration: 1ms;
   }
 

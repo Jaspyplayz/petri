@@ -9,7 +9,7 @@ Read this before any task. It maps what's on screen to a feature folder, its `da
 | Feature | Routes | Where it is on screen | How to reach it | Selectors (`data-testid`) | Flows | Risk |
 |---|---|---|---|---|---|---|
 | [Analytics (`analytics`)](#analytics-analytics) | none | Invisible. Each page renders a PageView tracker, and features call shared/lib/track on interactions. Events are POSTed to /api/events. | Open any page; a 'view' event is sent once per page show | none | none | medium |
-| [Blob (`blob`)](#blob-blob) | `/` | The home page is two columns on a wide screen and stacked on a narrow one. The left column has the creature, a rainbow 'Evolved N times from visitor ideas' link to the Timeline, playful Size / Mood / Pokes / Snacks stats (Mood reads Sleepy, with eyes shut, from 22:00 to 06:00 local time, and Awake otherwise; right after a daytime snack it reads Happy for a few seconds and a big grin shows on the face, except a purple Blobby reads Sad with a frown; when the Evolved count is higher than the one this browser last saw, it reads Surprised and the face gets raised brows and an open O mouth), a pink Poke button, a green Feed button, colour swatches, and a rename field. The right column is the timeline diary card, with a tan Teach Blobby bar and a Suggest a lesson link underneath. | Open / (from another page, click 'Blob' in the top navigation) | `blob-panel`, `blob-name`, `blob-creature`, `blob-body`, `blob-eyelid`, `blob-mood`, `blob-smile`, `blob-frown`, `blob-surprised`, `blob-size`, `blob-pokes`, `blob-feeds`, `blob-evolved`, `blob-poke-button`, `blob-feed-button`, `blob-color-picker`, `blob-color-swatch-pink`, `blob-color-swatch-purple`, `blob-name-input`, `blob-name-save`, `blob-name-error`, `blob-teach` | `blob.poke`, `blob.feed`, `blob.blink`, `blob.sleepy`, `blob.awake`, `blob.happy`, `blob.sad`, `blob.surprised`, `blob.recolor`, `blob.evolved`, `blob.rename` | low |
+| [Blob (`blob`)](#blob-blob) | `/` | The home page is two columns on a wide screen and stacked on a narrow one. The left column has the creature, a rainbow 'Evolved N times from visitor ideas' link to the Timeline, playful Size / Mood / Pokes / Snacks stats (Mood reads Sleepy, with eyes shut, from 22:00 to 06:00 local time, and Awake otherwise; right after a daytime snack it reads Happy for a few seconds and a big grin shows on the face, except a purple Blobby reads Sad with a frown; a poke makes Blobby wobble, but a purple one shrinks back for a moment with a sweat drop instead; when the Evolved count is higher than the one this browser last saw, it reads Surprised and the face gets raised brows and an open O mouth), a pink Poke button, a green Feed button, colour swatches, and a rename field. The right column is the timeline diary card, with a tan Teach Blobby bar and a Suggest a lesson link underneath. | Open / (from another page, click 'Blob' in the top navigation) | `blob-panel`, `blob-name`, `blob-creature`, `blob-body`, `blob-eyelid`, `blob-mood`, `blob-smile`, `blob-frown`, `blob-surprised`, `blob-shrink`, `blob-size`, `blob-pokes`, `blob-feeds`, `blob-evolved`, `blob-poke-button`, `blob-feed-button`, `blob-color-picker`, `blob-color-swatch-pink`, `blob-color-swatch-purple`, `blob-name-input`, `blob-name-save`, `blob-name-error`, `blob-teach` | `blob.poke`, `blob.feed`, `blob.blink`, `blob.sleepy`, `blob.awake`, `blob.happy`, `blob.sad`, `blob.shrink`, `blob.surprised`, `blob.recolor`, `blob.evolved`, `blob.rename` | low |
 | [Feedback board (`feedback`)](#feedback-board-feedback) | `/feedback` | The /feedback page, in a centred column: a small blotchy blob beside the 'Teach Blobby' heading and a note that the most-voted ideas are taught by agents and may show up on the Timeline, then a soft card with the post form (textarea, Idea/Bug radios, character counter, purple Suggest a lesson button; a paused-lessons note instead while the feedback_open flag is off or the app is read-only), then the board headed 'What to teach Blobby' with Top / Newest sort tabs on the right and one soft card per item (votes on the left, text, a mini blob with 'Blobby learned this' when shipped, a gentle reason when rejected, category, pastel status badge, relative age such as 3 days ago, issue/PR links, and a small 'Report' link at the right end of that row, which asks 'Confirm report' before it counts). | Open / → Click 'Feedback' in the top navigation (the middle one of the three links on the right) | `feedback-panel`, `feedback-heading`, `feedback-list`, `feedback-empty`, `feedback-item`, `feedback-item-body`, `feedback-item-age`, `feedback-item-status`, `feedback-learned`, `feedback-rejection`, `feedback-item-issue-link`, `feedback-item-pr-link`, `feedback-vote-button`, `feedback-vote-count`, `feedback-vote-error`, `feedback-vote-note`, `feedback-report-button`, `feedback-report-cancel`, `feedback-report-note`, `feedback-report-error`, `feedback-form`, `feedback-body-input`, `feedback-category-idea`, `feedback-category-bug`, `feedback-char-count`, `feedback-submit`, `feedback-form-message`, `feedback-closed-note`, `feedback-sort-top`, `feedback-sort-new` | `feedback.browse`, `feedback.post`, `feedback.age`, `feedback.vote`, `feedback.report` | medium |
 | [Timeline (`timeline`)](#timeline-timeline) | `/timeline` | On the home page, the right-hand card (under the creature on a narrow screen) is titled 'Blobby's changes' and shows the newest rows with before/after art. The /timeline page repeats that diary in full: the same heading, an 'Evolved N times from visitor ideas' counter, then one card per change (title, before/after pictures, the visitor quote, then a collapsed 'More about this change'). When a change has no screenshot, the picture is a drawn Blobby. Reverts have a red 'Reverted' badge and the line 'This undid a change that hurt Blobby.' | Open / → Click 'Timeline' in the top navigation (the last of the three links on the right) | `timeline-panel`, `timeline-heading`, `timeline-counter`, `timeline-list`, `timeline-empty`, `timeline-entry`, `timeline-entry-title`, `timeline-revert-badge`, `timeline-revert-note`, `timeline-art`, `timeline-pr-link`, `timeline-home`, `timeline-home-heading` | `timeline.browse`, `timeline.home` | medium |
 
@@ -60,7 +60,7 @@ A squishy SVG creature you can poke, feed and name. Play stays in the visitor's 
 
 - **Folder:** `src/features/blob/`
 - **Routes:** `/`
-- **Where it is on screen:** The home page is two columns on a wide screen and stacked on a narrow one. The left column has the creature, a rainbow 'Evolved N times from visitor ideas' link to the Timeline, playful Size / Mood / Pokes / Snacks stats (Mood reads Sleepy, with eyes shut, from 22:00 to 06:00 local time, and Awake otherwise; right after a daytime snack it reads Happy for a few seconds and a big grin shows on the face, except a purple Blobby reads Sad with a frown; when the Evolved count is higher than the one this browser last saw, it reads Surprised and the face gets raised brows and an open O mouth), a pink Poke button, a green Feed button, colour swatches, and a rename field. The right column is the timeline diary card, with a tan Teach Blobby bar and a Suggest a lesson link underneath.
+- **Where it is on screen:** The home page is two columns on a wide screen and stacked on a narrow one. The left column has the creature, a rainbow 'Evolved N times from visitor ideas' link to the Timeline, playful Size / Mood / Pokes / Snacks stats (Mood reads Sleepy, with eyes shut, from 22:00 to 06:00 local time, and Awake otherwise; right after a daytime snack it reads Happy for a few seconds and a big grin shows on the face, except a purple Blobby reads Sad with a frown; a poke makes Blobby wobble, but a purple one shrinks back for a moment with a sweat drop instead; when the Evolved count is higher than the one this browser last saw, it reads Surprised and the face gets raised brows and an open O mouth), a pink Poke button, a green Feed button, colour swatches, and a rename field. The right column is the timeline diary card, with a tan Teach Blobby bar and a Suggest a lesson link underneath.
 - **Keyboard shortcuts:** none
 - **Data tables:** none
 - **Risk level:** low
@@ -80,6 +80,7 @@ How to reach it:
 | smile | `blob-smile` |
 | frown | `blob-frown` |
 | surprised | `blob-surprised` |
+| shrink | `blob-shrink` |
 | size | `blob-size` |
 | pokes | `blob-pokes` |
 | feeds | `blob-feeds` |
@@ -207,6 +208,35 @@ In the daytime a snack makes a purple Blobby Sad with a frown, while a pink one 
 19. click `feedButton`
 20. expectText `mood` contains "Sleepy"
 21. screenshot "sleepy-after-snack"
+
+### `blob.shrink`
+
+Poking a purple Blobby makes it shrink back for a moment, with a sweat drop, instead of wobbling. The poke still counts and the Size stat stays the same; a pink Blobby still wobbles, and a snack still makes a purple one Sad and grows it. Run it with `pnpm verify:flow blob.shrink`.
+
+1. goto `/?hour=12`
+2. click `colorPurple`
+3. expectText `size` contains "100%"
+4. click `pokeButton`
+5. pauseAnimations at 400 ms
+6. expectStyle `shrink` has visibility "visible"
+7. expectVisible `shrink`
+8. screenshot "purple-shrink"
+9. expectText `pokes` contains "1"
+10. expectText `size` contains "100%"
+11. goto `/?hour=12`
+12. click `colorPink`
+13. click `pokeButton`
+14. pauseAnimations at 200 ms
+15. expectStyle `shrink` has visibility "hidden"
+16. expectText `pokes` contains "2"
+17. screenshot "pink-wobble"
+18. goto `/?hour=12`
+19. click `colorPurple`
+20. click `feedButton`
+21. expectText `mood` contains "Sad"
+22. expectVisible `frown`
+23. expectText `size` contains "105%"
+24. screenshot "purple-sad"
 
 ### `blob.surprised`
 
