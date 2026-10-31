@@ -40,6 +40,14 @@ type Mood = "calm" | "poked" | "fed";
 
 const HOUR_CHECK_MS = 60_000;
 
+const POSE_CLASS: Readonly<Record<PokePose, string | undefined>> = {
+  wobble: styles.wobble,
+  shrink: styles.shrink,
+  shake: styles.shake,
+  bounce: styles.bounce,
+  sway: styles.sway,
+};
+
 function subscribeToClock(onChange: () => void) {
   const timer = window.setInterval(onChange, HOUR_CHECK_MS);
   return () => {
@@ -140,7 +148,7 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
   const body = blobColor(state);
   const yum = snackMood(state.feeds);
   const shrinking = wobbling && pose === "shrink";
-  const motion = wobbling ? (shrinking ? styles.shrink : styles.wobble) : styles.breathe;
+  const motion = wobbling ? POSE_CLASS[pose] : styles.breathe;
 
   return (
     <section data-testid="blob-panel" aria-labelledby="blob-name" className="flex flex-col items-center gap-4">
@@ -168,33 +176,37 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
           poseKey={wobbles}
           body={{
             "data-testid": "blob-body",
-            className: [motion, shown === "sad" ? styles.sad : ""].join(" "),
+            className: [motion, shown === "sad" || shown === "excited" ? styles.hideMouth : ""].join(" "),
             "data-mood": mood,
             onAnimationEnd: handleAnimationEnd,
           }}
-          eyelid={{ "data-testid": "blob-eyelid", className: shown === "sleepy" ? styles.eyelidShut : styles.eyelid }}
+          eyelid={{
+            "data-testid": "blob-eyelid",
+            className: shown === "sleepy" || shown === "content" ? styles.eyelidShut : styles.eyelid,
+          }}
         />
-        <svg
-          viewBox="0 0 200 200"
-          width={300}
-          height={300}
-          aria-hidden="true"
-          overflow="visible"
-          className="pointer-events-none absolute inset-1"
-        >
-          <g className={styles.creature} style={{ transform: `scale(${String(state.size * 0.8)})` }}>
-            <g key={wobbles} className={motion}>
-              <path
-                data-testid="blob-shrink"
-                d="M132 78q10 14 0 22q-10-8 0-22Z"
-                fill="#8fc8f0"
-                stroke="#2f6fa8"
-                strokeWidth="2"
-                className={shrinking ? styles.shrinkMarkShown : styles.shrinkMark}
-              />
+        {shrinking ? (
+          <svg
+            viewBox="0 0 200 200"
+            width={300}
+            height={300}
+            aria-hidden="true"
+            overflow="visible"
+            className="pointer-events-none absolute inset-1"
+          >
+            <g className={styles.creature} style={{ transform: `scale(${String(state.size * 0.8)})` }}>
+              <g key={wobbles} className={motion}>
+                <path
+                  data-testid="blob-shrink"
+                  d="M132 78q10 14 0 22q-10-8 0-22Z"
+                  fill="#8fc8f0"
+                  stroke="#2f6fa8"
+                  strokeWidth="2"
+                />
+              </g>
             </g>
-          </g>
-        </svg>
+          </svg>
+        ) : null}
         {shown === "happy" ? (
           <svg
             viewBox="0 0 200 200"
@@ -253,6 +265,29 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
                 />
                 <ellipse cx="100" cy="132" rx="11" ry="14" className="fill-blob-face" />
                 <ellipse cx="100" cy="138" rx="6" ry="5" fill="#f28aa8" />
+              </g>
+            </g>
+          </svg>
+        ) : null}
+        {shown === "excited" ? (
+          <svg
+            viewBox="0 0 200 200"
+            width={300}
+            height={300}
+            aria-hidden="true"
+            overflow="visible"
+            className="pointer-events-none absolute inset-1"
+          >
+            <g className={styles.creature} style={{ transform: `scale(${String(state.size * 0.8)})` }}>
+              <g key={wobbles} data-testid="blob-excited" className={motion}>
+                <path
+                  d="M64 78q14-12 28-2M108 76q14-10 28 2"
+                  className="fill-none stroke-blob-face"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                />
+                <path d="M76 116Q100 158 124 116Z" className="fill-blob-face" />
+                <path d="M88 136Q100 146 112 136Q100 130 88 136Z" fill="#f28aa8" />
               </g>
             </g>
           </svg>

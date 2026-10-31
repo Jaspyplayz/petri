@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { colorPokePose, colorSnackMood,localHour, shownMood, timeMood, timeMoodLabel } from "../lib/time-mood";
+import { colorPokePose, colorSnackMood, localHour, shownMood, timeMood, timeMoodLabel } from "../lib/time-mood";
 
 describe("timeMood", () => {
   it.each([
@@ -22,22 +22,34 @@ describe("timeMoodLabel", () => {
     expect(timeMoodLabel("happy")).toBe("Happy");
     expect(timeMoodLabel("surprised")).toBe("Surprised");
     expect(timeMoodLabel("sad")).toBe("Sad");
+    expect(timeMoodLabel("excited")).toBe("Excited");
+    expect(timeMoodLabel("content")).toBe("Content");
   });
 });
 
 describe("colorSnackMood", () => {
-  it("makes a purple Blobby sad after a snack and every other colour happy", () => {
-    expect(colorSnackMood("purple")).toBe("sad");
-    expect(colorSnackMood("green")).toBe("happy");
-    expect(colorSnackMood("pink")).toBe("happy");
+  it.each([
+    ["pink", "happy"],
+    ["purple", "sad"],
+    ["orange", "excited"],
+    ["blue", "content"],
+    ["green", "happy"],
+    ["unknown", "happy"],
+  ] as const)("a %s Blobby is %s after a snack", (color, mood) => {
+    expect(colorSnackMood(color)).toBe(mood);
   });
 });
 
 describe("colorPokePose", () => {
-  it("makes a purple Blobby shrink when poked and every other colour wobble", () => {
-    expect(colorPokePose("purple")).toBe("shrink");
-    expect(colorPokePose("green")).toBe("wobble");
-    expect(colorPokePose("pink")).toBe("wobble");
+  it.each([
+    ["pink", "shake"],
+    ["purple", "shrink"],
+    ["orange", "bounce"],
+    ["blue", "sway"],
+    ["green", "wobble"],
+    ["unknown", "wobble"],
+  ] as const)("a %s Blobby does a %s when poked", (color, pose) => {
+    expect(colorPokePose(color)).toBe(pose);
   });
 });
 
@@ -61,6 +73,12 @@ describe("shownMood", () => {
     expect(shownMood("awake", true, true, "sad")).toBe("sad");
     expect(shownMood("sleepy", true, false, "sad")).toBe("sleepy");
     expect(shownMood("awake", false, false, "sad")).toBe("awake");
+  });
+
+  it("shows the colour's snack mood right after a daytime snack", () => {
+    expect(shownMood("awake", true, false, "excited")).toBe("excited");
+    expect(shownMood("awake", true, false, "content")).toBe("content");
+    expect(shownMood("sleepy", true, false, "excited")).toBe("sleepy");
   });
 
   it("follows the clock when Blobby wasn't just fed", () => {
