@@ -20,6 +20,7 @@ The home page shows the Blob, a squishy SVG creature. Visitors can:
   | Blue | Content, eyes shut | sways |
   | Green | Happy, big grin | wobbles |
 - **Surprise** it: when the Evolved count under the face is higher than the count this browser last saw, the mood reads Surprised and the face shows raised brows and an open mouth until the next visit (a daytime snack still makes it Happy). The new count is remembered in `localStorage` under `petri.blob.seen.v1`; a first visit just remembers it. `?seen=N` pins the last-seen count for verify flows.
+- **Hear it**: right after a feed or a poke, a speech bubble above Blobby says a short line for 3 seconds ("Yum! I am getting bigger!" or "Hehe, that tickles!", from `lib/speech.ts`). Nothing shows before the first interaction.
 - **Name** it: 1–24 characters after trimming. Invalid names show an inline error.
 
 ## Invariants

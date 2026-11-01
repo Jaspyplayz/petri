@@ -46,6 +46,19 @@ test.describe("blob", () => {
     await expect(page.getByTestId("blob-feeds")).toHaveText("1 Yummy!");
   });
 
+  test("Blobby says a short line after a feed or a poke", async ({ page }) => {
+    await page.goto("/?hour=12");
+    await expect(page.getByTestId("blob-mood")).toHaveText("Awake");
+    await expect(page.getByTestId("blob-speech")).toHaveCount(0);
+    await page.getByTestId("blob-feed-button").click();
+    await expect(page.getByTestId("blob-speech")).toContainText("I am getting bigger");
+    await expect(page.getByTestId("blob-size")).toContainText("105%");
+    await page.getByTestId("blob-poke-button").click();
+    await expect(page.getByTestId("blob-speech")).toContainText("tickles");
+    await expect(page.getByTestId("blob-pokes")).toHaveText("1");
+    await expect(page.getByTestId("blob-speech")).toHaveCount(0, { timeout: 6000 });
+  });
+
   test("the evolution line counts shipped changes and opens the diary", async ({ page }) => {
     await page.goto("/");
     const evolved = page.getByTestId("blob-panel").getByTestId("blob-evolved");
