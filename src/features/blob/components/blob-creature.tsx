@@ -23,6 +23,7 @@ import {
   type BlobState,
 } from "../lib/blob-state";
 import { sizeMood, snackMood } from "../lib/size-mood";
+import { SPEECH_MS, speechLine, type SpeechAction } from "../lib/speech";
 import { currentSurprise, noticeEvolved, subscribeToSurprise } from "../lib/surprise";
 import {
   HAPPY_MS,
@@ -90,6 +91,8 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
   const dayMood = hour === null ? "awake" : timeMood(hour);
   const [justFed, setJustFed] = useState(false);
   const happyTimer = useRef<number | undefined>(undefined);
+  const [speech, setSpeech] = useState<string | null>(null);
+  const speechTimer = useRef<number | undefined>(undefined);
   const surprise = useSyncExternalStore(subscribeToSurprise, currentSurprise, () => null);
   const shown = shownMood(dayMood, justFed, surprise?.surprised === true, colorSnackMood(state.color));
 
@@ -97,8 +100,17 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
     setStored(serializeBlobState(next));
   };
 
+  const say = (action: SpeechAction) => {
+    setSpeech(speechLine(action));
+    window.clearTimeout(speechTimer.current);
+    speechTimer.current = window.setTimeout(() => {
+      setSpeech(null);
+    }, SPEECH_MS);
+  };
+
   const handlePoke = () => {
     save(poke(state));
+    say("poke");
     setWobbles((count) => count + 1);
     setWobbling(true);
     setPose(colorPokePose(state.color));
@@ -108,6 +120,7 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
 
   const handleFeed = () => {
     save(feed(state));
+    say("feed");
     setWobbles((count) => count + 1);
     setWobbling(true);
     setPose("wobble");
@@ -155,6 +168,17 @@ export function BlobCreature({ evolved }: { readonly evolved: ReactNode }) {
       <h1 id="blob-name" data-testid="blob-name" className="sr-only">
         {state.name}
       </h1>
+
+      <div role="status" className="relative z-10 -mb-4 h-0 self-stretch">
+        {speech ? (
+          <p
+            data-testid="blob-speech"
+            className="absolute top-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-2xl border border-ink/10 bg-card px-4 py-2 text-base font-bold text-ink shadow-md after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-8 after:border-transparent after:border-t-card"
+          >
+            {speech}
+          </p>
+        ) : null}
+      </div>
 
       <button
         type="button"
